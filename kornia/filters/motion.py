@@ -45,9 +45,9 @@ def _scalar_params_as_tensors(
     # Tensor parameters keep their own device and dtype.
     dtype = torch.promote_types(input.dtype, torch.float32) if input.is_floating_point() else torch.get_default_dtype()
     if not isinstance(angle, torch.Tensor):
-        angle = torch.as_tensor(angle, dtype=dtype)
+        angle = torch.as_tensor(angle, device="cpu", dtype=dtype)
     if not isinstance(direction, torch.Tensor):
-        direction = torch.as_tensor(direction, dtype=dtype)
+        direction = torch.as_tensor(direction, device="cpu", dtype=dtype)
     return angle, direction
 
 

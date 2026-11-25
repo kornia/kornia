@@ -280,6 +280,22 @@ class TestMotionBlur(BaseTester):
 
         self.assert_close(op(data), op_optimized(data))
 
+    @pytest.mark.parametrize("mode", ["nearest", "bilinear"])
+    def test_under_default_device(self, mode, device, dtype):
+        # Python-number parameters and the nearest-neighbour source grid are built on the CPU, not on PyTorch's
+        # ambient default device; a meta default exposes both without accelerator hardware.
+        border_type = "reflect" if supports_reflect_padding(device, dtype) else "constant"
+        image = torch.rand(2, 3, 9, 11, device=device, dtype=dtype, requires_grad=True)
+        expected = motion_blur(image, 5, 35.0, 0.5, border_type=border_type, mode=mode)
+        expected_grad = torch.autograd.grad(expected.sum(), image)[0]
+        with torch.device("meta"):
+            actual = motion_blur(image, 5, 35.0, 0.5, border_type=border_type, mode=mode)
+            grad = torch.autograd.grad(actual.sum(), image)[0]
+
+        assert actual.device == image.device
+        self.assert_close(actual, expected)
+        self.assert_close(grad, expected_grad)
+
 
 class TestMotionBlur3D(BaseTester):
     # A shape check: each shape, kernel size and angle once, with every direction, mode and parameter form.
@@ -521,6 +537,22 @@ class TestMotionBlur3D(BaseTester):
         self.assert_close(MotionBlur3D(*params)(volume), from_function)
         # the shared default is "replicate"
         self.assert_close(from_function, motion_blur3d(volume, *params, border_type="replicate"))
+
+    @pytest.mark.parametrize("mode", ["nearest", "bilinear"])
+    def test_under_default_device(self, mode, device, dtype):
+        # Python-number parameters and the nearest-neighbour source grid are built on the CPU, not on PyTorch's
+        # ambient default device; a meta default exposes both without accelerator hardware.
+        border_type = "replicate" if supports_replicate_padding_3d(device, dtype) else "constant"
+        volume = torch.rand(2, 2, 4, 6, 7, device=device, dtype=dtype, requires_grad=True)
+        expected = motion_blur3d(volume, 3, (30.0, 10.0, 20.0), 0.5, border_type=border_type, mode=mode)
+        expected_grad = torch.autograd.grad(expected.sum(), volume)[0]
+        with torch.device("meta"):
+            actual = motion_blur3d(volume, 3, (30.0, 10.0, 20.0), 0.5, border_type=border_type, mode=mode)
+            grad = torch.autograd.grad(actual.sum(), volume)[0]
+
+        assert actual.device == volume.device
+        self.assert_close(actual, expected)
+        self.assert_close(grad, expected_grad)
 
 
 class TestConventionsMotionBlur(BaseTester):
