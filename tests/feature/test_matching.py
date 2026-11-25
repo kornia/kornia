@@ -1366,6 +1366,7 @@ def _without_the_squared_path(monkeypatch, fn, *args):
     """``fn(*args)`` along the path of ``torch.cdist``'s matrix, which the matchers took before the squared path."""
     with monkeypatch.context() as patch:
         patch.setattr(matching, "_squared_distances", lambda *_args, **_kwargs: None)
+        patch.setattr(matching, "_use_squared_distances", lambda *_args, **_kwargs: False)
         return fn(*args)
 
 
@@ -1400,16 +1401,19 @@ class TestSquaredDistanceMatching(BaseTester):
         assert len(idxs) > 0
 
     @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="The squared-distance path runs on the CPU and CUDA.")
-    def test_returns_the_nearer_of_distances_tied_by_the_square_root(self, device, monkeypatch):
+    def test_returns_the_nearer_of_distances_tied_by_the_square_root(self, device):
         # 2 ** 24 + 2 > 2 ** 24, but both square roots round to 4096 in float32: torch.cdist's matrix ties them, and
         # torch.min returns the first, while the squared distances tell the second is nearer.
         squared = torch.tensor([[2.0**24 + 2, 2.0**24, 1e8]], device=device)
         assert torch.equal(_distance_from_squared(squared)[0, 0], _distance_from_squared(squared)[0, 1])
-        desc1, desc2 = torch.zeros(1, 4, device=device), torch.zeros(3, 4, device=device)
-        monkeypatch.setattr(matching, "_squared_distances", lambda *_args, **_kwargs: squared.clone())
+        rows, columns = _squared_path_sizes(device)
+        desc1 = torch.zeros(rows, 2, device=device)
+        desc2 = torch.full((columns, 2), 10000.0, device=device)
+        desc2[0] = torch.tensor([4096.0, math.sqrt(2.0)], device=device)
+        desc2[1] = torch.tensor([4096.0, 0.0], device=device)
         dists, idxs = match_nn(desc1, desc2)
-        assert idxs.tolist() == [[0, 1]]
-        assert dists.tolist() == [[4096.0]]
+        assert torch.equal(idxs[:, 1], torch.ones(rows, device=device, dtype=torch.long))
+        self.assert_close(dists, torch.full((rows, 1), 4096.0, device=device), rtol=0, atol=0)
 
     @pytest.mark.applies_to(
         dtypes=("float32", "float64"), reason="The squared-distance path runs for float32 and float64."
@@ -1474,36 +1478,37 @@ class TestSquaredDistanceMatching(BaseTester):
 
 
 @pytest.mark.applies_to(
-    devices=("cpu",), dtypes=("float32", "float64"), reason="The chunked distance path is CPU float32/float64 only."
+    dtypes=("float32", "float64"), reason="Exact quarter-grid references and full-precision gradient comparisons."
 )
 class TestChunkedDistanceMatching(BaseTester):
     @pytest.mark.parametrize("match", [match_nn, match_snn])
-    def test_avoids_full_distance_matrix(self, device, dtype, match):
+    @pytest.mark.parametrize("rows,columns", [(33, 39), (513, 769), (2051, 4099)])
+    def test_avoids_full_distance_matrix(self, device, dtype, match, rows, columns):
         # Quarter-grid positions have unique, exactly representable zero-distance matches in reverse order. 2,051
         # rows also leave a partial final block. No full pairwise tensor is needed to express that result.
-        desc1 = torch.arange(2051, device=device, dtype=dtype)[:, None] / 4
-        desc2 = torch.arange(4098, -1, -1, device=device, dtype=dtype)[:, None] / 4
+        desc1 = torch.arange(rows, device=device, dtype=dtype)[:, None] / 4
+        desc2 = torch.arange(columns - 1, -1, -1, device=device, dtype=dtype)[:, None] / 4
 
         class BoundedStorage(TorchDispatchMode):
             def __torch_dispatch__(self, func, types, args=(), kwargs=None):
                 output = func(*args, **(kwargs or {}))
                 for tensor in output if isinstance(output, (tuple, list)) else (output,):
                     if isinstance(tensor, torch.Tensor):
-                        assert tensor.numel() <= len(desc1) * len(desc2) // 2, "allocated the full distance matrix"
+                        assert tensor.numel() <= 512 * columns, "allocated more than one row block"
                 return output
 
         with BoundedStorage():
             distances, indices = match(desc1, desc2)
         expected_indices = torch.stack(
-            [torch.arange(2051, device=device), torch.arange(4098, 2047, -1, device=device)], 1
+            [torch.arange(rows, device=device), torch.arange(columns - 1, columns - rows - 1, -1, device=device)], 1
         )
         self.assert_close(indices, expected_indices)
-        self.assert_close(distances, torch.zeros(2051, 1, device=device, dtype=dtype), rtol=0, atol=0)
+        self.assert_close(distances, torch.zeros(rows, 1, device=device, dtype=dtype), rtol=0, atol=0)
 
     @pytest.mark.parametrize("match", [match_nn, match_snn])
     @pytest.mark.parametrize("swap", [False, True])
     @pytest.mark.parametrize("nonfinite", [False, True])
-    def test_matches_matrix_selection(self, device, dtype, match, swap, nonfinite, monkeypatch):
+    def test_matches_matrix_selection(self, device, dtype, match, swap, nonfinite):
         generator = torch.Generator().manual_seed(19)
         desc1 = torch.randn(4099, 32, generator=generator, dtype=torch.float64).to(device, dtype)[:, ::2]
         desc2 = torch.randn(2049, 32, generator=generator, dtype=torch.float64).to(device, dtype)[:, ::2]
@@ -1519,9 +1524,17 @@ class TestChunkedDistanceMatching(BaseTester):
             desc1, desc2 = desc2, desc1
         assert not desc1.is_contiguous()
         assert not desc2.is_contiguous()
-        with monkeypatch.context() as patch:
-            patch.setattr(matching, "_chunked_neighbours", lambda *_args, **_kwargs: None)
-            expected_values, expected_indices = match(desc1, desc2)
+        matrix = _cdist(desc1, desc2)
+        if match is match_nn:
+            expected_values, columns = matrix.min(1)
+            rows = torch.arange(len(desc1), device=device)
+        else:
+            nearest, columns = matrix.topk(2, dim=1, largest=False)
+            ratios = nearest[:, 0] / nearest[:, 1]
+            rows = torch.nonzero(ratios <= 0.8)[:, 0]
+            expected_values, columns = ratios[rows], columns[rows, 0]
+        expected_values = expected_values[:, None]
+        expected_indices = torch.stack([rows, columns], 1)
         values, indices = match(desc1, desc2)
         self.assert_close(indices, expected_indices)
         assert torch.equal(torch.isnan(values), torch.isnan(expected_values))
@@ -1558,30 +1571,76 @@ class TestChunkedDistanceMatching(BaseTester):
         assert scores.dtype == matrix.dtype
         assert indices.shape == (0, 2)
 
-    def test_keeps_matrix_path_for_other_modes(self, device, monkeypatch):
-        desc1 = torch.ones(2048, 4, device=device)
-        desc2 = torch.ones(4096, 4, device=device)
-        select = matching._chunked_neighbours
-        assert select(desc1, desc2, torch.empty(0, device=device)) is None
-        assert select(desc1[:2047], desc2, None) is None
-        assert select(desc1, desc2[:2047], None) is None
-        assert select(desc1, desc2[:4095], None) is None
-        assert select(desc1.half(), desc2.half(), None) is None
-        assert select(desc1.bfloat16(), desc2.bfloat16(), None) is None
-        assert select(desc1, desc2.double(), None) is None
-        assert select(desc1.requires_grad_(), desc2, None) is None
-        with torch.no_grad():
-            assert select(desc1, desc2, None) is not None
-        desc1 = desc1.detach()
-        with torch.autocast("cpu", dtype=torch.bfloat16):
-            assert select(desc1, desc2, None) is None
-        for flag in ("is_exporting", "is_compiling"):
-            with monkeypatch.context() as patch:
-                patch.setattr(matching, flag, lambda: True)
-                assert select(desc1, desc2, None) is None
-        with monkeypatch.context() as patch:
-            patch.setattr(torch.jit, "is_tracing", lambda: True)
-            assert select(desc1, desc2, None) is None
+    @pytest.mark.parametrize("match", [match_nn, match_snn])
+    @pytest.mark.parametrize("provided_matrix", [False, True])
+    def test_multiple_blocks_keep_gradients(self, device, dtype, match, provided_matrix):
+        generator = torch.Generator().manual_seed(37)
+        desc1 = torch.randn(513, 4, generator=generator).to(device, dtype).requires_grad_()
+        desc2 = torch.randn(37, 4, generator=generator).to(device, dtype).requires_grad_()
+        matrix = _cdist(desc1, desc2)
+        if match is match_nn:
+            expected_values, columns = matrix.min(1)
+        else:
+            nearest, indices = matrix.topk(2, dim=1, largest=False)
+            expected_values, columns = nearest[:, 0] / nearest[:, 1], indices[:, 0]
+        expected_grads = torch.autograd.grad(expected_values.square().sum(), (desc1, desc2), retain_graph=True)
+
+        kwargs = {"th": 1.0} if match is match_snn else {}
+        values, indices = match(desc1, desc2, dm=matrix if provided_matrix else None, **kwargs)
+        actual_grads = torch.autograd.grad(values.square().sum(), (desc1, desc2))
+
+        self.assert_close(values[:, 0], expected_values)
+        self.assert_close(indices[:, 1], columns)
+        for actual, expected in zip(actual_grads, expected_grads):
+            self.assert_close(actual, expected)
+
+    @pytest.mark.parametrize("rows", [513, 1025])
+    @pytest.mark.parametrize("match", [match_nn, match_snn])
+    def test_partial_block_keeps_the_full_input_distance_kernel(self, device, dtype, rows, match):
+        # A final 1-row block against two targets would switch cdist from its matrix kernel to direct differences.
+        # Ordinary-sized, nearby descriptors expose the different cancellation and gradient behaviour.
+        desc1 = torch.full((rows, 128), 0.0625, device=device, dtype=dtype, requires_grad=True)
+        desc2 = torch.full((2, 128), 0.0625, device=device, dtype=dtype)
+        desc2[:, 0] += torch.tensor([1e-5, 2e-5], device=device, dtype=dtype)
+        desc2.requires_grad_()
+        # Pin the kernel of the final row explicitly: changing GEMM's row count can change its last bits even
+        # in float64, independently of the direct-vs-matrix switch this regression covers.
+        matrix = torch.cat(
+            [torch.cdist(desc1[:-1], desc2), torch.cdist(desc1[-1:], desc2, compute_mode="use_mm_for_euclid_dist")]
+        )
+        if match is match_nn:
+            expected_values, columns = matrix.min(1)
+            keep = torch.arange(rows, device=device)
+        else:
+            nearest, indices = matrix.topk(2, dim=1, largest=False)
+            ratios = nearest[:, 0] / nearest[:, 1]
+            keep = torch.nonzero(ratios <= 0.8)[:, 0]
+            expected_values, columns = ratios[keep], indices[keep, 0]
+
+        values, indices = match(desc1, desc2)
+        self.assert_close(values[:, 0], expected_values, rtol=0, atol=0)
+        self.assert_close(indices, torch.stack([keep, columns], 1))
+        if match is match_nn:
+            expected_grads = torch.autograd.grad(expected_values.sum(), (desc1, desc2))
+            actual_grads = torch.autograd.grad(values.sum(), (desc1, desc2))
+            for actual, expected in zip(actual_grads, expected_grads):
+                self.assert_close(actual, expected)
+
+    @pytest.mark.parametrize("match", [match_nn, match_snn])
+    def test_dynamo_multiple_blocks_and_gradients(self, device, dtype, torch_optimizer, match):
+        generator = torch.Generator().manual_seed(37)
+        desc1 = torch.randn(513, 4, generator=generator).to(device, dtype).requires_grad_()
+        desc2 = torch.randn(37, 4, generator=generator).to(device, dtype).requires_grad_()
+        expected_values, expected_indices = match(desc1, desc2)
+        expected_grads = torch.autograd.grad(expected_values.square().sum(), (desc1, desc2))
+
+        values, indices = torch_optimizer(match)(desc1, desc2)
+        actual_grads = torch.autograd.grad(values.square().sum(), (desc1, desc2))
+
+        self.assert_close(values, expected_values)
+        self.assert_close(indices, expected_indices)
+        for actual, expected in zip(actual_grads, expected_grads):
+            self.assert_close(actual, expected)
 
     @pytest.mark.skipif(not dynamic_export_is_available(), reason=DYNAMIC_EXPORT_UNAVAILABLE_REASON)
     @pytest.mark.applies_to(
@@ -1589,48 +1648,84 @@ class TestChunkedDistanceMatching(BaseTester):
         reason="The Dynamo shape check requires a torch.compile-backed optimizer; export is independent of it.",
     )
     @pytest.mark.parametrize("capture", ["dynamo", "export"])
-    def test_chunk_selector_keeps_dynamic_shapes(self, capture, torch_optimizer, optimizer_backend):
+    def test_row_blocks_keep_dynamic_shapes(self, capture, torch_optimizer, optimizer_backend):
         from torch._dynamo.testing import CompileCounter
 
         class Nearest(torch.nn.Module):
-            def forward(self, desc1, desc2):
-                return match_nn(desc1, desc2)
-
-        class ChunkSelector(torch.nn.Module):
-            def forward(self, desc1, desc2):
-                # Exercise the selector independently of _cdist's version-specific export lowering.
-                assert matching._chunked_neighbours(desc1, desc2, None) is None
-                return desc1.clone(), desc2.clone()
+            def forward(self, desc1, desc2, matrix):
+                # Isolate row-block capture from _cdist's version-specific export lowering.
+                return match_nn(desc1, desc2, dm=matrix)
 
         def inputs(rows, columns):
-            return torch.arange(rows).float()[:, None] / 4, torch.arange(columns - 1, -1, -1).float()[:, None] / 4
+            desc1 = torch.arange(rows).float()[:, None] / 4
+            desc2 = torch.arange(columns - 1, -1, -1).float()[:, None] / 4
+            return desc1, desc2, (desc1 - desc2.T).abs()
 
-        example = inputs(2047, 4095)
+        example = inputs(37, 127)
         counter = CompileCounter()
         torch._dynamo.reset()
         try:
             if capture == "dynamo":
                 captured = torch_optimizer(Nearest(), backend=counter, fullgraph=True, dynamic=True)
             else:
+                rows = torch.export.Dim("rows", min=2, max=511)
+                columns = torch.export.Dim("columns", min=2, max=1024)
                 captured = torch.export.export(
-                    ChunkSelector(),
+                    Nearest(),
                     example,
-                    dynamic_shapes=(
-                        {0: torch.export.Dim("rows", min=1024, max=6144)},
-                        {0: torch.export.Dim("columns", min=1024, max=6144)},
-                    ),
+                    dynamic_shapes=({0: rows}, {0: columns}, {0: rows, 1: columns}),
                     strict=True,
                 ).module()
-            for shape in ((2047, 4095), (2048, 4095), (2048, 4096), (2051, 4099)):
+            shapes = [(37, 127), (63, 129), (511, 1023)]
+            if capture == "dynamo":
+                shapes += [(513, 1023), (769, 1023)]
+            for shape in shapes:
                 descriptors = inputs(*shape)
                 actual = captured(*descriptors)
-                expected = match_nn(*descriptors) if capture == "dynamo" else descriptors
+                expected = Nearest()(*descriptors)
                 self.assert_close(actual[0], expected[0], rtol=0, atol=0)
                 self.assert_close(actual[1], expected[1])
             if capture == "dynamo":
-                assert counter.frame_count == 1
+                # One graph per row-block count; changing rows/columns within that count stays dynamic.
+                assert counter.frame_count == 2
         finally:
             torch._dynamo.reset()
+
+
+class TestChunkedLowPrecisionMatching(BaseTester):
+    @pytest.mark.parametrize("match", [match_nn, match_snn])
+    def test_given_matrix_uses_its_own_device(self, match):
+        # A supplied matrix replaces descriptor distances; its device need not be the descriptors' device.
+        # Meta descriptors exercise that contract without requiring a second physical device.
+        desc1 = torch.empty(513, 4, device="meta")
+        desc2 = torch.empty(3, 4, device="meta")
+        matrix = torch.tensor([[1.0, 2.0, 4.0]], dtype=torch.float16).expand(513, -1)
+        with torch.autocast("cpu", dtype=torch.bfloat16):
+            values, indices = match(desc1, desc2, dm=matrix)
+        assert values.device.type == "cpu"
+        assert values.dtype == matrix.dtype
+        expected = 0.5 if match is match_snn else 1.0
+        self.assert_close(values, torch.full((513, 1), expected, dtype=matrix.dtype), rtol=0, atol=0)
+        self.assert_close(indices, torch.stack([torch.arange(513), torch.zeros(513, dtype=torch.long)], 1))
+
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), dtypes=("float16", "bfloat16"), reason="Half-precision autocast")
+    @pytest.mark.parametrize("match", [match_nn, match_snn])
+    @pytest.mark.parametrize("autocast", [False, True])
+    def test_multiple_blocks_preserve_dtype(self, device, dtype, match, autocast):
+        # Binary fractions give a unique nearest target 1/32 away, with the second target 3/32 away.
+        rows = torch.arange(513, device=device)
+        desc1 = (rows.remainder(32).to(dtype) / 8)[:, None]
+        desc2 = (torch.arange(33, device=device, dtype=dtype) / 8 + 1 / 32)[:, None]
+        with torch.autocast(device_type=device.type, enabled=autocast):
+            values, indices = match(desc1, desc2)
+        assert values.dtype == dtype
+        self.assert_close(indices, torch.stack([rows, rows.remainder(32)], 1))
+        expected = 1 / 3 if match is match_snn else 1 / 32
+        # Row zero's second target is 5/32 away; the rest have a target 3/32 away on their other side.
+        expected_values = torch.full((513, 1), expected, device=device, dtype=dtype)
+        if match is match_snn:
+            expected_values[rows.remainder(32) == 0] = 1 / 5
+        self.assert_close(values, expected_values, rtol=0, atol=0)
 
 
 class TestMatchSMNNBatched(BaseTester):

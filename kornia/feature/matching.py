@@ -22,7 +22,7 @@ from torch import nn
 
 from kornia.core._compat import torch_version_ge
 from kornia.core.check import KORNIA_CHECK_DM_DESC, KORNIA_CHECK_SHAPE
-from kornia.core.utils import _l2_normalize, is_autocast_enabled, is_compiling, is_exporting, is_mps_tensor_safe
+from kornia.core.utils import _autocast_disabled, _l2_normalize, is_autocast_enabled, is_exporting, is_mps_tensor_safe
 from kornia.feature.laf import get_laf_center
 from kornia.feature.steerers import DiscreteSteerer
 
@@ -43,7 +43,7 @@ def _torch_cdist_available(x: torch.Tensor) -> bool:
     return mps_has_backward or not is_mps_tensor_safe(x)
 
 
-def _cdist(d1: torch.Tensor, d2: torch.Tensor) -> torch.Tensor:
+def _cdist(d1: torch.Tensor, d2: torch.Tensor, original_rows: Optional[int] = None) -> torch.Tensor:
     r"""Compute pairwise L2 distances between rows of d1 and d2.
 
     Uses ``torch.cdist``, except under export, where it has no ONNX lowering, and on
@@ -51,7 +51,8 @@ def _cdist(d1: torch.Tensor, d2: torch.Tensor) -> torch.Tensor:
     matrix-multiplication form of the squared distance. Half-precision inputs are
     computed in float32: in half precision the squared norms round away the squared
     distance between nearby descriptors, and ``torch.cdist`` has no float16 kernel on
-    CPU. Distances are returned in the input dtype.
+    CPU. Distances are returned in the input dtype. ``original_rows`` keeps a partial
+    row block on the matrix kernel when the complete input had more than 25 rows.
     """
     half = (torch.float16, torch.bfloat16)
     output_dtype = d1.dtype
@@ -68,7 +69,10 @@ def _cdist(d1: torch.Tensor, d2: torch.Tensor) -> torch.Tensor:
     if output_dtype in half:
         d1, d2 = d1.float(), d2.float()
     if _torch_cdist_available(d1) and _torch_cdist_available(d2):
-        distances = torch.cdist(d1, d2)
+        compute_mode = "use_mm_for_euclid_dist_if_necessary"
+        if original_rows is not None and original_rows > 25:
+            compute_mode = "use_mm_for_euclid_dist"
+        distances = torch.cdist(d1, d2, compute_mode=compute_mode)
     else:
         # Autocast would lower the matmul precision again and cancel nearby distances.
         with torch.autocast(device_type="cpu", enabled=False), torch.autocast(device_type="cuda", enabled=False):
@@ -86,6 +90,30 @@ def _cdist(d1: torch.Tensor, d2: torch.Tensor) -> torch.Tensor:
 # saves: on an RTX 4090 and an i7-14700K (torch 2.14), the CPU gains 1.02-1.10x at 256 x 256 descriptors and the
 # matchers on CUDA are 0.90-0.98x below 2048 x 2048.
 _SQUARED_MIN_NUMEL: Dict[str, int] = {"cpu": 256 * 256, "cuda": 2048 * 2048}
+
+
+def _use_squared_distances(desc1: torch.Tensor, desc2: torch.Tensor, dm: Optional[torch.Tensor]) -> bool:
+    """Choose the existing squared-distance kernel using the complete input sizes, including for row blocks."""
+    if dm is not None or is_exporting() or torch.jit.is_tracing():
+        return False
+    min_numel = _SQUARED_MIN_NUMEL.get(desc1.device.type)
+    if min_numel is None or desc1.size(0) * desc2.size(0) < min_numel:
+        return False
+    if desc1.size(0) <= 25 and desc2.size(0) <= 25:
+        return False
+    if desc1.dtype != desc2.dtype or desc1.dtype not in (torch.float32, torch.float64) or is_autocast_enabled():
+        return False
+    return not (torch.is_grad_enabled() and (desc1.requires_grad or desc2.requires_grad))
+
+
+def _pad_for_squared_distance(desc1: torch.Tensor, desc2: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Append norms as in ATen's matrix form of the Euclidean distance, once per descriptor set."""
+    norms1 = desc1.pow(2).sum(-1, keepdim=True)
+    norms2 = desc2.pow(2).sum(-1, keepdim=True)
+    return (
+        torch.cat([desc1.mul(-2), norms1, torch.ones_like(norms1)], -1),
+        torch.cat([desc2, torch.ones_like(norms2), norms2], -1),
+    )
 
 
 def _squared_distances(
@@ -114,22 +142,9 @@ def _squared_distances(
 
     Only the matchers' non-scripted path calls it, so TorchScript never compiles it.
     """
-    # Export first: under torch.export, the size comparisons below would become guards of the exported graph.
-    if dm is not None or is_exporting() or torch.jit.is_tracing():
+    if not _use_squared_distances(desc1, desc2, dm):
         return None
-    min_numel = _SQUARED_MIN_NUMEL.get(desc1.device.type)
-    if min_numel is None or desc1.size(0) * desc2.size(0) < min_numel:
-        return None
-    if desc1.size(0) <= 25 and desc2.size(0) <= 25:
-        return None
-    if desc1.dtype != desc2.dtype or desc1.dtype not in (torch.float32, torch.float64) or is_autocast_enabled():
-        return None
-    if torch.is_grad_enabled() and (desc1.requires_grad or desc2.requires_grad):
-        return None
-    norms1 = desc1.pow(2).sum(-1, keepdim=True)
-    norms2 = desc2.pow(2).sum(-1, keepdim=True)
-    padded1 = torch.cat([desc1.mul(-2), norms1, torch.ones_like(norms1)], -1)
-    padded2 = torch.cat([desc2, torch.ones_like(norms2), norms2], -1)
+    padded1, padded2 = _pad_for_squared_distance(desc1, desc2)
     return padded1.matmul(padded2.mT)
 
 
@@ -138,58 +153,58 @@ def _chunked_neighbours(
     desc2: torch.Tensor,
     dm: Optional[torch.Tensor],
     ratio: bool = False,
-) -> Optional[Tuple[torch.Tensor, torch.Tensor]]:
-    """Select row neighbours without retaining the full CPU distance matrix.
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Select NN/SNN neighbours in 512-row blocks on every device, input size, and capture path.
 
-    Return each descriptor's nearest distance (or nearest-to-second-nearest ratio) and neighbour index. Only
-    eager CPU float32/float64 calls with at least 2,048 descriptors on each side and 2**23 pairwise elements,
-    no supplied matrix, no autocast and no needed gradients use this path. Captured, smaller and other-device
-    calls keep the matrix path.
+    The distance and reduction kernels keep their existing semantics: squared distances where already used,
+    including CUDA's two-minimum ratio selection, and differentiable :func:`_cdist` otherwise. A supplied matrix
+    is checked once and sliced. Small inputs simply form one block; none falls back to a full-matrix matcher.
 
-    Pad once as in :func:`_squared_distances`, reduce each 512-row product, then discard it before making the next.
-    An 8,192 x 8,192 float32 distance product thus takes 16 MiB instead of 256 MiB; padding and selections add
-    linear storage. Smaller inputs keep one matrix because fixed chunk/reduction overhead does not consistently
-    pay for modest matrices; the element threshold also keeps the minimum float32 matrix saving above 16 MiB.
-    Minima keep the first tied index and first nan; ratio tests keep ``topk``'s unordered ties. Changing GEMM's
-    row count can change its last floating-point bits. Reverse matching keeps its existing implementation: the
-    measured CPU time of streaming column selections was not consistently better.
+    Without gradients, an 8,192 x 8,192 float32 distance product takes at most 16 MiB instead of 256 MiB, plus
+    linear padding and selection storage. Autograd can retain distances from every block for backward, so the
+    total gradient-enabled peak need not have the same bound. Changing GEMM's row count can change its last bits.
+    Capture specializes the number of row blocks, while sizes within one block count can remain dynamic.
     """
-    # Capture checks precede shape comparisons, so the block selector adds no dynamic-shape guards.
-    if (
-        dm is not None
-        or desc1.device.type != "cpu"
-        or desc2.device.type != "cpu"
-        or is_compiling()
-        or is_exporting()
-        or torch.jit.is_tracing()
-        or desc1.dtype != desc2.dtype
-        or desc1.dtype not in (torch.float32, torch.float64)
-        or is_autocast_enabled()
-        or (torch.is_grad_enabled() and (desc1.requires_grad or desc2.requires_grad))
-    ):
-        return None
-    if desc1.size(0) < 2048 or desc2.size(0) < 2048 or desc1.size(0) * desc2.size(0) < 2**23:
-        return None
-    norms1 = desc1.pow(2).sum(-1, keepdim=True)
-    norms2 = desc2.pow(2).sum(-1, keepdim=True)
-    padded1 = torch.cat([desc1.mul(-2), norms1, torch.ones_like(norms1)], -1)
-    padded2 = torch.cat([desc2, torch.ones_like(norms2), norms2], -1)
+    if dm is not None:
+        KORNIA_CHECK_DM_DESC(desc1, desc2, dm)
+    squared = False
+    if not torch.jit.is_scripting():
+        squared = _use_squared_distances(desc1, desc2, dm)
+    padded1, padded2 = desc1, desc2
+    if squared:
+        padded1, padded2 = _pad_for_squared_distance(desc1, desc2)
     forward_values: List[torch.Tensor] = []
     forward_indices: List[torch.Tensor] = []
-    for begin in range(0, desc1.size(0), 512):
-        squared = padded1[begin : begin + 512].matmul(padded2.mT)
-        if ratio:
-            values, indices = squared.topk(2, dim=1, largest=False)
+    for block in range((desc1.size(0) + 511) // 512):
+        begin = block * 512
+        if squared:
+            distances = padded1[begin : begin + 512].matmul(padded2.mT)
+        elif dm is not None:
+            distances = dm[begin : begin + 512]
         else:
-            values, indices = squared.min(dim=1)
+            distances = _cdist(desc1[begin : begin + 512], desc2, original_rows=desc1.size(0))
+        if ratio:
+            if squared and distances.is_cuda:
+                first, second, indices = _two_smallest_(_topk_order_key_(distances), 1)
+                values = _ratio_from_keys(first, second)
+            else:
+                values, indices = _nearest_neighbour_ratio(distances, squared)
+        else:
+            values, indices = distances.min(dim=1)
+            if squared:
+                values = _distance_from_squared(values)
         forward_values.append(values)
         forward_indices.append(indices)
-        del squared
-    values, indices = torch.cat(forward_values), torch.cat(forward_indices)
-    if ratio:
-        distances = _distance_from_squared(values)
-        return distances[:, 0] / distances[:, 1], indices[:, 0]
-    return _distance_from_squared(values), indices
+        # Drop the block before allocating its successor. Assignment also works in TorchScript, which cannot
+        # delete this branch-defined local.
+        distances = desc1
+    # Concatenation performs no arithmetic: keep the distance dtype, including float16 inside CPU bfloat16
+    # autocast, where cat's promotion policy otherwise rejects these already computed values.
+    if torch.jit.is_scripting():
+        with torch.autocast(device_type="cpu", enabled=False), torch.autocast(device_type="cuda", enabled=False):
+            return torch.cat(forward_values), torch.cat(forward_indices)
+    with _autocast_disabled(forward_values[0].device.type):
+        return torch.cat(forward_values), torch.cat(forward_indices)
 
 
 def _distance_from_squared(squared: torch.Tensor) -> torch.Tensor:
@@ -419,20 +434,7 @@ def match_nn(
     KORNIA_CHECK_SHAPE(desc2, ["B", "DIM"])
     if (len(desc1) == 0) or (len(desc2) == 0):
         return _no_match(desc1)
-    squared: Optional[torch.Tensor] = None
-    neighbours: Optional[Tuple[torch.Tensor, torch.Tensor]] = None
-    # a separate `if`: TorchScript skips the body only under a bare `not torch.jit.is_scripting()`
-    if not torch.jit.is_scripting():
-        neighbours = _chunked_neighbours(desc1, desc2, dm)
-        if neighbours is None:
-            squared = _squared_distances(desc1, desc2, dm)
-    if neighbours is None:
-        distance_matrix = _get_lazy_distance_matrix(desc1, desc2, dm) if squared is None else squared
-        match_dists, idxs_in_2 = torch.min(distance_matrix, dim=1)
-        if squared is not None:
-            match_dists = _distance_from_squared(match_dists)
-    else:
-        match_dists, idxs_in_2 = neighbours
+    match_dists, idxs_in_2 = _chunked_neighbours(desc1, desc2, dm)
     idxs_in1 = torch.arange(0, idxs_in_2.size(0), device=idxs_in_2.device)
     matches_idxs = torch.cat([idxs_in1.view(-1, 1), idxs_in_2.view(-1, 1)], 1)
     return match_dists.view(-1, 1), matches_idxs.view(-1, 2)
@@ -592,28 +594,11 @@ def match_snn(
 
     if desc1.shape[0] == 0 or desc2.shape[0] < 2:  # We cannot perform snn check, so output empty matches
         return _no_match(desc1)
-    squared: Optional[torch.Tensor] = None
-    neighbours: Optional[Tuple[torch.Tensor, torch.Tensor]] = None
-    # a separate `if`: TorchScript skips the body only under a bare `not torch.jit.is_scripting()`
-    if not torch.jit.is_scripting():
-        neighbours = _chunked_neighbours(desc1, desc2, dm, ratio=True)
-        if neighbours is None:
-            squared = _squared_distances(desc1, desc2, dm)
-    empty_reference = desc1
-    if neighbours is not None:
-        ratio, idxs_in_2 = neighbours
-    elif squared is not None and squared.is_cuda:
-        distance_matrix = _topk_order_key_(squared)
-        first, second, idxs_in_2 = _two_smallest_(distance_matrix, 1)
-        ratio = _ratio_from_keys(first, second)
-    else:
-        distance_matrix = _get_lazy_distance_matrix(desc1, desc2, dm) if squared is None else squared
-        ratio, idxs_in_2 = _nearest_neighbour_ratio(distance_matrix, squared is not None)
-        empty_reference = distance_matrix
+    ratio, idxs_in_2 = _chunked_neighbours(desc1, desc2, dm, ratio=True)
     # One nonzero is the only wait for the device: indexing with the boolean mask would wait once per indexed tensor.
     idxs_in1 = torch.nonzero(ratio <= th)[:, 0]
     if idxs_in1.numel() == 0:
-        return _no_match(empty_reference)
+        return _no_match(desc1 if dm is None else dm)
     matches_idxs = torch.stack([idxs_in1, idxs_in_2[idxs_in1]], 1)
     return ratio[idxs_in1].view(-1, 1), matches_idxs
 
