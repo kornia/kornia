@@ -31,8 +31,7 @@ Which class to use:
   projection).
 - A custom model from a distortion and a projection: :class:`CameraModelBase`, with the classes of
   ``kornia.sensors.camera.distortion_model`` and ``kornia.sensors.camera.projection_model``.
-- Cameras with extrinsics, on plain tensors and applied per camera in a batch:
-  :class:`~kornia.geometry.camera.pinhole.PinholeCamera`.
+- Cameras with extrinsics, on plain tensors: :class:`~kornia.geometry.camera.pinhole.PinholeCamera`.
 """
 
 from .camera_model import (

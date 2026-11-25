@@ -7,7 +7,7 @@ kornia.sensors.camera
 .. currentmodule:: kornia.sensors.camera
 
 .. warning::
-   :mod:`kornia.sensors.camera` is an experimental API and is subject to change. Once finished, it will subsume :mod:`kornia.geometry.camera`, although the two are kept separate by design -- they share the mathematical Pinhole mapping but differ in input types, camera-axis broadcasting and zero-depth handling (see the Convention block and warning on :class:`CameraModelBase`), which is recorded in `#4274 <https://github.com/kornia/kornia/issues/4274>`_.
+   :mod:`kornia.sensors.camera` is an experimental API and is subject to change. Once finished, it will subsume :mod:`kornia.geometry.camera`, although the two are kept separate by design -- they share the mathematical Pinhole mapping but differ in input types and zero-depth handling (see the Convention block and warning on :class:`CameraModelBase`), which is recorded in `#4274 <https://github.com/kornia/kornia/issues/4274>`_.
 
 :mod:`kornia.sensors.camera` expresses a camera model as a projection, from camera-frame points to the image plane,
 followed by a distortion, from the image plane to pixels. Points are
