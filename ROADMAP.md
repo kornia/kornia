@@ -127,7 +127,9 @@ issues own live status and acceptance decisions.
   CUDA-half support is not a blanket patch-release guarantee.
 - **Usable guidance and maintenance:** runnable workflows, version-correct documentation,
   coherent contributor/agent instructions, and maintained shipped models. Keep `help wanted`
-  labels tied to current, well-described work. Release checks remain in #4620.
+  labels tied to current, well-described work. When maintainers withdraw an invitation,
+  remove the label and record the updated scope on the issue and any open implementation PR.
+  Release checks remain in #4620.
 
 ## Medium term — ~6 months
 
@@ -208,10 +210,11 @@ and `kornia.morphology`.
   available for reproduction and validation.
 - **Reference evidence and code health:** convention tests, independent expected vectors,
   corrective error messages, and compile/export coverage for existing operators.
-- **Faster core workflows:** speed-ups of at least 20% on a common workload, measured end
-  to end on the public call, with nothing getting slower. A peak-memory reduction qualifies
-  at 20% of the end-to-end peak, or when it lets a workload from a linked user report fit.
-  They must come from the general code path, not from a new special path for
+- **Faster core workflows:** measure the public call end to end on a common workload.
+  A speed-up qualifies at 20% or more. A memory improvement qualifies when it reduces peak
+  memory by at least 20% or lets a workload from a linked user report fit. In either case,
+  check that measured workloads do not slow down beyond run-to-run noise.
+  Improvements must come from the general code path, not from a new special path for
   particular shapes, dtypes, devices, or grad modes, and the code must stay readable as a
   reference. Behavior must not change: outputs and gradients stay within the existing test
   tolerances, and dtype/device handling and compile/ONNX support stay as they are. Measure
