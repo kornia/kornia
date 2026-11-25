@@ -25,6 +25,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+from kornia.core.utils import _autocast_disabled
 from kornia.models.efficient_vit.nn.act import build_act
 from kornia.models.efficient_vit.nn.norm import build_norm
 from kornia.models.efficient_vit.utils import get_same_padding, val2tuple
@@ -467,33 +468,34 @@ class LiteMLA(nn.Module):
             total_dim * (1 + len(scales)), out_channels, 1, use_bias=use_bias[1], norm=norm[1], act_func=act_func[1]
         )
 
-    @torch.amp.autocast(device_type="cuda", enabled=False)
     def relu_linear_att(self, qkv: torch.Tensor) -> torch.Tensor:
-        _, _, H, W = list(qkv.size())
+        with _autocast_disabled(qkv.device.type):
+            _, _, H, W = list(qkv.size())
 
-        dtype = qkv.dtype
+            dtype = qkv.dtype
 
-        if qkv.dtype == torch.float16:
-            qkv = qkv.float()
+            if qkv.dtype == torch.float16:
+                # Both matmuls must stay in float32: for a zero ReLU query, eps rounds to zero in float16.
+                qkv = qkv.float()
 
-        qkv = qkv.unflatten(1, (-1, 3 * self.dim)).flatten(-2)
-        qkv = torch.transpose(qkv, -1, -2)
-        q, k, v = (qkv[..., 0 : self.dim], qkv[..., self.dim : 2 * self.dim], qkv[..., 2 * self.dim :])
+            qkv = qkv.unflatten(1, (-1, 3 * self.dim)).flatten(-2)
+            qkv = torch.transpose(qkv, -1, -2)
+            q, k, v = (qkv[..., 0 : self.dim], qkv[..., self.dim : 2 * self.dim], qkv[..., 2 * self.dim :])
 
-        # lightweight linear attention
-        q = self.kernel_func(q)
-        k = self.kernel_func(k)
+            # lightweight linear attention
+            q = self.kernel_func(q)
+            k = self.kernel_func(k)
 
-        # linear matmul
-        trans_k = k.transpose(-1, -2)
+            # linear matmul
+            trans_k = k.transpose(-1, -2)
 
-        v = F.pad(v, (0, 1), mode="constant", value=1)
-        kv = torch.matmul(trans_k, v)
-        out = torch.matmul(q, kv)
-        out = out[..., :-1] / (out[..., -1:] + self.eps)
+            v = F.pad(v, (0, 1), mode="constant", value=1)
+            kv = torch.matmul(trans_k, v)
+            out = torch.matmul(q, kv)
+            out = out[..., :-1] / (out[..., -1:] + self.eps)
 
-        out = torch.transpose(out, -1, -2)
-        return out.flatten(1, 2).unflatten(-1, (H, W)).to(dtype)
+            out = torch.transpose(out, -1, -2)
+            return out.flatten(1, 2).unflatten(-1, (H, W)).to(dtype)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Apply lightweight multi-scale linear attention.
