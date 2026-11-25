@@ -61,7 +61,7 @@ mathematical defects, numerical instability, and upstream workarounds.
    accuracy requirements. Separate wrong mathematics or avoidable instability from
    rounding, dtype limits, and undefined behavior. Compare with plain PyTorch where
    applicable: a sum exceeding float16's range does not justify widening its output.
-   This does not excuse unstable computation that breaks a Kornia guarantee or changes a
+   This does not excuse a computation that breaks a Kornia guarantee or changes a
    caller's result in a consequential way, such as NaN, inf, or a flipped decision; a more
    accurate value alone, even a primitive's public output such as a kernel or a window,
    needs a workflow that depends on it.
@@ -186,7 +186,10 @@ issues own live status and acceptance decisions.
 These areas are open-ended: choose the question yourself; nobody needs to assign it. Check
 existing issues, open pull requests, and [the contribution rules](CONTRIBUTING.md) first.
 A roadmap area is not approval for a new API; that needs a maintainer's agreement on an
-open issue ([feature proposals](CONTRIBUTING.md#practical-guidelines)).
+open issue ([scope agreement](CONTRIBUTING.md#practical-guidelines)). The core, below, is
+the geometry named at the top of this roadmap, local-feature detection, description, and
+matching, and the image operators in `kornia.filters`, `kornia.color`, `kornia.enhance`,
+and `kornia.morphology`.
 
 - **Break a property the core should keep.** Shifting the world origin should not change a
   recovered camera pose once expressed in the original frame; rescaling an equivalent
@@ -197,25 +200,24 @@ open issue ([feature proposals](CONTRIBUTING.md#practical-guidelines)).
   issues first. Give the smallest supported example, state the convention, and justify the
   expected result independently. A reproducible discrepancy reported as an issue is a
   complete contribution; a patch is optional and follows the
-  [correctness policy](#correctness-and-backend-support). The core is warping and sampling,
-  homographies, cameras, epipolar geometry, rotations and Lie groups, geometry-consistent
-  augmentation, and local-feature detection, description, and matching.
-- **Hardware and backend evidence:** fix existing CUDA reports and open half-precision
-  issues, and send benchmark results from your hardware with the benchmark suite's
+  [correctness policy](#correctness-and-backend-support).
+- **Hardware and backend evidence:** fix the
+  [recorded CUDA-only failures](https://kornia.readthedocs.io/en/latest/get-started/precision.html)
+  and open half-precision issues, and send benchmark results from your hardware with the benchmark suite's
   `--contribute` workflow, especially CUDA. Take CUDA work only when a CUDA device is
   available for reproduction and validation.
 - **Reference evidence and code health:** convention tests, independent expected vectors,
   corrective error messages, and compile/export coverage for existing operators.
-- **Faster core and local-feature workflows:** speed-ups of at least 20% on a common
-  workload, or peak-memory reductions of at least 20% of the end-to-end peak or that let a
-  workload from a linked user report fit, measured end to end on the public call, with
-  nothing getting slower. They must come from the general code path, not from a new special path for
+- **Faster core workflows:** speed-ups of at least 20% on a common workload, measured end
+  to end on the public call, with nothing getting slower. A peak-memory reduction qualifies
+  at 20% of the end-to-end peak, or when it lets a workload from a linked user report fit.
+  They must come from the general code path, not from a new special path for
   particular shapes, dtypes, devices, or grad modes, and the code must stay readable as a
   reference. Behavior must not change: outputs and gradients stay within the existing test
   tolerances, and dtype/device handling and compile/ONNX support stay as they are. Measure
-  base and branch on the same hardware and workloads following
-  [the benchmark methodology](benchmarks/README.md). Being in `kornia.feature` does not
-  exempt a new model mode or option from the feature rule.
+  base and branch on the same hardware and workloads, on each device the change affects,
+  following [the benchmark methodology](benchmarks/README.md). Being in `kornia.feature`
+  does not exempt a new model mode or argument from scope agreement.
   - **Fewer host synchronizations:** `.item()`, `bool()` or `if` on a tensor, `nonzero`,
     and boolean-mask indexing or assignment make the host wait for the device. On CUDA,
     `torch.cuda.set_sync_debug_mode("warn")` points at many of these waits but not all of them.
@@ -230,11 +232,12 @@ open issue ([feature proposals](CONTRIBUTING.md#practical-guidelines)).
     ([#6335](https://github.com/kornia/kornia/issues/6335)). SOLD2's heatmap refinement
     ([#6792](https://github.com/kornia/kornia/issues/6792)) is open to contributors with a CUDA device.
 
-**Performance outside the core and local-feature workflows:** other models take correctness
-and regression fixes, not performance pull requests. Other non-core code, such as IO and
-losses, is not a performance target; a simple change to the existing path qualifies only when
-it makes the representative public call roughly ten times faster, or lets a workload from a
-linked user report run, reported with absolute times or memory and without a new path.
+**Performance outside the core:** models outside it, such as SAM, RT-DETR, and the VLMs in
+`kornia.models`, take correctness and regression fixes, not performance pull requests. Other
+non-core code, such as IO and losses, is not a performance target; a simple change to the
+existing path qualifies only when it makes the representative public call roughly ten times
+faster, or lets a workload from a linked user report run, reported with absolute times or
+memory and without a new path.
 
 **Grandfathered model work:** Efficient LoFTR
 ([#3282](https://github.com/kornia/kornia/issues/3282),

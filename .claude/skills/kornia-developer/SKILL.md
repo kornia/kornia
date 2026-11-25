@@ -40,7 +40,7 @@ The fix must run the **same code path** in eager and compile.
 
 3. **Verify genuine fullgraph == eager, and byte-to-byte eager preservation.** Two separate checks:
    - Compiled matches eager on the same path: `torch.allclose(torch.compile(fn, fullgraph=True)(x), fn(x), atol=1e-5)`.
-   - **The fix must not change eager output at all.** Save the op's output on `main` and on your branch under the same seed and assert **byte-identical** — `torch.equal(old, new)`, not `allclose`. This is the contract: a compile refactor is only acceptable if existing users get **exactly** the same numbers. If it can't be byte-identical (e.g. a genuinely new opt-in mode), gate the change behind a new argument and leave the default path byte-identical.
+   - **The fix must not change eager output at all.** Save the op's output on `main` and on your branch under the same seed and assert **byte-identical** — `torch.equal(old, new)`, not `allclose`. This is the contract: a compile refactor is only acceptable if existing users get **exactly** the same numbers. If it can't be byte-identical (e.g. a genuinely new opt-in mode), gate the change behind a new argument and leave the default path byte-identical; a new argument is a new public API and needs scope agreement first (`CONTRIBUTING.md`, Practical guidelines).
    ```python
    # on main:   torch.manual_seed(0); torch.save(fn(x), "old.pt")
    # on branch: torch.manual_seed(0); assert torch.equal(fn(x), torch.load("old.pt", weights_only=True))
@@ -71,7 +71,7 @@ The fix must run the **same code path** in eager and compile.
 
    Durable, citable numbers live in benchmarks/results/ and render at docs get-started/performance — refresh the llms digest with python docs/generate_benchmarks.py --refresh-llms when adding results.
 
-   **Which speed-ups kornia takes is set in `ROADMAP.md` (Areas seeking contributors):** the core and local-feature workflows, at least 20% end to end on the public call, from the general code path; a compile fix is worth having for compile support even at parity with eager. Kornia operators take float tensors: do not add a uint8 fast path to an ordinary operator (`CONTRIBUTING.md`, Practical guidelines). A `kornia-rs` backend is a separate proposal with the bar `ROADMAP.md` states.
+   **Which speed-ups kornia takes is set in `ROADMAP.md` (Areas seeking contributors); read the bar there before optimizing.** A compile fix is worth having for compile support even at parity with eager. Kornia operators take float tensors: do not add a uint8 fast path to an ordinary operator (`CONTRIBUTING.md`, Practical guidelines). A `kornia-rs` backend is a separate proposal with the bar `ROADMAP.md` states.
 
 5. **Lock it in.** Add/confirm a `test_dynamo` for the op that exercises the **real path** — compile the full forward (`torch.compile(op, fullgraph=True)(x)` with no pre-generated `params`), not just `apply_transform` with params fed in, so parameter generation is covered too. A PR-time `dynamo` CI job now runs the compile-clean core under `inductor` on the CI torch version (`.github/workflows/pr_test_cpu.yml`), so a fullgraph regression is caught at PR time on the *real* torch — but locally you must still run with `KORNIA_TEST_OPTIMIZER=inductor` (the default matrix sets it empty and deselects these tests). If you add an op to a scoped-core dir, the CI job will exercise it; confirm it passes there, not only on your local torch.
 
@@ -89,4 +89,4 @@ When an op breaks, trace to the deepest `kornia/` frame first — the break is o
 
 ## What's already compile-clean
 
-Most of the numeric core already compiles (filters, color, geometry transforms, losses, morphology, metrics). Sweep before assuming a break exists.
+Most numeric operators already compile (filters, color, geometry transforms, losses, morphology, metrics). Sweep before assuming a break exists.
