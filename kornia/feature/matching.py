@@ -193,6 +193,19 @@ def _ratio_from_keys(first: torch.Tensor, second: torch.Tensor) -> torch.Tensor:
     return distances[0] / distances[1]
 
 
+def _distance_ratio(first: torch.Tensor, second: torch.Tensor, always_guard: bool = False) -> torch.Tensor:
+    """Divide the selected distances and stop gradients through undefined quotients."""
+    # Forward-only calls keep the single division. With gradients, the guard adds about 0.3 to 0.6 ms to forward
+    # plus backward of SNN, SMNN or FGINN on a 2,048 x 2,048 float32 CUDA distance matrix (RTX 5080 Laptop GPU).
+    if not (always_guard or first.requires_grad or second.requires_grad):
+        return first / second
+    # A rejected 0 / 0 can still send NaNs into backward, even with a zero incoming gradient.
+    # Keep the original quotient for thresholding and substitute safe operands for backward.
+    defined = torch.isfinite(first) & torch.isfinite(second) & (second != 0)
+    ratio = torch.where(defined, first, 0) / torch.where(defined, second, 1)
+    return torch.where(defined, ratio, (first / second).detach())
+
+
 def _get_default_fginn_params() -> Dict[str, Any]:
     return {"th": 0.85, "mutual": False, "spatial_th": 10.0}
 
@@ -295,7 +308,7 @@ def _nearest_neighbour_ratio_over_rows(
     best, pick = vals.topk(2, dim=0, largest=False)
     if squared:
         best = _distance_from_squared(best)
-    return best[0] / best[1], idxs.gather(0, pick[:1])[0]
+    return _distance_ratio(best[0], best[1]), idxs.gather(0, pick[:1])[0]
 
 
 def match_nn(
@@ -459,11 +472,7 @@ def _first_to_second_nearest_ratio(distance_matrix: torch.Tensor) -> Tuple[torch
     # Ordered after +inf, a nan is the second-smallest distance only when every other distance of the row is nan.
     no_second = is_nan.scatter_(1, idx, True).all(dim=1)
     second = torch.where(no_second, float("nan"), remaining.amin(dim=1))
-    # Without such a pair the quotient's gradient is nan or infinite, and amin's backward would spread it over every
-    # distance of the row. Those rows keep the quotient as their ratio, but detached.
-    defined = torch.isfinite(first) & torch.isfinite(second) & (second != 0)
-    ratio = torch.where(defined, first, 0) / torch.where(defined, second, 1)
-    return torch.where(defined, ratio, (first / second).detach()), first_idx
+    return _distance_ratio(first, second, always_guard=True), first_idx
 
 
 def _nearest_neighbour_ratio(distance_matrix: torch.Tensor, squared: bool = False) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -479,7 +488,7 @@ def _nearest_neighbour_ratio(distance_matrix: torch.Tensor, squared: bool = Fals
     vals, idxs = torch.topk(distance_matrix, 2, dim=1, largest=False)
     if squared:
         vals = _distance_from_squared(vals)
-    return vals[:, 0] / vals[:, 1], idxs[:, 0]
+    return _distance_ratio(vals[:, 0], vals[:, 1]), idxs[:, 0]
 
 
 def match_snn(
@@ -841,7 +850,7 @@ def match_fginn(
     vals_2nd, _ = fginn_vals.min(dim=1)
     idxs_in_2 = idxs_in_2[:, 0]
 
-    ratio = vals / vals_2nd
+    ratio = _distance_ratio(vals, vals_2nd)
     mask = ratio <= th
     match_dists = ratio[mask]
     if len(match_dists) == 0:
