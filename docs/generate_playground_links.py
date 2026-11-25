@@ -57,7 +57,7 @@ def _load(name: str) -> Any:
     site = os.environ.get("KORNIA_SITE")
     if site:
         path = Path(site).expanduser() / "playground" / name
-        return json.loads(path.read_text())
+        return json.loads(path.read_text(encoding="utf-8"))
     with urllib.request.urlopen(f"{BASE_URL}/playground/{name}", timeout=60) as response:  # noqa: S310 - fixed https URL
         return json.loads(response.read())
 
@@ -83,7 +83,7 @@ def main() -> None:
     links = build_map()
     if not links:
         sys.exit("no playground links were produced; check KORNIA_SITE or the network")
-    OUT.write_text(json.dumps(links, indent=2, ensure_ascii=False) + "\n")
+    OUT.write_text(json.dumps(links, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
     print(f"wrote {OUT.relative_to(HERE.parent)} with {len(links)} entries")
 
 

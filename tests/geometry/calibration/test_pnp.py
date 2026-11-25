@@ -24,6 +24,13 @@ from kornia.geometry.calibration.pnp import _mean_isotropic_scale_normalize
 
 from testing.base import BaseTester
 
+# The _get_test_data scene puts points as close as z = 0.5 with x and y up to 100, so its pixel coordinates reach
+# about 1e5; it is built in the test dtype and its pose is pinned at 1e-4. Half precision cannot represent it.
+_HALF_SCENE = (
+    "the scene's pixel coordinates reach 1e5, past float16's 65504 and many pixels apart in bfloat16, and the pose "
+    "is pinned at 1e-4; test_half_precision_pose_is_the_float64_solve_rounded_once covers half precision"
+)
+
 
 class TestSolvePnpDlt(BaseTester):
     @staticmethod
@@ -111,6 +118,8 @@ class TestSolvePnpDlt(BaseTester):
 
         pred_world_to_cam = kornia.geometry.solve_pnp_dlt(world_points, img_points, intrinsics)
         assert pred_world_to_cam.shape == (batch_size, 3, 4)
+        # A half-precision pose is solved in float32 and returned in the input dtype.
+        assert pred_world_to_cam.dtype == dtype
 
     @pytest.mark.parametrize("num_points", [6])
     def test_gradcheck(self, num_points, device):
@@ -140,12 +149,20 @@ class TestSolvePnpDlt(BaseTester):
         weights = torch.rand(*world_points.shape[:2], device=device, dtype=torch.float64).abs()
         self.gradcheck(kornia.geometry.solve_pnp_dlt, (world_points, img_points, intrinsics, weights))
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"),
+        reason=_HALF_SCENE,
+    )
     @pytest.mark.parametrize("num_points", [6, 20])
     def test_pred_world_to_cam(self, num_points, device, dtype):
         intrinsics, gt_world_to_cam, world_points, img_points = self._get_test_data(num_points, device, dtype)
         pred_world_to_cam = kornia.geometry.solve_pnp_dlt(world_points, img_points, intrinsics)
         self.assert_close(pred_world_to_cam, gt_world_to_cam, atol=1e-4, rtol=1e-4)
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"),
+        reason=_HALF_SCENE,
+    )
     @pytest.mark.parametrize("num_points", [16, 20])
     def test_pred_world_to_cam_weighted(self, num_points, device, dtype):
         intrinsics, gt_world_to_cam, world_points, img_points = self._get_test_data(num_points, device, dtype)
@@ -153,6 +170,10 @@ class TestSolvePnpDlt(BaseTester):
         pred_world_to_cam = kornia.geometry.solve_pnp_dlt(world_points, img_points, intrinsics, weights)
         self.assert_close(pred_world_to_cam, gt_world_to_cam, atol=1e-4, rtol=1e-4)
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"),
+        reason=_HALF_SCENE,
+    )
     @pytest.mark.parametrize("num_points", [25])
     def test_pred_world_to_cam_weighted_rand(self, num_points, device, dtype):
         torch.manual_seed(0)
@@ -164,6 +185,10 @@ class TestSolvePnpDlt(BaseTester):
         pred_world_to_cam = kornia.geometry.solve_pnp_dlt(world_points, img_points, intrinsics, weights)
         self.assert_close(pred_world_to_cam, gt_world_to_cam, atol=1e-4, rtol=1e-3)
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"),
+        reason=_HALF_SCENE,
+    )
     @pytest.mark.parametrize("num_points", [6, 20])
     def test_project(self, num_points, device, dtype):
         intrinsics, _, world_points, img_points = self._get_test_data(num_points, device, dtype)
@@ -177,6 +202,53 @@ class TestSolvePnpDlt(BaseTester):
         pred_img_points = self._project_to_image(world_points, pred_world_to_cam_4x4, repeated_intrinsics)
 
         self.assert_close(pred_img_points, img_points, atol=1e-3, rtol=1e-3)
+
+    @staticmethod
+    def _representable_scene(device, dtype):
+        """A seeded scene that half precision can hold: a 640 by 480 image, depths of 4 to 20 and a pose near [I | 0].
+
+        Built in float64 on the CPU and cast once to ``dtype``; returns the world points, image points, intrinsics
+        and the ground-truth pose.
+        """
+        g = torch.Generator().manual_seed(6738)
+        batch_size, num_points = 2, 20
+        K = torch.tensor([[500.0, 0.0, 320.0], [0.0, 500.0, 240.0], [0.0, 0.0, 1.0]], dtype=torch.float64)
+        K = K.expand(batch_size, 3, 3)
+        uv = torch.rand(batch_size, num_points, 2, generator=g, dtype=torch.float64)
+        uv = uv * torch.tensor([640.0, 480.0], dtype=torch.float64)
+        depth = 4.0 + 16.0 * torch.rand(batch_size, num_points, 1, generator=g, dtype=torch.float64)
+        cam_points = kornia.geometry.convert_points_to_homogeneous(uv) @ torch.linalg.inv(K).mT * depth
+        R = kornia.geometry.axis_angle_to_rotation_matrix(
+            torch.rand(batch_size, 3, generator=g, dtype=torch.float64) - 0.5
+        )
+        t = 2.0 * torch.rand(batch_size, 3, 1, generator=g, dtype=torch.float64) - 1.0
+        world_points = (cam_points - t.mT) @ R  # R^T (cam - t)
+        inputs = (v.to(device=device, dtype=dtype) for v in (world_points, uv, K))
+        return (*inputs, torch.cat([R, t], -1))
+
+    @pytest.mark.applies_to(
+        dtypes=("float16", "bfloat16"),
+        reason="float32 and float64 poses are pinned against the ground truth by the tests above",
+    )
+    def test_half_precision_pose_is_the_float64_solve_rounded_once(self, device, dtype):
+        # Half-precision inputs are solved in float32 and the pose is rounded once to the input dtype. The reference
+        # is the float64 solve of the same rounded inputs, on the CPU (MPS has no float64), so the input rounding
+        # cancels. Rounding once moves each entry by at most half a unit in the last place, 0.5 eps of its
+        # magnitude. The float32 solve differs from the float64 one by much less; eps / 64 of the largest entry
+        # covers it when it carries an entry across a rounding boundary. Over 200 seeds on CPU and CUDA the
+        # largest error was 0.92 of this bound in both half dtypes. Rounding the normalized points or the
+        # denormalized solution to half on the way breaks the bound.
+        world_points, img_points, K, gt_pose = self._representable_scene(device, dtype)
+        pose = kornia.geometry.solve_pnp_dlt(world_points, img_points, K)
+        assert pose.dtype == dtype
+        expected = kornia.geometry.solve_pnp_dlt(*(v.detach().cpu().double() for v in (world_points, img_points, K)))
+        eps = torch.finfo(dtype).eps
+        bound = 0.5 * eps * expected.abs() + eps / 64 * expected.abs().amax(dim=(-2, -1), keepdim=True)
+        error = (pose.detach().cpu().double() - expected).abs()
+        assert (error <= bound).all(), f"largest error / bound: {(error / bound).max().item():.3f}"
+        # Control: the reference is the scene's pose to within the input rounding (up to 10 eps here), not a
+        # degenerate solve.
+        assert (expected - gt_pose).abs().max() < 16 * eps
 
     @staticmethod
     def _convention_world_points(device, dtype):
@@ -198,12 +270,14 @@ class TestSolvePnpDlt(BaseTester):
             dtype=dtype,
         )
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"),
+        reason="the pins compare the pose at 1e-4, below the half-precision rounding of the projected points",
+    )
     def test_convention_returns_the_world_to_camera_extrinsics(self, device, dtype):
         # The (B, 3, 4) [R | t] maps world points into the camera frame (PinholeCamera.extrinsics, OpenCV
         # solvePnP). Camera-frame world points recover [I | 0]; a camera with cam = world + (1, 0, 0) recovers
         # t = (+1, 0, 0), where a camera-to-world reading would give (-1, 0, 0).
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("solve_pnp_dlt accepts float32 and float64 only (pinned below)")
         world_points = self._convention_world_points(device, dtype)
         K = torch.tensor([[[100.0, 0.0, 4.0], [0.0, 100.0, 3.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
         identity = torch.tensor(
@@ -222,15 +296,15 @@ class TestSolvePnpDlt(BaseTester):
         self.assert_close(shifted, expected, atol=1e-4, rtol=1e-4)
 
     def test_convention_validation_errors_name_the_argument(self, device, dtype):
-        # solve_pnp_dlt accepts float32 and float64 only, needs N >= 6 points and a float svd_eps; each check
+        # solve_pnp_dlt accepts floating-point inputs only, needs N >= 6 points and a float svd_eps; each check
         # raises a kornia BaseError that names its argument.
         world_points = self._convention_world_points(device, dtype)
         K = torch.tensor([[[100.0, 0.0, 4.0], [0.0, 100.0, 3.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
         img_points = world_points[..., :2] / world_points[..., 2:]
-        if dtype not in (torch.float32, torch.float64):
-            with pytest.raises(BaseError, match="world_points must be float32 or float64"):
-                kornia.geometry.solve_pnp_dlt(world_points, img_points, K)
-            return
+        with pytest.raises(
+            BaseError, match=r"world_points must be float16, bfloat16, float32 or float64, got torch\.int"
+        ):
+            kornia.geometry.solve_pnp_dlt(world_points.int(), img_points, K)
         with pytest.raises(BaseError, match="world_points must hold at least 6 points"):
             kornia.geometry.solve_pnp_dlt(world_points[:, :5], img_points[:, :5], K)
         with pytest.raises(BaseError, match="svd_eps must be a float, got int"):
@@ -239,8 +313,6 @@ class TestSolvePnpDlt(BaseTester):
     def test_convention_rejects_4x4_intrinsics(self, device, dtype):
         # intrinsics is the (B, 3, 3) K: the (B, 4, 4) matrix a PinholeCamera stores is rejected rather than
         # truncated, while its upper-left block solves.
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("solve_pnp_dlt accepts float32 and float64 only")
         world_points = self._convention_world_points(device, dtype)
         K = torch.tensor([[[100.0, 0.0, 4.0], [0.0, 100.0, 3.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
         img_points = kornia.geometry.project_points(world_points, K)
@@ -253,8 +325,6 @@ class TestSolvePnpDlt(BaseTester):
     def test_convention_planar_world_points_raise(self, device, dtype):
         # A coplanar point set (the six points flattened onto z = 5) raises kornia's singular-value
         # AssertionError instead of returning a wrong pose.
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("solve_pnp_dlt accepts float32 and float64 only")
         world_points = self._convention_world_points(device, dtype)
         K = torch.tensor([[[100.0, 0.0, 4.0], [0.0, 100.0, 3.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
         planar = torch.stack(
@@ -263,11 +333,13 @@ class TestSolvePnpDlt(BaseTester):
         with pytest.raises(AssertionError, match="last singular value"):
             kornia.geometry.solve_pnp_dlt(planar, kornia.geometry.project_points(planar, K), K)
 
+    @pytest.mark.applies_to(
+        dtypes=("float16", "float32", "float64"),
+        reason="bfloat16 rounds the projected points by up to 0.25 px, which moves t past this pin's 1e-2",
+    )
     def test_zero_weight_points_do_not_pass_the_degeneracy_check(self, device, dtype):
         # kornia#4799: the same coplanar set plus two off-plane points recovers [I | 0]; with those two points at
         # weight 0 only the coplanar points are left, so the degeneracy check must reject it.
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("solve_pnp_dlt accepts float32 and float64 only")
         world_points = self._convention_world_points(device, dtype)
         K = torch.tensor([[[100.0, 0.0, 4.0], [0.0, 100.0, 3.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
         planar = torch.stack(
@@ -286,8 +358,6 @@ class TestSolvePnpDlt(BaseTester):
     def test_zero_weight_point_is_the_same_as_removing_it(self, device, dtype):
         # kornia#4799: a zero weight also kept the point in the normalization, so on noisy data the pose
         # differed from the solve without that point.
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("solve_pnp_dlt accepts float32 and float64 only")
         torch.manual_seed(0)
         K = torch.tensor([[[500.0, 0.0, 320.0], [0.0, 500.0, 240.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
         points = torch.rand(1, 10, 3, device=device, dtype=dtype) * 4 - 2
@@ -305,10 +375,8 @@ class TestSolvePnpDlt(BaseTester):
         self.assert_close(with_zero, without, rtol=1e-4, atol=1e-4)
 
     def test_weight_squared_is_the_point_multiplicity(self, device, dtype):
-        # A weight scales the point's rows, so its square multiplies the point's residual: weight sqrt(2) is the
-        # same as listing the point twice, also in the normalization. On noisy data this separates w**2 from w.
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("solve_pnp_dlt accepts float32 and float64 only")
+        # A weight scales the point's rows, so its square sets the multiplicity. Weight 2 is exactly
+        # representable in every dtype and equivalent to listing the point four times.
         torch.manual_seed(0)
         K = torch.tensor([[[500.0, 0.0, 320.0], [0.0, 500.0, 240.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
         points = torch.rand(1, 10, 3, device=device, dtype=dtype) * 4 - 2
@@ -316,19 +384,23 @@ class TestSolvePnpDlt(BaseTester):
         img_points = kornia.geometry.project_points(points, K)
         img_points = img_points + 3 * torch.randn_like(img_points)
         weights = torch.ones(1, 10, device=device, dtype=dtype)
-        weights[0, 0] = 2.0**0.5
+        weights[0, 0] = 2.0
         weighted = kornia.geometry.solve_pnp_dlt(points, img_points, K, weights=weights)
         duplicated = kornia.geometry.solve_pnp_dlt(
-            torch.cat([points, points[:, :1]], 1), torch.cat([img_points, img_points[:, :1]], 1), K
+            torch.cat([points, points[:, :1].expand(-1, 3, -1)], 1),
+            torch.cat([img_points, img_points[:, :1].expand(-1, 3, -1)], 1),
+            K,
         )
         self.assert_close(weighted, duplicated, rtol=1e-4, atol=1e-4)
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"),
+        reason="the pinned weight scales, 1e20 and 1e-25, are outside the half-precision range",
+    )
     def test_weights_scale_and_sign_do_not_change_the_result(self, device, dtype):
         # Only the weights' magnitudes relative to each other matter: a negative weight counts as its magnitude,
         # and scales whose squares overflow or underflow the dtype do not change the pose or the degeneracy
         # decision.
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("solve_pnp_dlt accepts float32 and float64 only")
         torch.manual_seed(0)
         K = torch.tensor([[[500.0, 0.0, 320.0], [0.0, 500.0, 240.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
         points = torch.rand(2, 10, 3, device=device, dtype=dtype) * 4 - 2
@@ -347,11 +419,11 @@ class TestSolvePnpDlt(BaseTester):
         # rescaled to sum to their count: the six points listed twice, the copies at half weight, have the last
         # singular value of the six listed twice (sqrt(2) times theirs), whatever the overall weight scale and
         # whatever the zero-weight points.
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("solve_pnp_dlt accepts float32 and float64 only")
         world_points = self._convention_world_points(device, dtype)
         K = torch.tensor([[[100.0, 0.0, 4.0], [0.0, 100.0, 3.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
-        last = 2.0**0.5 * torch.linalg.svdvals(_mean_isotropic_scale_normalize(world_points)[0])[0, -1].item()
+        # The check runs in float32 for a half-precision input, which has no SVD kernel.
+        work = world_points.to(torch.promote_types(dtype, torch.float32))
+        last = 2.0**0.5 * torch.linalg.svdvals(_mean_isotropic_scale_normalize(work)[0])[0, -1].item()
         extra = world_points * torch.tensor([3.0, -2.0, 4.0], device=device, dtype=dtype)
         points = torch.cat([world_points, world_points, extra], 1)
         img_points = kornia.geometry.project_points(points, K)
@@ -365,8 +437,6 @@ class TestSolvePnpDlt(BaseTester):
     def test_near_zero_weight_points_do_not_pass_the_degeneracy_check(self, device, dtype):
         # The check runs on the weighted points: off-plane points at weight 1e-8 leave the system as degenerate
         # as the coplanar points alone.
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("solve_pnp_dlt accepts float32 and float64 only")
         world_points = self._convention_world_points(device, dtype)
         K = torch.tensor([[[100.0, 0.0, 4.0], [0.0, 100.0, 3.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
         planar = torch.stack(
@@ -381,8 +451,6 @@ class TestSolvePnpDlt(BaseTester):
 
     def test_fewer_than_six_nonzero_weights_raise(self, device, dtype):
         # A zero weight removes the point, so fewer than 6 nonzero weights is rejected like fewer than 6 points.
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("solve_pnp_dlt accepts float32 and float64 only")
         world_points = self._convention_world_points(device, dtype)
         points = torch.cat([world_points, world_points + 1.0], 1).repeat(2, 1, 1)
         K = torch.tensor([[[100.0, 0.0, 4.0], [0.0, 100.0, 3.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
@@ -397,16 +465,70 @@ class TestSolvePnpDlt(BaseTester):
             kornia.geometry.solve_pnp_dlt(points, img_points, K, weights=weights)
 
 
+class TestPnpWorldOrigin(BaseTester):
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason="test the pose before half-output rounding")
+    @pytest.mark.parametrize("weighted", [False, True])
+    def test_convention_noisy_correspondences_are_invariant_to_world_translation(self, device, dtype, weighted):
+        world = torch.tensor(
+            [[-2, -1, 1], [2, -1, 1], [-2, 2, 1], [2, 2, 2], [-2, -1, 4], [2, -1, 3], [-2, 2, 4], [2, 2, 4]],
+            device=device,
+            dtype=dtype,
+        )
+        intrinsics = torch.tensor([[[400, 0, 160], [0, 410, 120], [0, 0, 1]]], device=device, dtype=dtype)
+        # Project (X + [.25, -.5, 8]) through K and perturb the result by up to two pixels per axis.
+        pixels = torch.tensor(
+            [
+                [83.2222222222, 51.6666666667],
+                [258, 53.6666666667],
+                [82.2222222222, 187.3333333333],
+                [251, 179.5],
+                [101.6666666667, 70.75],
+                [240.8181818182, 64.0909090909],
+                [102.6666666667, 172.25],
+                [235, 169.25],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        weights = None
+        # Reference: use numpy.average with squared weights for Hartley normalization. Assemble the two DLT
+        # rows per point, scale them by the weights, and take np.linalg.svd(A)[2][-1]. Undo image normalization,
+        # fix the sign and scale using the linear part, then use U @ Vt from its SVD in the centered world frame.
+        if weighted:
+            weights = torch.tensor([[0, 1, 2, 1, 2, 1, 2, 1]], device=device, dtype=dtype).expand(3, -1)
+            expected = [
+                [0.9998154615, 0.0105472050, -0.0160561303, 0.3051930441],
+                [-0.0103288414, 0.9998538575, 0.0136227256, -0.5424153286],
+                [0.0161974655, -0.0134543705, 0.9997782864, 7.9993472933],
+            ]
+        else:
+            expected = [
+                [0.9995968892, 0.0085074326, -0.0270865784, 0.3355096301],
+                [-0.0077932069, 0.9996219916, 0.0263655048, -0.5751383814],
+                [0.0273006422, -0.0261437853, 0.9992853333, 8.0505131143],
+            ]
+        origins = world.new_tensor([[0, 0, 0], [32, -16, 8], [-128, 64, 16]]).unsqueeze(1)
+        world_shifted = world + origins
+        pose = kornia.geometry.solve_pnp_dlt(world_shifted, pixels.expand(3, -1, -1), intrinsics, weights)
+        local_translation = pose[:, :, 3:] + pose[:, :, :3] @ origins.mT
+        pose_local = torch.cat((pose[:, :, :3], local_translation), dim=-1)
+
+        # Undoing the shift in the final pose incurs rounding proportional to the size of the translation.
+        atol = 3e-5 if dtype == torch.float32 else 2e-9
+        self.assert_close(pose_local, world.new_tensor(expected).expand_as(pose_local), atol=atol, rtol=0.0)
+
+
 class TestNormalization(BaseTester):
     @pytest.mark.parametrize("dimension", [2, 3, 5])
     def test_smoke(self, dimension, device, dtype):
         batch_size = 10
         num_points = 100
         points = torch.rand((batch_size, num_points, dimension), device=device, dtype=dtype)
-        points_norm, transform = _mean_isotropic_scale_normalize(points)
+        points_norm, centroid, scale = _mean_isotropic_scale_normalize(points)
 
         assert points_norm.shape == (batch_size, num_points, dimension)
-        assert transform.shape == (batch_size, dimension + 1, dimension + 1)
+        assert centroid.shape == (batch_size, 1, dimension)
+        assert scale.shape == (batch_size,)
 
     @pytest.mark.parametrize("dimension", [2, 3, 5])
     def test_gradcheck(self, dimension, device):
@@ -431,14 +553,13 @@ class TestSolvePnpDltAutocast(BaseTester):
         weights = torch.rand(1, 40, generator=generator) + 0.5
         return [v.to(device) for v in (world, img, K, torch.cat([R, t], -1), weights)]
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="CPU and CUDA autocast")
     @pytest.mark.parametrize("weighted", [False, True])
     def test_autocast_does_not_change_the_result_6168(self, device, weighted):
         # Under bfloat16 autocast the de-normalization products ran in bfloat16, and torch.det, which has no
         # half-precision CPU kernel, raised NotImplementedError for float32 inputs.
         if device.type == "cuda" and not torch.cuda.is_bf16_supported():
             pytest.skip("this CUDA device does not support bfloat16")
-        if device.type not in ("cpu", "cuda"):
-            pytest.skip("CPU and CUDA autocast")
         world, img, K, expected_pose, weights = self._scene(device)
         weights = weights if weighted else None
         expected = kornia.geometry.calibration.solve_pnp_dlt(world, img, K, weights)
@@ -452,13 +573,12 @@ class TestSolvePnpDltAutocast(BaseTester):
 class TestSolvePnpDltGradient(BaseTester):
     """``solve_pnp_dlt``'s gradient is finite when other singular values of the system are equal (#6213)."""
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="MPS has no float64")
     def test_cube_corners_have_the_central_difference_gradient_6213(self, device):
         # The corners of a cube and its centre make singular values of the DLT system equal in some poses, where
         # torch's SVD backward made the gradient with respect to the image points NaN. Which poses tie depends on
         # the SVD backend: 4 to 6 of these 64 on the CPUs measured, and none in float64 on CUDA, so this test pins
         # the fix on CPU.
-        if device.type == "mps":
-            pytest.skip("MPS has no float64")
         from kornia.geometry.conversions import axis_angle_to_rotation_matrix
 
         dtype = torch.float64
@@ -495,8 +615,6 @@ class TestSolvePnpDltGradient(BaseTester):
     def test_dynamo_gradient_matches_eager_6213(self, device, dtype, torch_optimizer):
         # The kept vector's own gap is excluded by position: CUDA Inductor evaluated (S / scale)^2 differently at its
         # two reads, a gap of 1e-20 instead of 0, and the compiled gradient of solve_pnp_dlt was up to 1e11 times off.
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("solve_pnp_dlt accepts float32 and float64 only")
         from kornia.geometry.conversions import axis_angle_to_rotation_matrix
 
         g = torch.Generator().manual_seed(0)

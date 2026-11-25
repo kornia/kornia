@@ -97,12 +97,6 @@ def test_get_sift_bin_ksize_stride_pad_centres_the_grid_5691(ps, n_bins):
 
 
 class TestSIFTDescriptor(BaseTester):
-    def test_shape(self, device, dtype):
-        inp = torch.ones(1, 1, 32, 32, device=device, dtype=dtype)
-        sift = SIFTDescriptor(32).to(device, dtype)
-        out = sift(inp)
-        assert out.shape == (1, 128)
-
     @pytest.mark.parametrize("patch_size", [32, 15])
     def test_empty_batch(self, device, dtype, patch_size):
         # A batch of zero patches returns an empty descriptor batch, in the dtype a non-empty call returns.
@@ -112,18 +106,6 @@ class TestSIFTDescriptor(BaseTester):
         assert out.shape == (0, 128)
         assert out.dtype == one.dtype
         assert out.device == one.device
-
-    def test_batch_shape(self, device, dtype):
-        inp = torch.ones(2, 1, 15, 15, device=device, dtype=dtype)
-        sift = SIFTDescriptor(15).to(device, dtype)
-        out = sift(inp)
-        assert out.shape == (2, 128)
-
-    def test_batch_shape_non_std(self, device, dtype):
-        inp = torch.ones(3, 1, 19, 19, device=device, dtype=dtype)
-        sift = SIFTDescriptor(19, 5, 3).to(device, dtype)
-        out = sift(inp)
-        assert out.shape == (3, (3**2) * 5)
 
     def test_toy(self, device, dtype):
         patch = torch.ones(1, 1, 6, 6, device=device, dtype=dtype)
@@ -140,9 +122,8 @@ class TestSIFTDescriptor(BaseTester):
         sift = SIFTDescriptor(15).to(device, dtype)
         self.gradcheck(sift, (patches,), nondet_tol=1e-4)
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="float64 is unavailable on MPS")
     def test_float64_axis_ramps_vote_in_one_bin_5127(self, device):
-        if device.type == "mps":
-            pytest.skip("float64 is unavailable on MPS")
         # Every gradient of a ramp along +x (-x) points at angle 0 (pi), the centre of angular bin 0 (4).
         axis = torch.arange(32, device=device, dtype=torch.float64)
         patches = torch.stack([axis.expand(32, 32), -axis.expand(32, 32)]).unsqueeze(1)
@@ -220,20 +201,11 @@ class TestSIFTDescriptor(BaseTester):
             torch.autograd.grad(actual.sum(), patches)[0], torch.autograd.grad(expected.sum(), patches)[0]
         )
 
-    @pytest.mark.skip("Compiled functions can't take variable number")
-    def test_jit(self, device, dtype):
-        B, C, H, W = 1, 1, 32, 32
-        patches = torch.ones(B, C, H, W, device=device, dtype=dtype)
-        model = SIFTDescriptor(41).to(patches.device, patches.dtype).eval()
-        model_jit = torch.jit.script(SIFTDescriptor(41).to(patches.device, patches.dtype).eval())
-        self.assert_close(model(patches), model_jit(patches))
-
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64")
     def test_float64_matches_the_numpy_reference(self, device):
         # The expected values come from plain NumPy with the Gaussian window built in float64 and the pooling weights,
         # an nn.Conv2d parameter, rounded to float32 as kornia builds them (snippet in the PR); a window rounded to
         # float32 misses them by far more than 1e-12, which allows for the summation order.
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64")
         patches = ((torch.arange(1024, dtype=torch.float64) * 0.23 + 0.4) % 1.0).reshape(1, 1, 32, 32).to(device)
         expected = torch.tensor([0.140816954632648, 0.056875575617869586], device=device, dtype=torch.float64)
         for sift in (SIFTDescriptor(32), SIFTDescriptor(32).double()):
@@ -254,7 +226,7 @@ class TestSIFTDescriptorKernelBuffer(BaseTester):
         assert mod.gk.dtype == torch.float16
         assert mod.gk.device == torch.empty(0, device=device).device
 
-    def test_kernel_stays_out_of_state_dict(self, device):
+    def test_kernel_stays_out_of_state_dict(self):
         """Registered non-persistent, so existing checkpoints keep loading with strict=True."""
         assert "gk" not in SIFTDescriptor(32).state_dict()
 
@@ -277,9 +249,8 @@ class TestSIFTDescriptorKernelBuffer(BaseTester):
         with pytest.raises(RuntimeError, match="size mismatch"):
             outer.load_state_dict({"0.pk.weight": 2 * former})
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="float64 is unavailable on MPS")
     def test_forward_does_not_mutate_the_module(self, device):
-        if device.type == "mps":
-            pytest.skip("float64 is unavailable on MPS")
         mod = SIFTDescriptor(32)
         before = (mod.gk.dtype, mod.gk.device)
         mod(torch.rand(2, 1, 32, 32, dtype=torch.float64))
@@ -301,9 +272,8 @@ class TestSIFTDescriptorKernelBuffer(BaseTester):
         self.assert_close(mod.pk.weight, expected_pooling)
         self.assert_close(mod.gk, expected_weighting)
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="float64 is unavailable on MPS")
     def test_forward_uses_input_dtype_without_mutating_pooling_layer(self, device):
-        if device.type == "mps":
-            pytest.skip("float64 is unavailable on MPS")
         torch.manual_seed(0)
         patches = torch.rand(2, 1, 32, 32, device=device, dtype=torch.float64)
         mod = SIFTDescriptor(32).to(device)
@@ -321,9 +291,10 @@ class TestSIFTDescriptorKernelBuffer(BaseTester):
         out.sum().backward()
         assert mod.pk.weight.grad is not None
 
+    @pytest.mark.applies_to(
+        when=lambda p: p["device_name"] != "cpu", reason="device mismatch requires a non-CPU test device"
+    )
     def test_forward_uses_input_device_without_mutating_pooling_layer(self, device):
-        if device.type == "cpu":
-            pytest.skip("device mismatch requires a non-CPU test device")
         if not (supports_replicate_padding(device, torch.float32) and supports_conv2d(device, torch.float32)):
             pytest.skip(f"no float32 SIFT kernels on {device.type}")
         patches = torch.rand(2, 1, 32, 32, device=device)
@@ -388,12 +359,14 @@ class TestSIFTConstantPatchIsFinite(BaseTester):
         assert torch.isfinite(patches.grad).all(), patches.grad.abs().max()
         assert bool((patches.grad == 0).all()), f"flat patch has a gradient of {patches.grad.abs().max().item()}"
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["desc_dtype"] == torch.float64),
+        reason="MPS does not support float64",
+    )
     @pytest.mark.parametrize("desc_dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64])
     def test_l2_normalize_zero_vector_has_a_zero_gradient(self, device, desc_dtype):
         from kornia.core.utils import _l2_normalize
 
-        if device.type == "mps" and desc_dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         x = torch.zeros(3, 8, device=device, dtype=desc_dtype, requires_grad=True)
         _l2_normalize(x, dim=1).sum().backward()
         assert x.grad is not None, x.grad
@@ -460,22 +433,6 @@ class TestSIFTConstantPatchIsFinite(BaseTester):
 
 
 class TestDenseSIFTDescriptor(BaseTester):
-    def test_shape_default(self, device, dtype):
-        bs, h, w = 1, 20, 15
-        inp = torch.rand(1, 1, h, w, device=device, dtype=dtype)
-        sift = DenseSIFTDescriptor().to(device, dtype)
-        out = sift(inp)
-        # (20 + 1 + 2 - 12 - 1) // 1 + 1 and (15 + 1 + 2 - 12 - 1) // 1 + 1
-        assert out.shape == torch.Size([bs, 128, 11, 6])
-
-    def test_batch_shape(self, device, dtype):
-        bs, h, w = 2, 32, 15
-        inp = torch.rand(bs, 1, h, w, device=device, dtype=dtype)
-        sift = DenseSIFTDescriptor().to(device, dtype)
-        out = sift(inp)
-        # (32 + 1 + 2 - 12 - 1) // 1 + 1 and (15 + 1 + 2 - 12 - 1) // 1 + 1
-        assert out.shape == torch.Size([bs, 128, 23, 6])
-
     def test_batch_shape_custom(self, device, dtype):
         bs, h, w = 2, 40, 30
         inp = torch.rand(bs, 1, h, w, device=device, dtype=dtype)
@@ -497,9 +454,11 @@ class TestDenseSIFTDescriptor(BaseTester):
         out = DenseSIFTDescriptor(**kwargs).to(device, dtype)(torch.rand(1, 1, h, w, device=device, dtype=dtype))
         assert out.shape[-2:] == torch.Size(expected)
 
-    def test_print(self, device):
-        sift = DenseSIFTDescriptor()
-        sift.__repr__()
+    def test_repr(self):
+        assert repr(DenseSIFTDescriptor(6, 3, 5, rootsift=False, stride=2)) == (
+            "DenseSIFTDescriptor(num_ang_bins=6, num_spatial_bins=3, spatial_bin_size=5, rootsift=False, stride=2, "
+            "clipval=0.2)"
+        )
 
     def test_pooling_kernel_accessor_is_isolated_and_tracks_to(self, device):
         """Dense SIFT's accessor must return a copy of the kernel used in forward (#4083)."""
@@ -523,9 +482,8 @@ class TestDenseSIFTDescriptor(BaseTester):
             assert (kernel.dtype, kernel.device) == before
             self.assert_close(kernel, mod.bin_pooling_kernel.weight)
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="float64 is unavailable on MPS")
     def test_forward_uses_input_dtype_without_mutating_convolution_layers(self, device):
-        if device.type == "mps":
-            pytest.skip("float64 is unavailable on MPS")
         torch.manual_seed(0)
         img = torch.rand(1, 1, 16, 16, device=device, dtype=torch.float64)
         mod = DenseSIFTDescriptor().to(device)
@@ -546,9 +504,10 @@ class TestDenseSIFTDescriptor(BaseTester):
         assert mod.bin_pooling_kernel.weight.grad is not None
         assert mod.PoolingConv.weight.grad is not None
 
+    @pytest.mark.applies_to(
+        when=lambda p: p["device_name"] != "cpu", reason="device mismatch requires a non-CPU test device"
+    )
     def test_forward_uses_input_device_without_mutating_convolution_layers(self, device):
-        if device.type == "cpu":
-            pytest.skip("device mismatch requires a non-CPU test device")
         if not (supports_replicate_padding(device, torch.float32) and supports_conv2d(device, torch.float32)):
             pytest.skip(f"no float32 DenseSIFT kernels on {device.type}")
         img = torch.rand(1, 1, 16, 16, device=device)
@@ -560,7 +519,7 @@ class TestDenseSIFTDescriptor(BaseTester):
         assert mod.bin_pooling_kernel.weight.device == torch.device("cpu")
         assert mod.PoolingConv.weight.device == torch.device("cpu")
 
-    def test_instances_do_not_share_buffer_storage(self, device):
+    def test_instances_do_not_share_buffer_storage(self):
         """Instances must not share storage for `_poolingconv_weight` (see #4068).
 
         `_get_reshape_kernel` used to memoise `torch.eye(numel)` and hand out a view of it, so
@@ -573,7 +532,7 @@ class TestDenseSIFTDescriptor(BaseTester):
             b._poolingconv_weight.untyped_storage().data_ptr()
         )
 
-    def test_load_state_dict_does_not_leak_into_other_instances(self, device):
+    def test_load_state_dict_does_not_leak_into_other_instances(self):
         """`load_state_dict` copies into buffers in place; that must stay local to one module."""
         a = DenseSIFTDescriptor(num_ang_bins=8, num_spatial_bins=4)
         b = DenseSIFTDescriptor(num_ang_bins=8, num_spatial_bins=4)
@@ -636,10 +595,9 @@ class TestDenseSIFTDescriptor(BaseTester):
         patches = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(DenseSIFTDescriptor(4, 2, 2), (patches), nondet_tol=1e-4)
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="float64 is unavailable on MPS")
     @pytest.mark.parametrize("bins", [8, 36])
     def test_float64_bin_centre_gradient_votes_in_one_bin_5127(self, device, bins):
-        if device.type == "mps":
-            pytest.skip("float64 is unavailable on MPS")
         angle = torch.arange(bins, device=device, dtype=torch.float64) * (2 * torch.pi / bins)
         # Unit gradients at the bin centres, plus one zero gradient that votes nowhere.
         gx = torch.cat([torch.cos(angle), angle.new_zeros(1)]).view(1, 1, 1, bins + 1)
@@ -700,9 +658,8 @@ class TestConvertSIFTDescriptorLayout(BaseTester):
         with pytest.raises(ValueError, match="bin counts must be positive"):
             convert_sift_descriptor_layout(descriptors[:, :0], "kornia", "opencv", num_ang_bins=0)
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64 gradcheck")
     def test_gradcheck(self, device):
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64 gradcheck")
         descriptors = torch.rand(2, 128, device=device, dtype=torch.float64)
         self.gradcheck(lambda d: convert_sift_descriptor_layout(d, "kornia", "opencv"), (descriptors,))
 

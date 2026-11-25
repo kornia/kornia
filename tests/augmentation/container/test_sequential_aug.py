@@ -46,23 +46,24 @@ class TestSequential:
                 K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), random_apply_weights=random_apply_weights
             ).inverse(inp)
 
+    # The setters never read random_apply; test_forward constructs the container with every random_apply value.
     @pytest.mark.parametrize("same_on_batch", [True, False, None])
     @pytest.mark.parametrize("keepdim", [True, False, None])
-    @pytest.mark.parametrize("random_apply", [1, (2, 2), (1, 2), (2,), 20, True, False])
-    def test_construction(self, same_on_batch, keepdim, random_apply):
+    def test_construction(self, same_on_batch, keepdim):
         aug = K.ImageSequential(
             K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
             K.RandomAffine(360, p=1.0),
             K.RandomMixUpV2(p=1.0),
             same_on_batch=same_on_batch,
             keepdim=keepdim,
-            random_apply=random_apply,
         )
-        aug.same_on_batch = True
-        aug.keepdim = True
-        for m in aug.children():
-            assert m.same_on_batch is True, m.same_on_batch
-            assert m.keepdim is True, m.keepdim
+        # Set each value in turn, so a setter that leaves the constructor's value in place cannot pass.
+        for value in (True, False):
+            aug.same_on_batch = value
+            aug.keepdim = value
+            for m in aug.children():
+                assert m.same_on_batch is value, m.same_on_batch
+                assert m.keepdim is value, m.keepdim
 
     @pytest.mark.parametrize("random_apply", [1, (2, 2), (1, 2), (2,), 10, True, False])
     def test_forward(self, random_apply, device, dtype):
@@ -111,6 +112,10 @@ class TestConventionImageSequential(BaseTester):
         self.assert_close(inverted, out.flip(-1))  # only the flip was undone, the blur was skipped
         assert (inverted - x).abs().max().item() > 0.1  # and the round trip is not the input
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["output_type"] == "numpy" and p["dtype_name"] == "bfloat16"),
+        reason="NumPy has no bfloat16",
+    )
     @pytest.mark.parametrize("container", ["ImageSequential", "AugmentationSequential"])
     @pytest.mark.parametrize("output_type", ["numpy", "pil"])
     def test_show_and_save_after_a_numpy_or_pil_output_4956(self, container, output_type, tmp_path, device, dtype):
@@ -118,8 +123,6 @@ class TestConventionImageSequential(BaseTester):
         # converts the output to NumPy or PIL; it used to cache the converted output and the helpers failed on it
         from PIL import Image as PILImage
 
-        if output_type == "numpy" and dtype == torch.bfloat16:
-            pytest.skip("NumPy has no bfloat16")
         image = torch.rand(2, 3, 6, 8, device=device, dtype=dtype, requires_grad=True)
         aug = getattr(K, container)(K.RandomHorizontalFlip(p=1.0))
 
@@ -558,7 +561,9 @@ class TestConventionImageSequential(BaseTester):
             random_apply=random_apply,
             random_apply_weights=weights,
         )
-        for seed in range(50):
+        # Drawn with replacement, three of these members repeat one in 82% of the calls whatever the weights, so ten
+        # calls miss a repeat with probability below 1e-7; the sum rule repeated in the first call of every case here.
+        for seed in range(10):
             torch.manual_seed(seed)
             seq(x)
             names = self._applied_names(seq)
@@ -584,8 +589,10 @@ class TestConventionImageSequential(BaseTester):
             random_apply=2,
             random_apply_weights=weights([0.5, 0.3, 0.2]),
         )
+        # Two draws with replacement repeat a member in 38% of the calls, at either scale of these weights: twenty calls
+        # show a repeat below, and one the larger scale must not make in the second loop, with probability 1 - 1e-4.
         repeated = 0
-        for seed in range(50):
+        for seed in range(20):
             torch.manual_seed(seed)
             with pytest.warns(FutureWarning, match=_SUM_RULE_WARNING):
                 seq(x)
@@ -604,7 +611,7 @@ class TestConventionImageSequential(BaseTester):
         )
         with warnings.catch_warnings():
             warnings.simplefilter("error", FutureWarning)
-            for seed in range(50):
+            for seed in range(20):
                 torch.manual_seed(seed)
                 seq(x)
                 names = self._applied_names(seq)
@@ -725,7 +732,8 @@ class TestConventionImageSequential(BaseTester):
         seq, x = self._random_apply_container(
             container, members, device, dtype, random_apply=True, random_apply_weights=weights
         )
-        for seed in range(30):
+        # The old rule missed a member in 79 of 100 calls, the first call of each case it reaches; ten calls suffice.
+        for seed in range(10):
             torch.manual_seed(seed)
             seq(x)
             names = self._applied_names(seq)
@@ -1110,12 +1118,14 @@ class TestConventionImageSequential(BaseTester):
             assert len(names) == (len(seq) if random_apply is True else random_apply)
             assert len(set(names)) == len(names)
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["weight_dtype"] != torch.float32),
+        reason="MPS has no float64 and its half-precision multinomial is not part of this contract",
+    )
     @pytest.mark.parametrize("weight_dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64])
     @pytest.mark.parametrize("as_parameter", [False, True])
     def test_random_apply_weight_kinds_take_the_same_route_6114(self, weight_dtype, as_parameter, device):
         # The route follows the stored count and the weights' value, whatever tensor holds them.
-        if device.type == "mps" and weight_dtype != torch.float32:
-            pytest.skip("MPS has no float64 and its half-precision multinomial is not part of this contract")
 
         def weights():
             values = torch.tensor([0.5, 0.25, 0.25], device=device, dtype=weight_dtype)

@@ -25,7 +25,7 @@ from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.utils import (
     _autocast_disabled,
     _normalize_to_float32_or_float64,
-    _torch_svd_cast,
+    _torch_svd_in_work_dtype,
     is_mps_tensor_safe,
 )
 from kornia.geometry.conversions import convert_points_from_homogeneous
@@ -127,9 +127,10 @@ def triangulate_points(
           returns NaN. In float16 and bfloat16 that roundoff also covers a point a few tens of units away in the
           scale of ``t``. Mask those rows before a loss (``out[~out.isnan().any(-1)]``); the gradients with respect
           to the cameras and the other points stay finite.
-        - ``"svd"`` and ``"eigh"`` solve in float64, or in float32 for float16 and bfloat16 input and on MPS;
-          ``"cofactor"`` solves in float32, or in float64 for float64 input. All return the input dtype;
-          ``solver`` below compares their accuracy.
+        - All solvers form the DLT equations in at least float32 and return the input dtype.
+          ``"eigh"`` solves in float64 where available because it squares the DLT matrix's condition number.
+          ``"svd"`` solves in float64 for float32 or float64 input, and in float32 for half-precision inputs.
+          Both solve in float32 on MPS. ``"cofactor"`` solves in float32, or in float64 for float64 input.
         - A caller's autocast region does not change the result.
 
     Args:
@@ -195,6 +196,16 @@ def triangulate_points(
 def _triangulate_points(
     P1: torch.Tensor, P2: torch.Tensor, points1: torch.Tensor, points2: torch.Tensor, solver: str
 ) -> torch.Tensor:
+    dtype1 = torch.promote_types(P1.dtype, points1.dtype)
+    dtype2 = torch.promote_types(P2.dtype, points2.dtype)
+    half_dtypes = (torch.float16, torch.bfloat16)
+    # A half product u * P[2] can overflow or round before subtraction, even when the constraint row is in range.
+    # Form the rows in the solver's float32 precision and retain the original dtype for the output and infinity test.
+    if dtype1 in half_dtypes:
+        P1, points1 = P1.float(), points1.float()
+    if dtype2 in half_dtypes:
+        P2, points2 = P2.float(), points2.float()
+
     # Build the four DLT constraint rows (each (*, N, 4)) via vectorized broadcasting.
     # P[..., r:r+1, :] broadcasts with points[..., c:c+1] → (*, N, 4).
     row0 = points1[..., 0:1] * P1[..., 2:3, :] - P1[..., 0:1, :]  # (*, N1, 4)
@@ -204,22 +215,20 @@ def _triangulate_points(
     # Unify N1 and N2: one may be 1 when points1/points2 are broadcast-compatible.
     row0, row1, row2, row3 = torch.broadcast_tensors(row0, row1, row2, row3)
 
-    # svd and eigh mirror _torch_svd_cast's promotion: fp32 -> fp64 for stability, fp16/bf16 -> fp32, fp64
-    # stays, MPS capped at fp32 (no fp64 support there). cofactor uses arithmetic only and keeps fp32.
+    out_dtype = dtype1 if solver == "cofactor" else torch.promote_types(dtype1, dtype2)
     if is_mps_tensor_safe(row0):
         compute_dtype = torch.float32
-    elif row0.dtype == torch.float32:
+    elif solver == "eigh" or dtype1 == torch.float32:
+        # Even float32 rows from half inputs can lose the solution in X^T X, for example when the
+        # world origin is tens of meters from the cameras.
         compute_dtype = torch.float64
     else:
-        compute_dtype = _normalize_to_float32_or_float64(row0.dtype)
+        compute_dtype = _normalize_to_float32_or_float64(dtype1)
 
     if solver == "svd":
         X = torch.stack([row0, row1, row2, row3], dim=-2)  # (*, N, 4, 4)
         # SVD: last right singular vector minimises ||Ax|| s.t. ||x||=1.
-        # _torch_svd_cast promotes to fp64 for numerical stability and returns V
-        # with singular vectors as columns; the last column corresponds to the
-        # smallest singular value.
-        _, _, V = _torch_svd_cast(X)
+        _, _, V = _torch_svd_in_work_dtype(X, work_dtype=torch.float32 if out_dtype in half_dtypes else None)
         points3d_h = V[..., -1]  # (*, N, 4)
 
     elif solver == "eigh":
@@ -236,7 +245,7 @@ def _triangulate_points(
         X_cast = X.to(compute_dtype)
         XTX = X_cast.mT @ X_cast  # (*, N, 4, 4) symmetric PSD
         flat = XTX.flatten(0, -3)  # (M, 4, 4)
-        v_flat = _eigh_smallest_vec(flat).to(X.dtype)  # (M, 4)
+        v_flat = _eigh_smallest_vec(flat)  # (M, 4)
         points3d_h = v_flat.reshape(*batch_shape, 4)  # (*, N, 4)
 
     elif solver == "cofactor":
@@ -250,7 +259,7 @@ def _triangulate_points(
         # svd solution without a LAPACK call, still defined at rank 3, where A^-1 is not.
         # The minors use only arithmetic ops, so promote fp16/bf16 -> fp32 and stay there until the null vector
         # is normalised: the unnormalised minors of pixel-scale rows overflow float16.
-        compute_dtype = _normalize_to_float32_or_float64(row0.dtype)
+        compute_dtype = _normalize_to_float32_or_float64(dtype1)
         tiny = torch.finfo(compute_dtype).tiny
         A = torch.stack([row0, row1, row2, row3], dim=-2).to(compute_dtype)  # (*, N, 4, 4)
         # A common scale of the rows leaves the solution unchanged and keeps the cubic minors in range.
@@ -269,18 +278,21 @@ def _triangulate_points(
         w = w / w.norm(dim=-1, keepdim=True).clamp_min(tiny)
         v = (H.mT @ w[..., None]).squeeze(-1)  # adj(A) adj(A)^T c: the signs cancel
         v = v / v.norm(dim=-1, keepdim=True).clamp_min(tiny)
-        points3d_h = torch.where(full_rank, v, torch.full_like(v, float("nan"))).to(row0.dtype)
+        points3d_h = torch.where(full_rank, v, torch.full_like(v, float("nan")))
 
     else:
         raise NotImplementedError(f"Unknown solver '{solver}'. Choose from: 'svd', 'eigh', 'cofactor'.")
+
+    # Keep both the numerator and denominator in float32 through the divide for half outputs.
+    points3d_h = points3d_h.to(torch.float32 if out_dtype in half_dtypes else out_dtype)
 
     # A correspondence at infinity (parallel rays) has w = 0 up to roundoff: the rows carry the input dtype's
     # roundoff and the solver the compute dtype's, which eigh amplifies by squaring the conditioning (about 25
     # epsilons on the two-view fixture against 2 for svd). Flag it as NaN instead of dividing by that roundoff.
     w_scale = 128.0 if solver == "eigh" else 16.0
-    w_tol = w_scale * torch.finfo(compute_dtype).eps + 4.0 * torch.finfo(points3d_h.dtype).eps
+    w_tol = w_scale * torch.finfo(compute_dtype).eps + 4.0 * torch.finfo(out_dtype).eps
     at_infinity = points3d_h[..., 3:].abs() <= w_tol * points3d_h.norm(dim=-1, keepdim=True)
     points3d_h = torch.where(at_infinity, torch.full_like(points3d_h, float("nan")), points3d_h)
 
-    points3d: torch.Tensor = convert_points_from_homogeneous(points3d_h)
+    points3d: torch.Tensor = convert_points_from_homogeneous(points3d_h).to(out_dtype)
     return points3d

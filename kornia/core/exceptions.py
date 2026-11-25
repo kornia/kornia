@@ -15,7 +15,23 @@
 # limitations under the License.
 #
 
-"""Custom exception classes for Kornia validation checks."""
+"""The errors that kornia's input checks raise, each also the built-in exception that matches its failure.
+
+``except BaseError`` catches every one of them. Each subclass also derives from a built-in exception, so the matching
+``except`` clause catches it together with the built-in errors that other functions raise. In a call compiled with
+``torch.jit.script``, a failed check raises ``torch.jit.Error`` instead, which none of these clauses catches.
+
+Which class to use, by the failure to catch:
+
+- Any failure of a ``KORNIA_CHECK*`` helper: :exc:`BaseError`.
+- A shape or a size: :exc:`ShapeError`, a ``ValueError``; an augmentation input with an unsupported number of
+  dimensions: :exc:`InputRankError`, a :exc:`ShapeError` that is also a ``RuntimeError`` and an ``AssertionError``.
+- A type or a dtype: :exc:`TypeCheckError`, a ``TypeError``.
+- A value or a range: :exc:`ValueCheckError`, a ``ValueError``; the host failure of a value check that an accelerator
+  runs asynchronously: :exc:`AsyncCheckError`, a :exc:`ValueCheckError` that is also a ``RuntimeError``.
+- Tensors on different devices: :exc:`DeviceError`, a ``ValueError``.
+- A tensor without the channel layout of an image: :exc:`ImageError`, a ``ValueError``.
+"""
 
 from __future__ import annotations
 
@@ -36,21 +52,28 @@ __all__ = [
 
 
 class BaseError(Exception):
-    """Base class of the exceptions raised by kornia's ``KORNIA_CHECK*`` validation helpers and a few functions.
+    """Catch every failure of the KORNIA_CHECK helpers with this base class, which KORNIA_CHECK raises.
 
-    A failed ``KORNIA_CHECK`` raises it directly; it is neither a :exc:`ValueError` nor a :exc:`TypeError`. Each
-    subclass also derives from the one of those two built-ins that matches its failure, so the matching ``except``
-    clause catches the subclass as well. :exc:`AsyncCheckError` is also a :exc:`RuntimeError`, and :exc:`InputRankError`
-    also a :exc:`RuntimeError` and an :exc:`AssertionError`.
+    ``except BaseError`` catches it and its subclasses, which the checks and some functions raise. It derives only from
+    :exc:`Exception`, so neither ``except ValueError`` nor ``except TypeError`` catches it.
     """
 
 
 class ShapeError(BaseError, ValueError):
-    """Raised when tensor shape validation fails. Also a :exc:`ValueError`.
+    """Catch a failed shape or size check; also a ValueError.
+
+    :func:`~kornia.core.check.KORNIA_CHECK_SHAPE`, :func:`~kornia.core.check.KORNIA_CHECK_SIZES`,
+    :func:`~kornia.core.check.KORNIA_CHECK_SAME_SIZE`, :func:`~kornia.core.check.KORNIA_CHECK_SAME_SHAPE`,
+    :func:`~kornia.core.check.KORNIA_CHECK_DM_DESC` and :func:`~kornia.feature.KORNIA_CHECK_LAF` raise it, and so do
+    functions that check shapes themselves.
 
     Attributes:
-        actual_shape: The actual shape of the tensor that failed validation.
-        expected_shape: The expected shape specification.
+        actual_shape: the shape of the tensor that failed validation, or ``None`` when the raiser gives none.
+        expected_shape: the expected pattern, sizes or shape, or ``None`` when the raiser gives none.
+
+    See Also:
+        - :exc:`InputRankError`: the subclass for an augmentation input with an unsupported number of dimensions.
+        - :exc:`ImageError`: a tensor without the channel layout of an image, with no shape attributes.
     """
 
     def __init__(
@@ -66,21 +89,32 @@ class ShapeError(BaseError, ValueError):
 
 
 class InputRankError(ShapeError, RuntimeError, AssertionError):
-    """Raised when an input has a number of dimensions the operation does not accept. Also a :exc:`ValueError`.
+    """Catch an augmentation input with too few or too many dimensions.
 
-    The augmentation classes and their containers raise it for one user error: an image or a volume with too few or
-    too many dimensions. They used to raise :exc:`ValueError`, :exc:`RuntimeError` or :exc:`AssertionError` for it,
-    depending on the entry point (`#4424 <https://github.com/kornia/kornia/issues/4424>`_), so this class also
-    derives from :exc:`RuntimeError` and :exc:`AssertionError`, and each of those ``except`` clauses still catches it.
+    The augmentation classes and their containers used to raise :exc:`ValueError`, :exc:`RuntimeError` or
+    :exc:`AssertionError` for such an input, depending on the entry point (`#4424
+    <https://github.com/kornia/kornia/issues/4424>`_), so this :exc:`ShapeError`, a :exc:`ValueError`, also derives from
+    :exc:`RuntimeError` and :exc:`AssertionError`, and each of those ``except`` clauses still catches it.
+
+    See Also:
+        - :exc:`ShapeError`: the parent class, for every other shape or size failure.
     """
 
 
 class TypeCheckError(BaseError, TypeError):
-    """Raised when type validation fails. Also a :exc:`TypeError`.
+    """Catch a failed type or dtype check; also a TypeError.
+
+    :func:`~kornia.core.check.KORNIA_CHECK_TYPE`, :func:`~kornia.core.check.KORNIA_CHECK_IS_TENSOR` and
+    :func:`~kornia.core.check.KORNIA_CHECK_IS_LIST_OF_TENSOR` raise it, as does
+    :func:`~kornia.core.check.KORNIA_CHECK_SAME_DEVICES` for an argument that is not a non-empty list of tensors, and so
+    do functions that reject a dtype, such as an integer image.
 
     Attributes:
-        actual_type: The actual type (or tensor dtype) that failed validation.
-        expected_type: The expected type (or tensor dtype).
+        actual_type: the actual type (or tensor dtype) that failed validation, or ``None`` when the raiser gives none.
+        expected_type: the expected type (or tensor dtype), or ``None`` when the raiser gives none.
+
+    See Also:
+        - :exc:`ValueCheckError`: a value of the right type outside the accepted range.
     """
 
     def __init__(
@@ -96,11 +130,19 @@ class TypeCheckError(BaseError, TypeError):
 
 
 class ValueCheckError(BaseError, ValueError):
-    """Raised when value/range validation fails. Also a :exc:`ValueError`.
+    """Catch a failed value or range check; also a ValueError.
+
+    :func:`~kornia.core.check.KORNIA_CHECK_IS_IMAGE` raises it for values out of its range, with the ``(min, max)`` of
+    the image as ``actual_value``, and functions that check values themselves raise it as well.
 
     Attributes:
-        actual_value: The actual value that failed validation.
-        expected_range: The expected value range (min, max).
+        actual_value: the actual value that failed validation, or ``None`` when the raiser gives none.
+        expected_range: the accepted ``(min, max)``, or ``None`` when the raiser gives none.
+
+    See Also:
+        - :exc:`AsyncCheckError`: the subclass for the host failure of a value check that accelerators run
+          asynchronously.
+        - :exc:`TypeCheckError`: a value of the wrong type or dtype.
     """
 
     def __init__(
@@ -116,21 +158,32 @@ class ValueCheckError(BaseError, ValueError):
 
 
 class AsyncCheckError(ValueCheckError, RuntimeError):
-    """Raised on the host by a value check that an accelerator runs as ``torch._assert_async``.
+    """Catch the host failure of a value check that an accelerator runs as torch._assert_async.
 
-    On CUDA, and on MPS from torch 2.13, the same check is not read back on the host: torch raises a
-    :exc:`RuntimeError` by the next synchronization instead, and on CUDA that is a device-side assert after which the
-    context cannot be used. This class is also a :exc:`RuntimeError`, so ``except RuntimeError`` handles a failure on
-    every device, and a :exc:`ValueCheckError` for the callers that catch the host failure as a value check.
+    On CUDA, and on MPS from torch 2.13, the same check is not read back on the host: torch raises a :exc:`RuntimeError`
+    by the next synchronization instead, and on CUDA that is a device-side assert after which the context cannot be
+    used. This class is also a :exc:`RuntimeError`, so ``except RuntimeError`` catches a failure on every device, and a
+    :exc:`ValueCheckError` for the callers that catch the host failure as a value check.
+
+    See Also:
+        - :exc:`ValueCheckError`: the parent class, for value checks that always run on the host.
+        - :func:`~kornia.core.check.disable_checks`: skips these checks too, except those that keep an index in bounds.
     """
 
 
 class DeviceError(BaseError, ValueError):
-    """Raised when device mismatch validation fails. Also a :exc:`ValueError`.
+    """Catch a device mismatch between tensors; also a ValueError.
+
+    :func:`~kornia.core.check.KORNIA_CHECK_SAME_DEVICE` and :func:`~kornia.core.check.KORNIA_CHECK_SAME_DEVICES` raise
+    it, and so do functions that check devices themselves.
 
     Attributes:
-        actual_devices: The actual device(s) that failed validation.
-        expected_device: The expected device.
+        actual_devices: the devices of the tensors that failed validation.
+        expected_device: the expected device.
+
+    See Also:
+        - :exc:`TypeCheckError`: what :func:`~kornia.core.check.KORNIA_CHECK_SAME_DEVICES` raises for an argument that
+          is not a non-empty list of tensors.
     """
 
     def __init__(
@@ -146,4 +199,13 @@ class DeviceError(BaseError, ValueError):
 
 
 class ImageError(BaseError, ValueError):
-    """Raised when image-specific validation fails. Also a :exc:`ValueError`."""
+    """Catch a tensor without the channel layout of an image; also a ValueError.
+
+    :func:`~kornia.core.check.KORNIA_CHECK_IS_COLOR`, :func:`~kornia.core.check.KORNIA_CHECK_IS_GRAY`,
+    :func:`~kornia.core.check.KORNIA_CHECK_IS_COLOR_OR_GRAY` and :func:`~kornia.core.check.KORNIA_CHECK_IS_IMAGE` raise
+    it when the shape does not match the channel layout they check. It carries no attributes.
+
+    See Also:
+        - :exc:`ShapeError`: every other shape failure, with the shapes as attributes.
+        - :exc:`ValueCheckError`: what :func:`~kornia.core.check.KORNIA_CHECK_IS_IMAGE` raises for values out of range.
+    """

@@ -67,16 +67,19 @@ class TestDistortionAffine(BaseTester):
         self._test_cardinality_distort_batch(device, dtype, batch_size)
         self._test_cardinality_undistort_batch(device, dtype, batch_size)
 
-    # NOTE: data generated with sophus-rs
     def test_distort_points_roundtrip(self, device, dtype):
+        # Points on the normalized z = 1 plane, as distort_points_affine takes them, mapped to a 640 by 480 image:
+        # (u, v) = (600 x + 319.5, 600 y + 239.5). The coordinates are binary fractions, so every product, pixel and
+        # round-trip value is exact in float16; bfloat16 rounds the pixels within its tolerance. The previous
+        # pixel-scale inputs mapped to pixels up to 383719.5, past float16's 65504.
         points = torch.tensor(
             [
                 [0.0, 0.0],
-                [1.0, 400.0],
-                [320.0, 240.0],
-                [319.5, 239.5],
-                [100.0, 40.0],
-                [639.0, 479.0],
+                [-0.5, -0.375],
+                [0.5, 0.375],
+                [0.25, -0.125],
+                [-0.03125, 0.0625],
+                [-0.53125, -0.390625],
             ],
             device=device,
             dtype=dtype,
@@ -85,17 +88,20 @@ class TestDistortionAffine(BaseTester):
         expected = torch.tensor(
             [
                 [319.5, 239.5],
-                [919.5, 240239.5],
-                [192319.5, 144239.5],
-                [192019.5, 143939.5],
-                [60319.5, 24239.5],
-                [383719.5, 287639.5],
+                [19.5, 14.5],
+                [619.5, 464.5],
+                [469.5, 164.5],
+                [300.75, 277.0],
+                [0.75, 5.125],
             ],
             device=device,
             dtype=dtype,
         )
         points_distorted = distort_points_affine(points, params)
-        self.assert_close(points_distorted, expected)
+        # bfloat16 holds the principal point 319.5 as 320 and rounds 600 x to its 2 px spacing between 256 and 512,
+        # so its pixels are off by up to 1.25 px here: allow one spacing at that scale. float16 is exact.
+        tol = {"atol": 256 * torch.finfo(dtype).eps, "rtol": 0.0} if dtype == torch.bfloat16 else {}
+        self.assert_close(points_distorted, expected, **tol)
         self.assert_close(points, undistort_points_affine(points_distorted, params))
 
     def test_dx_distort_points(self, device, dtype):
@@ -279,6 +285,13 @@ class TestDistortionKannalaBrandt(BaseTester):
         )
         points_distorted = distort_points_kannala_brandt(points, params)
         self.assert_close(points_distorted, expected)
+        if dtype in (torch.float16, torch.bfloat16):
+            # These rays are 89.8 to 89.9 degrees off axis, where the normalized radius is about 1 / cos^2(theta)
+            # = 1e5 times as sensitive to the ray angle as the distorted pixel is: one half-precision ulp of the
+            # ~2000 px pixel (2 px in float16, 16 px in bfloat16) moves the recovered point by 1 to 200 normalized
+            # units, even with the inverse run in float32. The half-precision round trip is pinned
+            # on well-conditioned points by test_convention_undistort_points_kannala_brandt_round_trip_closes_4308.
+            return
         self.assert_close(points, undistort_points_kannala_brandt(points_distorted, params))
 
     def test_dx_distort_points_kannala_brandt(self, device, dtype) -> None:
@@ -483,9 +496,8 @@ class TestDistortionKannalaBrandt(BaseTester):
             torch.tensor([0.5392647981643677, 0.26963239908218384], device=device, dtype=dtype),
         )
 
+    @pytest.mark.applies_to(devices=("cpu",), dtypes=("float16",), reason="CPU float16 near-origin regression")
     def test_convention_nearest_float16_point_is_not_collapsed_4308(self, device, dtype):
-        if device.type != "cpu" or dtype != torch.float16:
-            pytest.skip("CPU float16 near-origin regression")
         params = torch.tensor([100.0, 50.0, 4.0, 3.0, 0.1, 0.01, 0.001, 0.0001], device=device, dtype=dtype)
         point = torch.tensor([4.00390625, 3.0], device=device, dtype=dtype)
         undistorted = undistort_points_kannala_brandt(point, params)

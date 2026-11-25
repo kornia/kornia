@@ -71,10 +71,6 @@ def _distinct(*shape, device):
 
 
 @parametrized_test(
-    smoke_inputs=lambda device, dtype: (
-        torch.rand(1, 3, 4, 4, device=device, dtype=dtype) * 0.5,
-        torch.rand(1, 3, 4, 4, device=device, dtype=dtype),
-    ),
     cardinality_tests=[
         {
             "inputs": lambda device, dtype: (

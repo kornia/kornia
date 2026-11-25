@@ -45,10 +45,12 @@ from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYP
 from kornia.core.exceptions import BaseError, ValueCheckError
 from kornia.core.tensor_wrapper import _unwrap, _wrap
 from kornia.core.utils import (
+    _deepcopy_module_state,
     _right_singular_vector,
     _svd_work_dtype,
     _torch_linalg_svdvals,
     _torch_svd_cast,
+    _torch_svd_right,
     is_compiling,
     register_module_state,
 )
@@ -90,8 +92,8 @@ class Hyperplane(nn.Module):
           caller's ``nn.Parameter`` is kept; any other floating-point tensor, such as a leaf that requires grad or a
           tensor with autograd history, is stored as a buffer and keeps its autograd link; and an integer tensor is
           stored as a buffer (ParametrizedLine rejects one).
-          ``copy.deepcopy`` of a plane whose state carries autograd history raises ``RuntimeError``
-          (`#4923 <https://github.com/kornia/kornia/issues/4923>`_).
+          ``copy.deepcopy`` holds a tensor with autograd history as a new leaf that keeps ``requires_grad``, as for
+          :class:`~kornia.geometry.quaternion.Quaternion`.
         - Points broadcast against the planes as torch broadcasts ``(..., 3)`` against ``(B, 3)``: the axis before
           the coordinates pairs with the plane batch. One plane, or a batch of one, takes points of any leading
           shape; a batch of ``B > 1`` takes ``(B, 3)``, one point per plane, a single ``(3,)`` point, or
@@ -116,6 +118,9 @@ class Hyperplane(nn.Module):
         >>> plane.signed_distance(torch.tensor([[1.0, 1.0, 5.0], [0.0, 0.0, 0.0]])).data
         tensor([ 3., -2.], grad_fn=<AddBackward0>)
     """
+
+    # Autograd history cannot be deep-copied, so a deep copy holds that state as new leaves.
+    __deepcopy__ = _deepcopy_module_state
 
     def __init__(self, n: Vector3, d: Scalar) -> None:
         super().__init__()
@@ -198,14 +203,25 @@ class Hyperplane(nn.Module):
 
         Args:
             p: Point or batch of points as a :class:`~kornia.geometry.vector.Vector3`
-                or :class:`torch.Tensor`. Gradients with respect to the points are preserved for both.
+                or :class:`torch.Tensor` of shape ``(..., 3)``. Gradients with respect to the points are preserved
+                for both.
 
         Returns:
             :class:`~kornia.geometry.vector.Scalar` containing signed distance
             values for each input point.
+
+        Raises:
+            ShapeError: if a tensor ``p`` does not end in 3 coordinates. Like every kornia shape check, it is
+                skipped by ``disable_checks()``.
         """
-        KORNIA_CHECK(isinstance(p, (Vector3, torch.Tensor)))
-        return Scalar(batched_dot_product(self.normal.data, _unwrap(p)) + self.offset.data)
+        KORNIA_CHECK(
+            isinstance(p, (Vector3, torch.Tensor)), lambda: f"p must be a Vector3 or a Tensor, got {type(p).__name__}."
+        )
+        p_data = _unwrap(p)
+        # A Vector3 already ends in 3 coordinates; a plain tensor ending in 1 would otherwise broadcast
+        # against the normal and pass for the point (p, p, p) (#6902).
+        KORNIA_CHECK_SHAPE(p_data, ["*", "3"], "p must be points of shape (..., 3).")
+        return Scalar(batched_dot_product(self.normal.data, p_data) + self.offset.data)
 
     # https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/Hyperplane.h#L154
     def projection(self, p: Vector3 | torch.Tensor) -> Vector3:
@@ -279,8 +295,13 @@ class Hyperplane(nn.Module):
         p2_data = _unwrap(p2)
 
         KORNIA_CHECK_SHAPE(p0_data, ["*", "3"])
-        KORNIA_CHECK(p0_data.shape == p1_data.shape)
-        KORNIA_CHECK(p1_data.shape == p2_data.shape)
+        KORNIA_CHECK(
+            p0_data.shape == p1_data.shape == p2_data.shape,
+            lambda: (
+                f"p0, p1 and p2 must have the same shape, got {list(p0_data.shape)}, {list(p1_data.shape)} and "
+                f"{list(p2_data.shape)}."
+            ),
+        )
 
         # Half-precision points are converted to float32 before the edges are taken. In float16 the cross product of
         # a small triangle underflows (edges of 1e-4 give 1e-8, below the smallest subnormal 6e-8), that of a large
@@ -418,7 +439,7 @@ def fit_plane(points: Vector3) -> Hyperplane:
     # avoiding an unused N-by-N left factor. The SVD is of the detached points: the normal's gradient comes from
     # _right_singular_vector, which stays finite when the two in-plane singular values are equal.
     work = points_centered.detach().to(_svd_work_dtype(points_centered))
-    _, S, V = _torch_svd_cast(work, full_matrices=False)
+    S, V = _torch_svd_right(work)
 
     # The plane is determined when the centred points have rank 2: the second singular value
     # must be nonzero relative to the first, a scale-invariant test that keeps a small or thin

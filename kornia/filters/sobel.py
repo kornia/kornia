@@ -181,7 +181,8 @@ def spatial_gradient3d(input: torch.Tensor, mode: str = "diff", order: int = 1) 
         out[..., 0, :, :, :] = x[..., center, center, right] - x[..., center, center, left]
         out[..., 1, :, :, :] = x[..., center, right, center] - x[..., center, left, center]
         out[..., 2, :, :, :] = x[..., right, center, center] - x[..., left, center, center]
-        out = 0.5 * out
+        # The differences own this buffer; scaling it does not need another full volume.
+        out.mul_(0.5)
     else:
         # prepare kernel
         # allocate kernel
@@ -237,6 +238,7 @@ def sobel(input: torch.Tensor, normalized: bool = True, eps: float = 1e-6) -> to
         - :class:`Sobel`: the module form.
         - :func:`spatial_gradient`: the signed x and y derivatives, on an added axis.
         - :func:`canny`: thins the edges by non-maximum suppression and thresholds them.
+        - :func:`~kornia.morphology.gradient`: a morphological edge strength, the dilation minus the erosion.
 
     Example:
         >>> input = torch.rand(1, 3, 4, 4)

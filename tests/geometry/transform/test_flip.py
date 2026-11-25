@@ -24,7 +24,7 @@ from testing.base import BaseTester
 
 
 class TestVflip(BaseTester):
-    def test_smoke(self, device, dtype):
+    def test_smoke(self):
         f = kornia.geometry.transform.Vflip()
         repr = "Vflip"
         assert str(f) == repr
@@ -53,7 +53,6 @@ class TestVflip(BaseTester):
 
         self.assert_close(f(input), expected)
 
-    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self, device, dtype):
         @torch.jit.script
         def op_script(data: torch.Tensor) -> torch.Tensor:
@@ -93,7 +92,7 @@ class TestVflip(BaseTester):
 
 
 class TestHflip(BaseTester):
-    def test_smoke(self, device, dtype):
+    def test_smoke(self):
         f = kornia.geometry.transform.Hflip()
         repr = "Hflip"
         assert str(f) == repr
@@ -124,7 +123,6 @@ class TestHflip(BaseTester):
 
         self.assert_close(f(input), expected)
 
-    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self, device, dtype):
         @torch.jit.script
         def op_script(data: torch.Tensor) -> torch.Tensor:
@@ -164,7 +162,7 @@ class TestHflip(BaseTester):
 
 
 class TestRot180(BaseTester):
-    def test_smoke(self, device, dtype):
+    def test_smoke(self):
         f = kornia.geometry.transform.Rot180()
         repr = "Rot180"
         assert str(f) == repr
@@ -193,7 +191,6 @@ class TestRot180(BaseTester):
 
         self.assert_close(f(input), expected)
 
-    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self, device, dtype):
         @torch.jit.script
         def op_script(data: torch.Tensor) -> torch.Tensor:

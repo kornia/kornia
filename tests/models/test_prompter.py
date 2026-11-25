@@ -19,7 +19,6 @@ import pytest
 import torch
 
 from kornia.contrib.visual_prompter import VisualPrompter
-from kornia.core._compat import torch_version
 from kornia.models.sam import SamConfig
 
 from testing.base import BaseTester
@@ -44,12 +43,12 @@ class TestVisualPrompter(BaseTester):
         assert not prompter.is_image_set
 
     @pytest.mark.slow
-    @pytest.mark.parametrize("batch_size", [1, 4])
-    @pytest.mark.parametrize("N", [2, 5])
     @pytest.mark.parametrize("multimask_output", [True, False])
-    def test_cardinality(self, device, batch_size, N, multimask_output):
+    def test_cardinality(self, device, multimask_output):
         # SAM: don't supports float64
         dtype = torch.float32
+        # The prompt count and the points per prompt take no branch; ``multimask_output`` picks the masks.
+        batch_size, N = 4, 2
         data = torch.rand(3, 77, 128, device=device, dtype=dtype)
         prompter = VisualPrompter(SamConfig("vit_b"), device, dtype)
 
@@ -123,13 +122,6 @@ class TestVisualPrompter(BaseTester):
             prompter._valid_keypoints(torch.rand(1, 1, 2), torch.rand(2, 1))
         assert "The keypoints and labels should have the same batch size" in str(errinfo)
 
-    @pytest.mark.skip(reason="Unnecessary test")
-    def test_gradcheck(self, device): ...
-
-    @pytest.mark.skip(reason="Unnecessary test")
-    def test_module(self): ...
-
-    @pytest.mark.skipif(torch_version() in {"2.1.2", "2.0.1"}, reason="Not working well")
     def test_dynamo(self, device, torch_optimizer):
         dtype = torch.float32
         batch_size = 1

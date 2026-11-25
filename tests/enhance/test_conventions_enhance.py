@@ -227,10 +227,9 @@ class TestEnhanceConventions(BaseTester):
         with pytest.raises(BaseError, match="unique"):
             kornia.enhance.integral_tensor(data, (1, -1))
 
+    @pytest.mark.applies_to(devices=("cpu",), reason="bandwidth check raises synchronously only on CPU")
     def test_convention_histogram_zero_bandwidth_is_rejected_5315(self, device, dtype):
-        if device.type != "cpu":
-            # On CUDA and MPS (torch >= 2.13) torch._assert_async raises at the next sync; CUDA then cannot recover.
-            pytest.skip("bandwidth check raises synchronously only on CPU")
+        # On CUDA and MPS (torch >= 2.13) torch._assert_async raises at the next sync; CUDA then cannot recover.
         values = torch.tensor([[0.0, 1.0]], device=device, dtype=dtype)
         bins = torch.tensor([0.0, 1.0], device=device, dtype=dtype)
         with pytest.raises(RuntimeError, match="Bandwidth must be finite"):
@@ -325,9 +324,11 @@ class TestEnhanceConventions(BaseTester):
         74, 255, 91, 173, 116, 157, 215,
     ]  # fmt: skip
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"),
+        reason="the expected levels are those of the float32 values, which half precision rounds first",
+    )
     def test_convention_equalize_matches_pil_on_continuous_input_6181(self, device, dtype):
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("the expected levels are those of the float32 values, which half precision rounds first")
         image = torch.tensor(self._PIL_VALUES, device=device, dtype=dtype).repeat(33, 1)[None, None]
         expected = torch.tensor(self._PIL_EXPECTED, device=device, dtype=dtype).div(255).expand(33, 32)
         assert torch.equal(kornia.enhance.equalize(image)[0, 0], expected)

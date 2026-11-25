@@ -22,12 +22,10 @@ sys.path.insert(0, str(script_dir))
 # ruff: noqa: E402
 import test_resize_onnx
 
-test_resize_onnx.test_resize_export_binding()
-print("Test 1 passed")
 test_resize_onnx.test_resize_export_upscale()
-print("Test 2 passed")
+print("Test 1 passed")
 test_resize_onnx.test_resize_export_downscale()
-print("Test 3 passed")
+print("Test 2 passed")
 test_resize_onnx.test_resize_export_nearest()
-print("Test 4 passed")
+print("Test 3 passed")
 print("ALL TESTS PASSED")

@@ -21,7 +21,7 @@ import torch
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _tuple_range_reader
-from kornia.core.utils import _extract_device_dtype
+from kornia.core.utils import _extract_device_dtype, _to_device_nonblocking
 
 
 class RotationGenerator3D(RandomGeneratorBase):
@@ -82,11 +82,13 @@ class RotationGenerator3D(RandomGeneratorBase):
         _device, _dtype = _extract_device_dtype([self.degrees])
 
         return {
-            "yaw": _adapted_rsampling((batch_size,), self.yaw_sampler, same_on_batch).to(device=_device, dtype=_dtype),
-            "pitch": _adapted_rsampling((batch_size,), self.pitch_sampler, same_on_batch).to(
-                device=_device, dtype=_dtype
+            "yaw": _to_device_nonblocking(
+                _adapted_rsampling((batch_size,), self.yaw_sampler, same_on_batch), _device, _dtype
             ),
-            "roll": _adapted_rsampling((batch_size,), self.roll_sampler, same_on_batch).to(
-                device=_device, dtype=_dtype
+            "pitch": _to_device_nonblocking(
+                _adapted_rsampling((batch_size,), self.pitch_sampler, same_on_batch), _device, _dtype
+            ),
+            "roll": _to_device_nonblocking(
+                _adapted_rsampling((batch_size,), self.roll_sampler, same_on_batch), _device, _dtype
             ),
         }

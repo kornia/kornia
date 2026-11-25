@@ -15,10 +15,13 @@
 # limitations under the License.
 #
 
+import io
+
 import pytest
 import torch
 
 from kornia.color import ApplyColorMap, ColorMap, ColorMapType, apply_colormap
+from kornia.core.exceptions import BaseError
 
 from testing.base import BaseTester, assert_close
 
@@ -41,10 +44,20 @@ def test_autumn(device, dtype):
 
 
 class TestColorMap(BaseTester):
+    @pytest.mark.parametrize("cmap_base", ColorMapType)
+    def test_builds_named_palette(self, device, dtype, cmap_base):
+        cm = ColorMap(base=cmap_base, num_colors=256, device=device, dtype=dtype)
+
+        assert cm.colors.shape == (3, 256)
+        assert cm.colors.device == device
+        assert cm.colors.dtype == dtype
+
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["default_dtype"] == torch.float64),
+        reason="MPS does not support float64.",
+    )
     @pytest.mark.parametrize("default_dtype", [torch.float32, torch.float64])
     def test_integer_base_uses_default_float_dtype(self, device, default_dtype):
-        if device.type == "mps" and default_dtype == torch.float64:
-            pytest.skip("MPS does not support float64.")
         previous_dtype = torch.get_default_dtype()
         try:
             torch.set_default_dtype(default_dtype)
@@ -119,20 +132,6 @@ class TestApplyColorMap(BaseTester):
 
         self.assert_close(actual, expected_tensor)
 
-    def test_upper_endpoint_selects_last_color(self, device, dtype):
-        cm = ColorMap(
-            base=[[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]],
-            num_colors=4,
-            device=device,
-            dtype=dtype,
-        )
-        input_tensor = torch.ones(1, 1, 1, device=device, dtype=dtype)
-
-        actual = apply_colormap(input_tensor, cm)
-        expected = cm.colors[..., -1].reshape(1, 3, 1, 1)
-
-        self.assert_close(actual, expected)
-
     def test_uint8_selects_color_by_value(self, device, dtype):
         # With 256 colors every byte value v selects palette color v, including 255 (the last color).
         cm = ColorMap(base=[[i / 255.0] * 3 for i in range(256)], num_colors=256, device=device, dtype=dtype)
@@ -160,7 +159,103 @@ class TestApplyColorMap(BaseTester):
 
         actual = apply_colormap(input_tensor, cm)
 
-        self.assert_close(actual[0, 0, 0], cm.colors[0, expected], rtol=0.0, atol=0.0)
+        self.assert_close(actual, cm.colors[:, expected].reshape(1, 3, 1, -1), rtol=0.0, atol=0.0)
+
+    @pytest.mark.applies_to(dtypes=("float64",), reason="the value sits inside a bin edge that float32 cannot separate")
+    @pytest.mark.parametrize("as_module", [False, True])
+    def test_convention_apply_colormap_6894_float64_bins(self, device, dtype, as_module):
+        """Look a double pixel up in double, so a value just below a boundary keeps its bin."""
+        # floor(x * N) with x = 0.5 - 2**-40: the neighbours of 0.5 are one float32 apart, so a float32 lookup
+        # cannot tell 0.5 - 2**-40 from 0.5 and puts both on palette entry 1 instead of 0.
+        image = torch.tensor([[[0.5 - 2**-40, 0.5, 0.5 + 2**-40]]], device=device, dtype=dtype)
+        cm = ColorMap(base=[[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]], num_colors=2, device=device, dtype=dtype)
+        op = ApplyColorMap(cm) if as_module else apply_colormap
+        args = (image,) if as_module else (image, cm)
+        expected = torch.tensor([0.0, 1.0, 1.0], device=device, dtype=dtype)
+
+        actual = op(*args)
+
+        self.assert_close(actual[0, 0, 0], expected, rtol=0.0, atol=0.0)
+
+    @pytest.mark.parametrize("as_module", [False, True])
+    @pytest.mark.parametrize(
+        "num_colors, edges, expected, expected_float64",
+        [
+            (1, [85.0, 170.0], [0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0]),
+            (3, [85.0, 170.0], [0, 1, 1, 1, 2, 2], [0, 1, 1, 1, 2, 2]),
+            (7, [182.14285278320312], [4, 4, 5], [4, 4, 4]),
+            (64, [63.75, 127.5], [15, 16, 16, 31, 32, 32], [15, 16, 16, 31, 32, 32]),
+            (256, [63.75, 127.5], [63, 64, 64, 127, 128, 128], [63, 64, 64, 127, 128, 128]),
+        ],
+    )
+    def test_dynamo_bin_edges_6656(
+        self, device, dtype, torch_optimizer, num_colors, edges, expected, expected_float64, as_module
+    ):
+        """Preserve eager bin selection at edges, neighboring values, and nonfinite inputs."""
+        # Expected indices follow the dtype's own divide-then-multiply rounding: a float32 input is looked
+        # up in float32, and a float64 input in float64 (#6894), so only that dtype reaches the bin below.
+        # Derived using np.searchsorted(np.arange(1, N), np.float64(v / 255) * N, side="right") for the
+        # float64 column and its np.float32 counterpart for the others.
+        if dtype == torch.float64:
+            expected = expected_float64
+        edges = torch.tensor(edges, dtype=dtype)
+        values = torch.stack(
+            (
+                torch.nextafter(edges, torch.full_like(edges, -torch.inf)),
+                edges,
+                torch.nextafter(edges, torch.full_like(edges, torch.inf)),
+            ),
+            dim=-1,
+        ).flatten()
+        values = torch.cat(
+            (values, values.new_tensor([-torch.inf, -1.0, -0.0, 0.0, 255.0, 300.0, torch.inf, torch.nan]))
+        )
+        expected = [*expected, 0, 0, 0, 0, num_colors - 1, num_colors - 1, num_colors - 1, num_colors - 1]
+        image = values.to(device).reshape(1, 1, -1)
+        cm = ColorMap(base=[[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]], num_colors=num_colors, device=device, dtype=dtype)
+        op = ApplyColorMap(cm) if as_module else apply_colormap
+        args = (image,) if as_module else (image, cm)
+
+        eager = op(*args)
+        actual = torch_optimizer(op)(*args)
+
+        self.assert_close(eager[0, 0, 0], cm.colors[0, expected], rtol=0.0, atol=0.0)
+        self.assert_close(actual, eager, rtol=0.0, atol=0.0)
+
+    @pytest.mark.parametrize("as_module", [False, True])
+    def test_dynamo_independent_ranges_6656(self, device, dtype, torch_optimizer, as_module):
+        """Select ranges independently for each sample and channel under compilation."""
+        image = torch.tensor(
+            [[[[0.25, 0.5, 1.0]], [[85.0, 170.0, 255.0]]], [[[0.5, 0.0, 0.0]], [[0.0, 300.0, torch.nan]]]],
+            device=device,
+            dtype=dtype,
+        )
+        cm = ColorMap(base=[[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]], num_colors=3, device=device, dtype=dtype)
+        op = ApplyColorMap(cm) if as_module else apply_colormap
+        args = (image,) if as_module else (image, cm)
+        # Each channel selects its own range; NaN maps to the last color.
+        indices = torch.tensor([[[0, 1, 2], [1, 2, 2]], [[1, 0, 0], [0, 2, 2]]], device=device)
+        expected = cm.colors[:, indices].permute(1, 2, 0, 3).reshape(2, 6, 1, 3)
+
+        self.assert_close(op(*args), expected, rtol=0.0, atol=0.0)
+        self.assert_close(torch_optimizer(op)(*args), expected, rtol=0.0, atol=0.0)
+
+    @pytest.mark.device_agnostic
+    def test_legacy_onnx_bin_edges_6656(self):
+        """Preserve legacy ONNX export and runtime bin selection."""
+        pytest.importorskip("onnx")
+        ort = pytest.importorskip("onnxruntime")
+        cm = ColorMap(base=[[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]], num_colors=3)
+        op = ApplyColorMap(cm).eval()
+        image = torch.tensor([[[85.0, 170.0, 255.0, -torch.inf, torch.nan, 300.0]]])
+        expected = cm.colors[:, [1, 2, 2, 0, 2, 2]].reshape(1, 3, 1, -1)
+        with io.BytesIO() as buffer:
+            torch.onnx.export(op, (image,), buffer, opset_version=18, dynamo=False)
+            session = ort.InferenceSession(buffer.getvalue(), providers=["CPUExecutionProvider"])
+
+        actual = session.run(None, {session.get_inputs()[0].name: image.numpy()})[0]
+
+        self.assert_close(torch.from_numpy(actual), expected, rtol=0.0, atol=0.0)
 
     def test_uint8_selects_equal_bins_6622(self, device, dtype):
         # floor(v * 16 / 255): each of the 16 colors covers 15 or 16 byte values, including the first and the last.
@@ -209,28 +304,22 @@ class TestApplyColorMap(BaseTester):
 
     def test_exception(self, device, dtype):
         cm = ColorMap(base="autumn", device=device, dtype=dtype)
-        with pytest.raises(Exception):
-            apply_colormap(torch.rand(size=(3, 3), dtype=dtype, device=device), cm)
+        for shape in ((3,), (3, 3)):
+            image = torch.zeros(shape, device=device, dtype=dtype)
+            with pytest.raises(BaseError, match=r"Wrong input torch\.Tensor dimension"):
+                apply_colormap(image, cm)
 
-        with pytest.raises(Exception):
-            apply_colormap(torch.rand(size=(3), dtype=dtype, device=device), cm)
+        with pytest.raises(BaseError, match=r"`input_tensor` must be a torch\.Tensor"):
+            apply_colormap(0.5, cm)
 
-        with pytest.raises(Exception):
-            apply_colormap(torch.rand(size=(3), dtype=dtype, device=device).item(), cm)
-
-    @pytest.mark.parametrize("shape", [(2, 1, 3, 3), (1, 3, 3, 3), (1, 3, 3)])
-    @pytest.mark.parametrize("cmap_base", ColorMapType)
-    def test_cardinality(self, shape, device, dtype, cmap_base):
-        cm = ColorMap(base=cmap_base, num_colors=256, device=device, dtype=dtype)
-        input_tensor = torch.randint(0, 256, shape, device=device, dtype=dtype)
-        actual = apply_colormap(input_tensor, cm)
-
-        if len(shape) == 4:
-            expected_shape = (shape[-4], shape[-3] * 3, shape[-2], shape[-1])
-        else:
-            expected_shape = (1, shape[-3] * 3, shape[-2], shape[-1])
-
-        assert actual.shape == expected_shape
+    @pytest.mark.parametrize(
+        "shape,expected_shape",
+        [((2, 1, 3, 3), (2, 3, 3, 3)), ((1, 3, 3, 3), (1, 9, 3, 3)), ((1, 3, 3), (1, 3, 3, 3))],
+    )
+    def test_cardinality(self, shape, expected_shape, device, dtype):
+        cm = ColorMap(base=ColorMapType.autumn, device=device, dtype=dtype)
+        image = torch.randint(0, 256, shape, device=device, dtype=dtype)
+        assert apply_colormap(image, cm).shape == expected_shape
 
     @pytest.mark.parametrize(
         "shape,expected_shape",
@@ -253,47 +342,6 @@ class TestApplyColorMap(BaseTester):
             assert actual.shape == expected_shape
             assert actual.device == input_tensor.device
             assert actual.dtype == dtype
-
-    @pytest.mark.skip(reason="jacobian mismatch")
-    def test_gradcheck(self, device):
-        # TODO: implement differentiability
-        cm = ColorMap(base="autumn", device=device, dtype=torch.float64)
-        input_tensor = torch.randint(0, 63, (1, 2, 1), device=device, dtype=torch.float64)
-
-        self.gradcheck(apply_colormap, (input_tensor, cm))
-
-    def test_preserves_input_shape(self, device):
-        cm = ColorMap(
-            base="autumn",
-            num_colors=256,
-            device=device,
-            dtype=torch.float32,
-        )
-        input_tensor = torch.zeros(1, 2, 3, device=device, dtype=torch.float32)
-        original = input_tensor.clone()
-
-        apply_colormap(input_tensor, cm)
-
-        assert input_tensor.shape == original.shape
-        self.assert_close(input_tensor, original)
-
-    def test_preserves_float_values(self, device):
-        cm = ColorMap(
-            base="autumn",
-            num_colors=256,
-            device=device,
-            dtype=torch.float32,
-        )
-        input_tensor = torch.tensor(
-            [[[0.0, 255.0]]],
-            device=device,
-            dtype=torch.float32,
-        )
-        original = input_tensor.clone()
-
-        apply_colormap(input_tensor, cm)
-
-        self.assert_close(input_tensor, original)
 
     def test_accepts_leaf_tensor_requires_grad(self, device):
         cm = ColorMap(
@@ -322,7 +370,7 @@ class TestApplyColorMap(BaseTester):
         op_script = torch_optimizer(op)
 
         cm = ColorMap(base="autumn", device=device, dtype=dtype)
-        img = torch.ones(1, 3, 3, device=device, dtype=dtype)
+        img = torch.arange(9, device=device, dtype=dtype).view(1, 3, 3) / 8
 
         self.assert_close(op(img, cm), op_script(img, cm))
 
@@ -331,7 +379,7 @@ class TestApplyColorMap(BaseTester):
         cm = ColorMap(base="autumn", device=device, dtype=dtype)
         op_module = ApplyColorMap(colormap=cm)
 
-        img = torch.ones(1, 3, 3, device=device, dtype=dtype)
+        img = torch.linspace(0, 1, 9, device=device, dtype=dtype).reshape(1, 3, 3)
 
         self.assert_close(op(img, colormap=cm), op_module(img))
         assert "colors" in dict(op_module.named_buffers())

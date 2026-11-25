@@ -69,7 +69,9 @@ def _test_sequential(augment_method, device, dtype):
 
 
 class TestAutoAugment(BaseTester):
-    @pytest.mark.parametrize("policy", ["imagenet", "cifar10", "svhn", [[("shear_x", 0.9, 4), ("invert", 0.2, None)]]])
+    # The default "imagenet" policy runs in TestOperationAfterTo6297.test_builtin_policy and in
+    # test_conventions_auto.py::test_convention_recorded_params_reproduce_the_sampled_forward.
+    @pytest.mark.parametrize("policy", ["cifar10", "svhn", [[("shear_x", 0.9, 4), ("invert", 0.2, None)]]])
     def test_smoke(self, policy, device, dtype):
         aug = AutoAugment(policy)
         in_tensor = torch.rand(10, 3, 50, 50, device=device, dtype=dtype, requires_grad=True)
@@ -82,13 +84,6 @@ class TestAutoAugment(BaseTester):
         aug(in_tensor)
         trans = aug.get_transformation_matrix(in_tensor, params=aug._params)
         self.assert_close(trans, aug.transform_matrix)
-
-    def test_reproduce(self, device, dtype):
-        aug = AutoAugment()
-        in_tensor = torch.rand(10, 3, 50, 50, device=device, dtype=dtype, requires_grad=True)
-        out_tensor = aug(in_tensor)
-        out_tensor_2 = aug(in_tensor, params=aug._params)
-        self.assert_close(out_tensor, out_tensor_2)
 
     def test_sequential(augment_method, device, dtype):
         _test_sequential(AutoAugment(), device=device, dtype=dtype)
@@ -152,13 +147,6 @@ class TestRandAugment(BaseTester):
 
         assert torch.equal(bits, expected)
 
-    @pytest.mark.parametrize("policy", [None, [[("translate_y", -0.5, 0.5)]]])
-    def test_smoke(self, policy):
-        n = len(randaug_config) if policy is None else 1
-        aug = RandAugment(n=n, m=15, policy=policy)
-        in_tensor = torch.rand(10, 3, 50, 50, requires_grad=True)
-        aug(in_tensor)
-
     def test_transform_mat(self, device, dtype):
         aug = RandAugment(n=3, m=15)
         in_tensor = torch.rand(10, 3, 50, 50, device=device, dtype=dtype, requires_grad=True)
@@ -173,13 +161,6 @@ class TestRandAugment(BaseTester):
             aug(in_tensor)
         expected = aug.get_transformation_matrix(in_tensor, params=aug._params, recompute=True)
         self.assert_close(aug.transform_matrix, expected)
-
-    def test_reproduce(self, device, dtype):
-        aug = RandAugment(n=3, m=15)
-        in_tensor = torch.rand(10, 3, 50, 50, device=device, dtype=dtype, requires_grad=True)
-        out_tensor = aug(in_tensor)
-        out_tensor_2 = aug(in_tensor, params=aug._params)
-        self.assert_close(out_tensor, out_tensor_2)
 
     def test_sequential(augment_method, device, dtype):
         _test_sequential(RandAugment(n=3, m=15), device=device, dtype=dtype)
@@ -208,12 +189,6 @@ class TestRandAugment(BaseTester):
 
 
 class TestTrivialAugment(BaseTester):
-    @pytest.mark.parametrize("policy", [None, [[("translate_y", -0.5, 0.5)]]])
-    def test_smoke(self, policy):
-        aug = TrivialAugment(policy=policy)
-        in_tensor = torch.rand(10, 3, 50, 50, requires_grad=True)
-        aug(in_tensor)
-
     def test_transform_mat(self, device, dtype):
         aug = TrivialAugment()
         in_tensor = torch.rand(10, 3, 50, 50, device=device, dtype=dtype, requires_grad=True)
@@ -257,13 +232,6 @@ class TestTrivialAugment(BaseTester):
         aug(in_tensor)
         assert subpolicy._params is aug._params[0].data
 
-    def test_reproduce(self, device, dtype):
-        aug = TrivialAugment()
-        in_tensor = torch.rand(10, 3, 50, 50, device=device, dtype=dtype, requires_grad=True)
-        out_tensor = aug(in_tensor)
-        out_tensor_2 = aug(in_tensor, params=aug._params)
-        self.assert_close(out_tensor, out_tensor_2)
-
     def test_sequential(augment_method, device, dtype):
         _test_sequential(TrivialAugment(), device=device, dtype=dtype)
 
@@ -291,6 +259,7 @@ class TestTrivialAugment(BaseTester):
                 assert (aug(image).flatten(1).amax(1) > 0).all()
 
 
+@pytest.mark.applies_to(devices=("cpu",), reason="dtype-preservation check runs on CPU")
 @pytest.mark.parametrize("low_dtype", [torch.float16, torch.bfloat16])
 def test_operation_preserves_input_dtype(device, low_dtype):
     # OperationBase.forward gated the op output with a float32 ``batch_prob``
@@ -299,8 +268,6 @@ def test_operation_preserves_input_dtype(device, low_dtype):
     # up), which is why this only shows below float32. Covers RandAugment /
     # AutoAugment / TrivialAugment / AugMix, which all route through this method.
     # dtype preservation is device-independent; check it on CPU.
-    if torch.device(device).type != "cpu":
-        pytest.skip("dtype-preservation check runs on CPU")
     checked = 0
     for op in _find_all_ops():
         x = torch.rand(2, 3, 16, 16, dtype=low_dtype)

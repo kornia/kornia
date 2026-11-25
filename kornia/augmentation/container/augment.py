@@ -22,7 +22,7 @@ from typing import Any, Dict, Iterator, List, Literal, Optional, Sequence, Tuple
 import torch
 from torch import nn
 
-from kornia.augmentation._2d.base import RigidAffineAugmentationBase2D
+from kornia.augmentation._2d.base import RigidAffineAugmentationBase2D, _InputMetadata
 from kornia.augmentation._2d.geometric.elastic_transform import RandomElasticTransform
 from kornia.augmentation._2d.geometric.fisheye import RandomFisheye
 from kornia.augmentation._2d.geometric.thin_plate_spline import RandomThinPlateSpline
@@ -33,14 +33,14 @@ from kornia.constants import DataKey, Resample
 from kornia.core.check import _check_async
 from kornia.core.external import PILImage as Image
 from kornia.core.external import numpy as np
-from kornia.core.mixin.image_module import _rebuild_container
+from kornia.core.mixin.image_module import _is_pil_image, _rebuild_container
 from kornia.core.ops import eye_like
 from kornia.core.utils import _normalize_to_float32_or_float64, is_autocast_enabled, is_exporting
 from kornia.geometry.boxes import Boxes, VideoBoxes
 from kornia.geometry.keypoints import Keypoints, VideoKeypoints
 from kornia.image.utils import image_to_tensor
 
-from .base import TransformMatrixMinIn
+from .base import TransformMatrixMinIn, _DeferredMatrix
 from .image import ImageSequential
 from .ops import AugmentationSequentialOps, DataType, InputSequentialOps, _filter_child_options, _validate_extra_args
 from .params import ParamItem
@@ -67,13 +67,6 @@ def _is_numpy_array(arg: Any) -> bool:
     # imported, and an import inside a compiled ``forward`` is a graph break (``importlib.import_module``).
     numpy_module = sys.modules.get("numpy")
     return numpy_module is not None and isinstance(arg, numpy_module.ndarray)
-
-
-def _is_pil_image(arg: Any) -> bool:
-    # Look PIL up for the same reason as NumPy above, and because Pillow is optional: a PIL image can exist only once
-    # PIL is imported, so a tensor mask must not load it through the lazy loader.
-    pil_module = sys.modules.get("PIL.Image")
-    return pil_module is not None and isinstance(arg, pil_module.Image)
 
 
 # The inputs AugmentationSequential accepts next to a 3D child; a 4D tensor is ambiguous there.
@@ -178,9 +171,17 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
           a bare augmentation gives; next to a video or 3D child it lists the shapes the container runs, the
           video's 5D layout or ``(D, H, W)`` and ``(B, C, D, H, W)``
           (`#4424 <https://github.com/kornia/kornia/issues/4424>`_).
-        - boxes use the inclusive ``xyxy_plus`` convention of :class:`~kornia.geometry.boxes.Boxes`. Flips map
-          ``x' = W - 1 - x`` and ``y' = H - 1 - y`` for every key, as :func:`~kornia.geometry.transform.hflip`
-          does. Labels pass through geometric steps untouched.
+        - a tensor under the bare ``bbox`` or ``bbox_xyxy`` key holds corners in the pixel-centre frame of the
+          image matrices, read as the inclusive ``'vertices_plus'`` or ``'xyxy_plus'`` mode of
+          :class:`~kornia.geometry.boxes.Boxes`, and the matrices move them as they move keypoints: flips map
+          ``x' = W - 1 - x`` and ``y' = H - 1 - y``, as :func:`~kornia.geometry.transform.hflip` does, and its
+          numbers are those of the releases before `#6710 <https://github.com/kornia/kornia/issues/6710>`_. A
+          :class:`~kornia.geometry.boxes.Boxes` object under any key, and a tensor under ``bbox_xywh``, holds
+          exclusive boxes, transformed in the edge frame: ``e' = M (e - 1/2) + 1/2``, so a flip maps
+          ``x' = W - x`` and a 2x resize ``x' = 2 x``. A ``bbox_xywh`` row with zero width or height is no box, as
+          a box ``RandomMosaic`` clips away is: it is accepted, so one container's output is another's input, and
+          every output gives an all-zero row for it. Negative extents still raise. Labels pass through geometric
+          steps untouched.
         - masks are resampled with nearest interpolation by default (see ``extra_args``; padding can still add the
           fill value) and come back in their own dtype. Floating masks use the image's working dtype; integer
           masks use at least float32 (float64 with a float64 image). Integer labels not exactly representable
@@ -347,7 +348,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         ...    torch.tensor([[28.0, 53.0, 143.0, 164.0], [254.0, 158.0, 364.0, 290.0], [307.0, 204.0, 413.0, 350.0]]),
         ...    torch.tensor([[254.0, 158.0, 364.0, 290.0], [307.0, 204.0, 413.0, 350.0]])
         ... ]
-        >>> bbox = [Boxes.from_tensor(i).data for i in bbox]
+        >>> bbox = [Boxes.from_tensor(i).to_tensor("vertices_plus") for i in bbox]
         >>> aug_dict = K.AugmentationSequential(
         ...    K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
         ...    K.RandomHorizontalFlip(p=1.0),
@@ -441,6 +442,18 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
     def _update_transform_matrix_for_valid_op(self, module: nn.Module) -> None:
         if is_exporting():
+            return
+        lazy_args = getattr(module, "_lazy_matrix_args", None)
+        if (
+            lazy_args is not None
+            and isinstance(lazy_args[0], _InputMetadata)
+            and getattr(module, "_transform_matrix", None) is None
+        ):
+            # The child deferred its matrix and keeps only the input's shape, dtype and device for it: keep deferring
+            # it until the chained matrix is read. Reading it here built every child's matrix on every forward, even
+            # when nothing reads them. A child that needs the pixels is read now, as before, so the container never
+            # holds an input.
+            self._transform_matrices.append(_DeferredMatrix(module, lazy_args))
             return
         matrix = module.transform_matrix
         # A nested container whose children are all non-rigid records no matrix under its own mode: skip it, as its
@@ -1254,13 +1267,20 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             raise ValueError(f"Unsupported mode `{DataKey.get(dcate).name}`.")
         if isinstance(arg, Boxes):
             return arg
+        # A tensor under the bare ``"bbox"`` or ``"bbox_xyxy"`` key keeps the legacy inclusive storage, in which image
+        # matrices move its corners as they are: its outputs keep their numbers until frame-named keys exist. Every
+        # other input is stored exclusive and transformed in the edge frame (#6710).
+        legacy = DataKey.get(dcate) in [DataKey.BBOX, DataKey.BBOX_XYXY]
         if self.contains_video_sequential:
             arg = cast(torch.Tensor, arg)
-            return VideoBoxes.from_tensor(arg)
+            # Video boxes are (B, T, N, 4, 2) inclusive corners under every key.
+            return VideoBoxes._from_corners(arg, mode="vertices_plus", inclusive=legacy)
         if self.contains_3d_augmentation:
             raise NotImplementedError("3D box handlers are not yet supported.")
         arg = cast(torch.Tensor, arg)
-        return Boxes.from_tensor(arg, mode=mode)
+        # A zero extent under ``"bbox_xywh"`` is no box, such as the all-zero row ``RandomMosaic`` gives for a box
+        # outside its window: it is accepted and removed, so one container's output is another's input.
+        return Boxes._from_tensor(arg, mode=mode, inclusive=legacy, allow_empty=not legacy)
 
     def _postproc_boxes(
         self, in_arg: DataType, out_arg: Boxes, dcate: DataKey

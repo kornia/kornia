@@ -135,6 +135,8 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         - :class:`~kornia.augmentation.container.AugmentationSequential`: also transforms aligned masks and annotations.
         - :class:`~kornia.augmentation.container.PatchSequential`: runs transforms on a regular patch grid.
         - :class:`~kornia.augmentation.container.VideoSequential`: runs transforms on videos.
+        - :class:`~kornia.core.ImageSequential`: the core container of the same name, which records no parameters to
+          replay and adds a ``to_onnx`` export.
 
     Examples:
         >>> _ = torch.manual_seed(77)

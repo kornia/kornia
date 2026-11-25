@@ -146,6 +146,32 @@ def _affine_fundamental_ties_both_images(
         return (((n2 @ covariance[:2, :2]) * n2).sum(-1) >= floor) & (((n1 @ covariance[2:, 2:]) * n1).sum(-1) >= floor)
 
 
+# The private streams of a seeded eager call, keyed together with the seed and the batch index by _stream_seed.
+_SAMPLE_STREAM, _LO_STREAM, _DEGENSAC_STREAM = 0, 1, 2
+
+_MASK64 = 0xFFFFFFFFFFFFFFFF
+
+
+def _splitmix64(x: int) -> int:
+    """Return the SplitMix64 finalizer of ``x`` (Steele, Lea and Flood, OOPSLA 2014), a bijection of 64-bit integers."""
+    x = (x + 0x9E3779B97F4A7C15) & _MASK64
+    x = ((x ^ (x >> 30)) * 0xBF58476D1CE4E5B9) & _MASK64
+    x = ((x ^ (x >> 27)) * 0x94D049BB133111EB) & _MASK64
+    return x ^ (x >> 31)
+
+
+def _stream_seed(seed: int, stream: int, iteration: int) -> int:
+    """Return the generator seed of batch ``iteration`` of ``stream`` in a call seeded with ``seed``.
+
+    Chaining the finalizer keeps the three keys apart: adding them (``seed + iteration``) made seed ``s + 1`` draw the
+    batches of seed ``s`` shifted by one, and a stream at an offset draw another seed's samples (#6888). The result is
+    below ``2**63``, inside ``torch.Generator.manual_seed``'s domain on every device.
+    """
+    key = _splitmix64(seed & _MASK64)
+    key = _splitmix64(key ^ stream)
+    return _splitmix64(key ^ (iteration & _MASK64)) >> 1
+
+
 def _fundamental_near_rank_one(models: torch.Tensor, threshold: Union[float, torch.Tensor]) -> torch.Tensor:
     r"""Return which fundamental matrices ``(M, 3, 3)`` of Hartley-normalized points are nearly of rank one, ``(M,)``.
 
@@ -391,13 +417,20 @@ class RANSAC(nn.Module):
           runs the same algorithm with its own random stream: a seeded call is reproducible and leaves every global
           generator unchanged, while an unseeded call consumes one global random seed. Its result is not the eager
           one. PROSAC sampling and DEGENSAC are not supported.
-        - Known defect: after compiled estimation on the CPU, a later CUDA process sharing the same inductor cache can
-          save a CPU program as its CUDA artifact, and every CUDA process that loads it then crashes with a
-          segmentation fault on its first call. Use a separate ``TORCHINDUCTOR_CACHE_DIR`` per device, or set
+        - PyTorch before 2.15: after compiled estimation on the CPU, a later CUDA process sharing the same inductor
+          cache can save a CPU program as its CUDA artifact, and every CUDA process that loads it then crashes with a
+          segmentation fault on its first call. Reproduced on 2.14.0; PyTorch 2.15.0 saves a separate CUDA
+          program. On an older PyTorch, use a separate ``TORCHINDUCTOR_CACHE_DIR`` per device, or set
           ``KORNIA_RANSAC_AOT=0`` to skip the artifact. Deleting only ``<TORCHINDUCTOR_CACHE_DIR>/kornia_ransac/``
           does not help: the next CUDA compile reads the same inductor cache and saves the CPU program again
           (`#6278 <https://github.com/kornia/kornia/issues/6278>`_).
         - A caller's autocast region does not change the estimate.
+        - On MPS with the default ``local_optimization="lm"``, ``"homography"``, ``"fundamental"``,
+          ``"fundamental_7pt"`` and ``"fundamental_8pt"`` need torch 2.7 or later. With ``local_optimization="dlt"``,
+          ``"homography"`` needs torch 2.10 or later, and ``"fundamental"``, ``"fundamental_7pt"``,
+          ``"fundamental_8pt"`` and ``"essential"`` need torch 2.14 or later, because their inlier refits use the
+          weighted eight-point solver. On an older torch, set ``PYTORCH_ENABLE_MPS_FALLBACK=1``; see
+          :ref:`MPS linear algebra <mps-linear-algebra>`.
 
     Args:
         model_type: "affine", "homography", "fundamental", "fundamental_7pt", "fundamental_8pt",
@@ -644,7 +677,7 @@ class RANSAC(nn.Module):
         generator = None
         if self.seed is not None:
             generator = torch.Generator(device=device)
-            generator.manual_seed(self.seed + iteration)
+            generator.manual_seed(_stream_seed(self.seed, _SAMPLE_STREAM, iteration))
         if device.type != "cpu" and not self.prosac_sampling:
             return (
                 torch.rand(batch_size, pop_size, device=device, generator=generator)
@@ -1019,8 +1052,7 @@ class RANSAC(nn.Module):
         generator = None
         if self.seed is not None:
             generator = torch.Generator(device=kp1.device)
-            # The sampling generators use seed + batch index, at most sample_budget of them.
-            generator.manual_seed(self.seed + self.sample_budget + iteration)
+            generator.manual_seed(_stream_seed(self.seed, _LO_STREAM, iteration))
         indices = inliers.nonzero().flatten()
         # Independent refits share the current consensus and run in one
         # solver batch, rather than max_lo_iters tiny accelerator calls.
@@ -1531,7 +1563,8 @@ class RANSAC(nn.Module):
         record before the batch. Every recovery draw comes from one private host generator per batch: a device
         generator cannot draw on the host, and the global one, which an unseeded call's minimal samples come from,
         must not advance, or every later sample of the call would differ from ``degensac=False``. A seeded call seeds
-        it ``seed + 2 * sample_budget + iteration``; an unseeded one from the first record setter's sample, drawn from
+        it from the seed, its own stream and the batch index (``_stream_seed``); an unseeded one from the first record
+        setter's sample, drawn from
         the global generator, so that its draws still differ between calls.
         """
         # Transfer and test all record setters together; only the subsequent recovery depends on earlier planes.
@@ -1540,7 +1573,7 @@ class RANSAC(nn.Module):
             return []
         generator = torch.Generator()
         if self.seed is not None:
-            generator.manual_seed(self.seed + 2 * self.sample_budget + iteration)
+            generator.manual_seed(_stream_seed(self.seed, _DEGENSAC_STREAM, iteration))
         else:
             # Python hashes a tuple of ints the same in every process.
             generator.manual_seed(hash(tuple(samples[records[0]].tolist())) & 0x7FFFFFFFFFFFFFFF)

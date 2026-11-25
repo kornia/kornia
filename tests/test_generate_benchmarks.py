@@ -190,11 +190,32 @@ def test_committed_digest_is_fresh(tmp_path: Path) -> None:
     results_root = generate_benchmarks.RESULTS
     if not any(results_root.rglob("*.json")):
         pytest.skip("no committed benchmark results")
-    committed = generate_benchmarks.LLMS_FULL
+    committed = generate_benchmarks.LLMS_FULL.read_bytes()
     copy = tmp_path / "llms-full.txt"
-    copy.write_text(committed.read_text())
+    copy.write_bytes(committed)
     generate_benchmarks.refresh_llms(copy, results_root)
-    assert copy.read_bytes() == committed.read_bytes()
+    # Git may check the file out with CRLF (core.autocrlf on Windows); the repository and the generator use LF.
+    assert copy.read_bytes() == committed.replace(b"\r\n", b"\n")
+
+
+def test_refresh_llms_keeps_utf8_and_lf(tmp_path: Path) -> None:
+    # Not ASCII and not cp1252: on Windows the default read and write encoding is the locale code page.
+    llms = tmp_path / "llms-full.txt"
+    llms.write_bytes("Łódź → x\n<!-- BENCH:BEGIN -->\n<!-- BENCH:END -->\nb\n".encode())
+    generate_benchmarks.refresh_llms(llms, _seed(tmp_path))
+    raw = llms.read_bytes()
+    assert raw.startswith("Łódź → x\n".encode())
+    assert b"\r" not in raw
+
+
+def test_main_writes_utf8_with_lf(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # The docs build runs main() on every platform; the committed results render "±" and "·".
+    monkeypatch.setattr(generate_benchmarks, "OUT", tmp_path / "performance.rst")
+    monkeypatch.setattr(generate_benchmarks, "HERO_OUT", tmp_path / "_generated" / "hero-benchmark.html")
+    generate_benchmarks.main()
+    results = generate_benchmarks.RESULTS
+    assert generate_benchmarks.OUT.read_bytes() == generate_benchmarks.render_page(results).encode()
+    assert generate_benchmarks.HERO_OUT.read_bytes() == generate_benchmarks.render_hero_svg(results).encode()
 
 
 def test_latest_version_tolerates_digitless_dirs() -> None:
@@ -231,3 +252,60 @@ def test_digest_line_names_version_and_commit(tmp_path: Path) -> None:
     line = next(ln for ln in llms.read_text().splitlines() if ln.startswith("- augmentation"))
     assert "kornia 0.9.0rc1 @ c670e2ab" in line
     assert "2026-08-08" in line
+
+
+def _write(root: Path, version: str, fname: str, commit: str, throughput: float) -> None:
+    device = fname[:-5].split("--")[2]
+    payload = {
+        "metadata": {
+            "timestamp_utc": "2026-11-16T12:00:00+00:00",
+            "git_commit": commit,
+            "platform": "Linux-x86_64",
+            "python": "3.11.0",
+            "torch": "2.14.0",
+            "kornia": version,
+            "device": device,
+        },
+        "results": [{"op": "op", "backend": "kornia (eager)", "batch": 32, "throughput_per_s": throughput}],
+    }
+    d = root / version
+    d.mkdir(parents=True, exist_ok=True)
+    (d / fname).write_text(json.dumps(payload))
+
+
+def test_partial_release_keeps_unchanged_suites(tmp_path: Path) -> None:
+    """A release that re-measures one suite still publishes the other suites from the release before it."""
+    _write(tmp_path, "0.9.1", "color--box--cuda.json", "aaaa1111", 1.0)
+    _write(tmp_path, "0.9.1", "feature--box--cuda.json", "bbbb2222", 2.0)
+    _write(tmp_path, "0.9.2", "feature--box--cuda.json", "cccc3333", 3.0)
+
+    published = generate_benchmarks.published_results(generate_benchmarks.load_results(tmp_path))
+    assert {fname: version for fname, (version, _) in published.items()} == {
+        "color--box--cuda.json": "0.9.1",
+        "feature--box--cuda.json": "0.9.2",
+    }
+    rst = generate_benchmarks.render_page(tmp_path)
+    assert "Results for kornia 0.9.2" in rst
+    assert "aaaa1111" in rst
+    assert "cccc3333" in rst
+    assert "bbbb2222" not in rst  # the re-measured suite's older snapshot is not published
+    assert "from kornia 0.9.2, 0.9.1" in rst
+    llms = tmp_path / "llms-full.txt"
+    llms.write_text("a\n<!-- BENCH:BEGIN -->\n<!-- BENCH:END -->\nb\n")
+    generate_benchmarks.refresh_llms(llms, tmp_path)
+    text = llms.read_text()
+    assert "kornia 0.9.2, 0.9.1, committed in `benchmarks/results/0.9.2/` and `benchmarks/results/0.9.1/`" in text
+    assert "kornia 0.9.1 @ aaaa1111" in text
+    assert "bbbb2222" not in text
+
+
+def test_machines_absent_from_the_latest_release_are_not_published(tmp_path: Path) -> None:
+    """Runs of a machine the latest release does not measure stay in their old directory, unpublished."""
+    _write(tmp_path, "0.9.0rc1", "augmentation--old-box--mps.json", "dddd4444", 1.0)
+    _write(tmp_path, "0.9.1", "augmentation--box--cuda.json", "eeee5555", 2.0)
+
+    published = generate_benchmarks.published_results(generate_benchmarks.load_results(tmp_path))
+    assert list(published) == ["augmentation--box--cuda.json"]
+    rst = generate_benchmarks.render_page(tmp_path)
+    assert "dddd4444" not in rst
+    assert "``benchmarks/results/0.9.0rc1/``" in rst  # listed as an older result set

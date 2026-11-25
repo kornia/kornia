@@ -293,8 +293,10 @@ def gaussian_discrete_erf(
     return gauss / gauss.sum(-1, keepdim=True)
 
 
-def _modified_bessel_0(x: torch.Tensor, scaled: bool = False) -> torch.Tensor:
-    """Adapted from:https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py.
+def _modified_bessel_0(x: torch.Tensor) -> torch.Tensor:
+    """Compute the exponentially scaled modified Bessel function of order zero.
+
+    Adapted from https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py.
 
     Both polynomial branches are evaluated on the full tensor and merged with ``torch.where`` (instead
     of boolean-mask indexing) so that the kernel traces without data-dependent control flow.
@@ -314,16 +316,16 @@ def _modified_bessel_0(x: torch.Tensor, scaled: bool = False) -> torch.Tensor:
     y = 3.75 / ax_b
     ans = 0.916281e-2 + y * (-0.2057706e-1 + y * (0.2635537e-1 + y * (-0.1647633e-1 + y * 0.392377e-2)))
     coef = 0.39894228 + y * (0.1328592e-1 + y * (0.225319e-2 + y * (-0.157565e-2 + y * ans)))
-    out_b = coef / ax_b.sqrt() if scaled else (ax_b.exp() / ax_b.sqrt()) * coef
-    if scaled:
-        out_a = out_a * (-x_a.abs()).exp()
+    out_b = coef / ax_b.sqrt()
+    out_a = out_a * (-x_a.abs()).exp()
 
     return torch.where(idx_a, out_a, out_b)
 
 
-def _modified_bessel_1(x: torch.Tensor, scaled: bool = False) -> torch.Tensor:
-    """Adapted from:https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py.
+def _modified_bessel_1(x: torch.Tensor) -> torch.Tensor:
+    """Compute the exponentially scaled modified Bessel function of order one.
 
+    Adapted from https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py.
     Branch-free like :func:`_modified_bessel_0`.
     """
     ax = torch.abs(x)
@@ -340,62 +342,76 @@ def _modified_bessel_1(x: torch.Tensor, scaled: bool = False) -> torch.Tensor:
     y = 3.75 / ax_b
     ans = 0.2282967e-1 + y * (-0.2895312e-1 + y * (0.1787654e-1 - y * 0.420059e-2))
     ans = 0.39894228 + y * (-0.3988024e-1 + y * (-0.362018e-2 + y * (0.163801e-2 + y * (-0.1031555e-1 + y * ans))))
-    ans = ans / ax_b.sqrt() if scaled else ans * ax_b.exp() / ax_b.sqrt()
-    if scaled:
-        out_a = out_a * (-x_a.abs()).exp()
+    ans = ans / ax_b.sqrt()
+    out_a = out_a * (-x_a.abs()).exp()
     out_b = torch.where(x < 0, -ans, ans)
 
     return torch.where(idx_a, out_a, out_b)
 
 
-def _modified_bessel_i(n: int, x: torch.Tensor, scaled: bool = False, max_order: Optional[int] = None) -> torch.Tensor:
-    """Adapted from: https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py."""
-    KORNIA_CHECK(n >= 2, "n must be greater than 1.99")
+def _modified_bessel_i_orders(max_order: int, x: torch.Tensor) -> torch.Tensor:
+    """Compute exponentially scaled Bessel functions for orders 2 through ``max_order - 1``.
+
+    For ``x`` of shape ``(B, 1)``, return a ``(B, max_order - 2)`` tensor.
+
+    Adapted from: https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py.
+
+    The backward (Miller) recurrence starts from a point set by ``max_order`` alone and passes through every lower
+    order on its way down, so one pass collects all the orders instead of one pass per order. Each value goes
+    through the same operations as in a pass of its own, so the results are identical, and the number of
+    recurrence steps is linear instead of quadratic in ``max_order``.
+    """
+    KORNIA_CHECK(max_order >= 3, "max_order must be at least 3.")
 
     # I_n(0) = 0 for n >= 1. The zero lanes are computed on a safe placeholder and masked out at the
     # end instead of being compacted away, so the recurrence has no data-dependent control flow.
     is_zero_mask = torch.isclose(x, torch.tensor(0.0, device=x.device, dtype=x.dtype))
-    order = n if max_order is None else max_order
     # A ~1e-7 approximation mismatch here can make finite-difference gradcheck fail exactly at the branch switch.
-    use_forward = x.abs() > order * order / 4 if scaled else torch.zeros_like(x, dtype=torch.bool)
+    use_forward = x.abs() > max_order * max_order / 4
     x_nz = torch.where(is_zero_mask | use_forward, torch.ones_like(x), x)
+    orders = torch.arange(2, max_order, device=x.device)
+    flip_odd = (orders % 2 == 1) & (x_nz < 0.0)
 
     tox = 2.0 / x_nz.abs()
 
-    ans = torch.zeros_like(x)
     bip = torch.zeros_like(x)
     bi = torch.ones_like(x)
+    # The orders j + 1 .. max_order - 1 collected so far, lowest first; a placeholder until j = max_order - 1.
+    ans = torch.zeros_like(x)
 
-    m = int(2 * (order + int(math.sqrt(40.0 * order))))
+    m = int(2 * (max_order + int(math.sqrt(40.0 * max_order))))
     for j in range(m, 0, -1):
         bim = torch.addcmul(bip, tox, bi, value=j)
         bip, bi = bi, bim
 
         # Rescale only the lanes that grow past 1e10; the other lanes pass through unchanged.
         scale_mask = bi.abs() > 1.0e10
-        ans = torch.where(scale_mask, ans * 1e-10, ans)
+        if j < max_order - 1:
+            ans = torch.where(scale_mask, ans * 1e-10, ans)
         bi = torch.where(scale_mask, bi * 1e-10, bi)
         bip = torch.where(scale_mask, bip * 1e-10, bip)
 
-        if j == n:
+        if j == max_order - 1:
             ans = bip
+        elif 2 <= j < max_order - 1:
+            ans = torch.cat([bip, ans], -1)
 
-    out = ans * _modified_bessel_0(x_nz, scaled=scaled) / bi
-    if (n % 2) == 1:
-        out = torch.where(x_nz < 0.0, -out, out)
+    out = ans * _modified_bessel_0(x_nz) / bi
+    out = torch.where(flip_odd, -out, out)
 
-    if scaled:
-        # Upward recurrence is stable when all requested orders are small relative to sqrt(x).
-        x_up = torch.where(use_forward, x.abs(), torch.full_like(x, order * order / 4))
-        previous = _modified_bessel_0(x_up, scaled=True)
-        current = _modified_bessel_1(x_up, scaled=True)
-        for k in range(1, n):
-            previous, current = current, previous - (2.0 * k / x_up) * current
-        if (n % 2) == 1:
-            current = torch.where(x < 0, -current, current)
-        out = torch.where(use_forward, current, out)
+    # Upward recurrence is stable when all requested orders are small relative to sqrt(x).
+    x_up = torch.where(use_forward, x.abs(), torch.full_like(x, max_order * max_order / 4))
+    previous = _modified_bessel_0(x_up)
+    current = _modified_bessel_1(x_up)
+    upward = []
+    for k in range(1, max_order - 1):
+        previous, current = current, previous - (2.0 * k / x_up) * current
+        upward.append(current)
+    up = torch.cat(upward, -1)
+    up = torch.where((orders % 2 == 1) & (x < 0), -up, up)
+    out = torch.where(use_forward, up, out)
 
-    return torch.where(is_zero_mask, torch.zeros_like(x), out)
+    return torch.where(is_zero_mask, torch.zeros_like(out), out)
 
 
 def gaussian_discrete(
@@ -443,12 +459,14 @@ def gaussian_discrete(
         sigma = sigma.float()
     sigma2 = sigma * sigma
     tail = int(window_size // 2) + 1
-    bessels = [_modified_bessel_0(sigma2, scaled=True)]
+    bessels = [_modified_bessel_0(sigma2)]
     if tail > 1:
-        bessels.append(_modified_bessel_1(sigma2, scaled=True))
-    bessels.extend(_modified_bessel_i(k, sigma2, scaled=True, max_order=tail) for k in range(2, tail))
+        bessels.append(_modified_bessel_1(sigma2))
+    if tail > 2:
+        bessels.append(_modified_bessel_i_orders(tail, sigma2))
     # The exp(-sigma²) factor is already included in the scaled Bessel terms.
-    out = torch.cat(bessels[:0:-1] + bessels, -1)
+    half = torch.cat(bessels, -1)
+    out = torch.cat([half[..., 1:].flip(-1), half], -1)
 
     return (out / out.sum(-1, keepdim=True)).to(output_dtype)
 
@@ -477,7 +495,6 @@ def laplacian_1d(
         - :func:`get_laplacian_kernel1d`: the same kernel with its size checked.
 
     """
-    # TODO: add default dtype as None when kornia relies on torch > 1.12
     _check_kernel_dtype(dtype, "The Laplacian kernel", (1 - window_size, 1))
     filter_1d = torch.ones(window_size, device=device, dtype=dtype)
     middle = window_size // 2
@@ -570,8 +587,6 @@ def get_binary_kernel2d(
         - :func:`median_blur`: takes the median over the stacked neighbourhood.
 
     """
-    # TODO: add default dtype as None when kornia relies on torch > 1.12
-
     ky, kx = _unpack_2d_ks(window_size)
 
     window_range = kx * ky
@@ -1238,8 +1253,6 @@ def get_laplacian_kernel1d(
         tensor([ 1.,  1., -4.,  1.,  1.])
 
     """
-    # TODO: add default dtype as None when kornia relies on torch > 1.12
-
     _check_kernel_size(kernel_size)
     _check_laplacian_kernel_size(kernel_size)
 
@@ -1289,8 +1302,6 @@ def get_laplacian_kernel2d(
                 [  1.,   1.,   1.,   1.,   1.]])
 
     """
-    # TODO: add default dtype as None when kornia relies on torch > 1.12
-
     ky, kx = _unpack_2d_ks(kernel_size)
     _check_kernel_size((ky, kx))
     _check_laplacian_kernel_size((ky, kx))

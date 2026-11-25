@@ -11,11 +11,12 @@ This document owns strategy and correctness policy. [CONTRIBUTING.md](CONTRIBUTI
 is the contribution entry point; [AGENTS.md](AGENTS.md) guides agent execution, and
 [TESTING.md](TESTING.md) describes validation. Dates are intentions, not commitments.
 
-## Release status — 2026-10-23
+## Release status — 2026-11-16
 
-[Kornia 0.9.0](https://github.com/kornia/kornia/releases/tag/v0.9.0) shipped and its
-published artifacts were verified. The repair/deprecation window is open under the
-existing [stability policy](https://kornia.readthedocs.io/en/latest/get-started/stability.html).
+[Kornia 0.9.2](https://github.com/kornia/kornia/releases/tag/v0.9.2), a small `kornia.feature` speed-up
+release with a few bug fixes, shipped and its published artifacts were verified. The repair/deprecation
+window stays open under the existing
+[stability policy](https://kornia.readthedocs.io/en/latest/get-started/stability.html).
 Use [#4620](https://github.com/kornia/kornia/issues/4620) for the current release sequence,
 evidence, and follow-ups. Patch releases prioritize confirmed regressions and compatible fixes.
 
@@ -58,9 +59,15 @@ mathematical defects, numerical instability, and upstream workarounds.
 
 1. **Check the contract.** Establish supported inputs, output dtype, conventions, and
    accuracy requirements. Separate wrong mathematics or avoidable instability from
-   rounding, dtype limits, and undefined behavior. Compare with plain PyTorch where
-   applicable: a sum exceeding float16's range does not justify widening its output.
-   This does not excuse unstable computation of a representable result.
+   rounding, dtype limits, and undefined behavior. When the function has a PyTorch
+   equivalent, compare with it in the same dtype. In half precision a result PyTorch also
+   returns, such as `inf` from a sum exceeding float16's range, is normally left as it is
+   and does not justify widening the output; in float32 and float64 it may still be worth
+   fixing. The input must be one a real workflow produces. Within those limits, a
+   computation that breaks a Kornia guarantee or changes a caller's result in a
+   consequential way, such as NaN, inf, or a flipped decision, is a defect; a more accurate
+   value alone, even a primitive's public output such as a kernel or a window, needs a
+   workflow that depends on it.
 2. **Do not expand support through bug fixes.** Do not add integer-input support or
    special paths solely for synthetic extremes: half-precision overflow far beyond
    image/coordinate ranges, `1e20` float32 image values or pixel coordinates, or a matrix
@@ -84,8 +91,10 @@ mathematical defects, numerical instability, and upstream workarounds.
    measured cost, and retirement/reassessment condition beside the code. This also
    applies to backend performance workarounds.
 5. **Prove the correction and report consequences.** Derive expected results independently
-   and pin conventions with `test_convention_*` tests. An unchanged or worse downstream
-   benchmark does not disprove a correction. Report results with uncertainty where
+   and pin conventions with `test_convention_*` tests. For a wrong formula or convention, an
+   unchanged or worse downstream benchmark does not disprove the correction; a precision
+   change needs a broken accuracy guarantee or a consequential effect on a caller's result.
+   Report results with uncertainty where
    applicable, investigate regressions, and leave acceptance to a maintainer; release
    notes state accepted tradeoffs. Prefer a shared stable formulation; extra device,
    version, size, or grad-mode branches need a measured reason stated beside the branch.
@@ -117,13 +126,14 @@ issues own live status and acceptance decisions.
   [#6404](https://github.com/kornia/kornia/issues/6404) and fundamental-matrix RANSAC
   degeneracy [#6574](https://github.com/kornia/kornia/issues/6574), including downstream
   effects and release treatment.
-- **Supported execution paths:** compiled RANSAC cache safety
-  [#6278](https://github.com/kornia/kornia/issues/6278) and failures established by current
+- **Supported execution paths:** failures established by current
   [precision evidence](https://kornia.readthedocs.io/en/latest/get-started/precision.html).
   CUDA-half support is not a blanket patch-release guarantee.
 - **Usable guidance and maintenance:** runnable workflows, version-correct documentation,
   coherent contributor/agent instructions, and maintained shipped models. Keep `help wanted`
-  labels tied to current, well-described work. Release checks remain in #4620.
+  labels tied to current, well-described work. When maintainers withdraw an invitation,
+  remove the label and record the updated scope on the issue and any open implementation PR.
+  Release checks remain in #4620.
 
 ## Medium term — ~6 months
 
@@ -163,7 +173,7 @@ issues own live status and acceptance decisions.
   bottlenecks, such as `median_blur` and `canny`, with registered ops, backward, and conformance
   evidence; experimental until validated. The [benchmark evidence](benchmarks/README.md#the-honest-reading-across-apple-silicon-l4-rtx-pro-6000-rtx-4090wsl2)
   requires remeasuring `rotate` with matched interpolation before treating it as an outlier.
-- **Batched RANSAC:** vectorize hypothesis sampling, solving, and scoring with chunked
+- **Batched RANSAC:** vectorize hypothesis sampling, solving, and scoring within one fit, with chunked
   execution and confidence-based stopping. Choose eager/scripted/compiled variants by
   correctness and benchmarks, without requiring a compiler for the basic batched path.
 
@@ -179,24 +189,68 @@ issues own live status and acceptance decisions.
 
 ## Areas seeking contributors
 
-Check [help wanted](https://github.com/kornia/kornia/labels/help%20wanted), existing issues,
-and [the contribution rules](CONTRIBUTING.md) before implementation. A roadmap area is
-not approval for a new API; establish the concrete need and check reservations first.
+These areas are open-ended: choose the question yourself; nobody needs to assign it. Check
+existing issues, open pull requests, and [the contribution rules](CONTRIBUTING.md) first.
+Apart from the grandfathered model work below, no item in this roadmap is approval for a new
+public API, model mode, or separately maintained execution path; that needs a maintainer's
+agreement on an open issue ([scope agreement](CONTRIBUTING.md#practical-guidelines)). The
+core, below, is `kornia.geometry`, `kornia.augmentation`, local-feature detection,
+description, and matching in `kornia.feature`, learned models included, and the image
+operators in `kornia.filters`, `kornia.color`, `kornia.enhance`, and `kornia.morphology`.
+`kornia.sensors` and `kornia.metrics` are core candidates, not hardened yet: correctness
+reports and fixes are welcome as in the core, and performance follows the rule for non-core
+code until they are promoted.
 
-- **Documented CUDA and half-precision failures:** fix existing CUDA reports, open
-  half-precision issues, and entries in the known-failure manifests for
-  [`float16`](testing/half_precision_xfails/cpu_float16.txt) and
-  [`bfloat16`](testing/half_precision_xfails/cpu_bfloat16.txt). Take CUDA work only when a CUDA device is available
-  for reproduction and validation. Apply the [correctness policy](#correctness-and-backend-support)
-  and [precision testing guidance](TESTING.md#7-half-precision-dtypes-float16--bfloat16);
-  remove the corresponding xfail or manifest entry after verifying the fix.
-- **Reference evidence:** convention tests, independent expected vectors, corrective
-  error messages, and hardware benchmark contributions, especially CUDA. Use the
-  benchmark suite's `--contribute` workflow.
-- **Code health:** compile/export coverage for existing operators.
-- **Augmentation breadth:** low-priority, community-driven gaps such as dropout,
-  distortions, weather/noise, and compression effects; the differentiated core remains
-  differentiability, batching, and annotation consistency.
+- **Break a property the core should keep.** Shifting the world origin should not change a
+  recovered camera pose once expressed in the original frame; multiplying a homography by
+  a nonzero constant should not change where it maps a point; unprojecting a projected point
+  with its depth should return the point. Composition round-trips, frame/origin/scale
+  invariance, autocast and dtype contracts, and differences from OpenCV, COLMAP, SciPy, or
+  scikit-image with conventions aligned all count. Check existing `test_convention_*` and
+  `test_wart_*` pins and open issues first. Give the smallest supported example, state the
+  convention, and justify the expected result independently. A reproducible discrepancy
+  reported as an issue is a complete contribution; a patch is optional and follows the
+  [correctness policy](#correctness-and-backend-support).
+- **Hardware and backend evidence:** fix open half-precision issues and CUDA-only failures
+  you can reproduce; the
+  [CUDA and half-precision page](https://kornia.readthedocs.io/en/latest/get-started/precision.html)
+  has the current status and the test commands. Send benchmark results from your hardware
+  with the benchmark suite's `--contribute` workflow, especially CUDA. Take CUDA work only
+  when a CUDA device is available for reproduction and validation.
+- **Reference evidence and code health:** convention tests, independent expected vectors,
+  corrective error messages, and compile/export coverage for existing operators.
+- **Faster core workflows:** measure the public call end to end on a common workload; a
+  shared helper in `kornia.core` or `kornia.image` counts with the public call it serves.
+  A speed-up qualifies at 20% or more. A memory improvement qualifies when it reduces peak
+  memory by at least 20% or lets a workload from a linked user report fit. In either case,
+  check that measured workloads do not slow down beyond run-to-run noise.
+  Improvements must come from the general code path, not from a new special path for
+  particular shapes, dtypes, devices, or grad modes, and the code must stay readable as a
+  reference. Behavior must not change: outputs and gradients stay within the existing test
+  tolerances, and dtype/device handling and compile/ONNX support stay as they are. Measure
+  base and branch on the same hardware and workloads, on each device the change affects,
+  following [the benchmark methodology](benchmarks/README.md). Being in `kornia.feature`
+  does not exempt a new model mode or argument from scope agreement.
+  - **Fewer host synchronizations:** `.item()`, `bool()` or `if` on a tensor, `nonzero`,
+    and boolean-mask indexing or assignment make the host wait for the device. On CUDA,
+    `torch.cuda.set_sync_debug_mode("warn")` points at many of these waits but not all of them.
+    To count them on any device, count `aten::_local_scalar_dense` and `aten::nonzero` events in
+    `torch.profiler`, as the [#6792](https://github.com/kornia/kornia/issues/6792) reproducer does.
+    Removing them made `match_smnn` 1.4–1.9× faster on an RTX 4090
+    ([#6501](https://github.com/kornia/kornia/pull/6501)). Fewer waits do not always mean faster
+    code: time base and branch, including the CPU and empty or sparse inputs, and report the
+    synchronization count with the timing. Sync removals are exempt from the 20% bar: an
+    end-to-end gain above run-to-run noise on a common workload is enough, as long as no other
+    measured workload, CPU included, gets slower beyond noise. Keep input validation as it is
+    ([#6335](https://github.com/kornia/kornia/issues/6335)).
+
+**Performance outside the core:** models outside it, such as SAM, RT-DETR, and the VLMs in
+`kornia.models`, take correctness and regression fixes, not performance pull requests. Other
+non-core code, such as IO, losses, `kornia.image`, `kornia.tracking`, `kornia.contrib`, and
+`kornia.onnx`, is not a performance target; a simple change to the existing path qualifies
+only when it makes the representative public call roughly ten times faster, or lets a
+workload from a linked user report run, reported with absolute times or memory and without
+a new path.
 
 **Grandfathered model work:** Efficient LoFTR
 ([#3282](https://github.com/kornia/kornia/issues/3282),

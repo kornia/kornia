@@ -93,7 +93,7 @@ def raw_to_rgb(image: torch.Tensor, cfa: CFA) -> torch.Tensor:
     if image.dim() < 3 or image.size(-3) != 1:
         raise ValueError(f"Input size must have a shape of (*, 1, H, W). Got {image.shape}.")
 
-    if len(image.shape) < 2 or image.shape[-2] % 2 == 1 or image.shape[-1] % 2 == 1:
+    if image.shape[-2] % 2 == 1 or image.shape[-1] % 2 == 1:
         raise ValueError(f"Input H&W must be evenly divisible by 2. Got {image.shape}")
 
     imagesize = image.size()
@@ -178,23 +178,17 @@ def raw_to_rgb(image: torch.Tensor, cfa: CFA) -> torch.Tensor:
 
     # This is done on all samples but result for the known green samples is then overwritten by the input
     g_up = F.conv2d(gpadded, kernel)
+    # Keep the output's promoted dtype when copying measured samples into an autocast result.
+    if g_up.dtype != image.dtype:
+        g_up = g_up.to(torch.promote_types(image.dtype, g_up.dtype))
 
-    # overwrite the already known samples which otherwise have values from r/b
-    # this depends on the CFA configuration
-    if cfa == CFA.BG:
+    # Restore measured green samples from the diagonal selected by the validated CFA.
+    if cfa == CFA.BG or cfa == CFA.RG:  # noqa: PLR1714 - TorchScript cannot check enum membership.
         g_up[:, :, ::2, 1::2] = image[:, :, ::2, 1::2]
         g_up[:, :, 1::2, ::2] = image[:, :, 1::2, ::2]
-    elif cfa == CFA.GB:
-        g_up[:, :, ::2, ::2] = image[:, :, ::2, ::2]
-        g_up[:, :, 1::2, 1::2] = image[:, :, 1::2, 1::2]
-    elif cfa == CFA.RG:
-        g_up[:, :, 1::2, ::2] = image[:, :, 1::2, ::2]
-        g_up[:, :, ::2, 1::2] = image[:, :, ::2, 1::2]
-    elif cfa == CFA.GR:
-        g_up[:, :, 1::2, 1::2] = image[:, :, 1::2, 1::2]
-        g_up[:, :, ::2, ::2] = image[:, :, ::2, ::2]
     else:
-        raise ValueError(f"Unsupported CFA Got {cfa}.")
+        g_up[:, :, ::2, ::2] = image[:, :, ::2, ::2]
+        g_up[:, :, 1::2, 1::2] = image[:, :, 1::2, 1::2]
 
     r_up = r_up.view(imagesize)
     g_up = g_up.view(imagesize)

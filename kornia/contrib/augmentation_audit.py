@@ -15,7 +15,18 @@
 # limitations under the License.
 #
 
-"""Opt-in diagnostics for the geometry of an executed augmentation pipeline."""
+"""Audit one augmentation pipeline call: operation order, parameters, matrices and label round trips.
+
+:func:`audit` runs a 2D :class:`~kornia.augmentation.container.AugmentationSequential` once and returns its ordinary
+outputs with a report; the ordinary forward call is unchanged and records nothing. :ref:`augmentation-audit` explains
+how to read the report and lists the pipelines it supports.
+
+Which function or class to use:
+
+- Run a pipeline once and get its outputs plus a report: :func:`audit`.
+- Read the report: :class:`AugmentationAuditReport`; one executed operation in it: :class:`AugmentationAuditStep`;
+  the out-of-frame and round-trip statistics of one keypoint or box input: :class:`SpatialAudit`.
+"""
 
 from __future__ import annotations
 
@@ -48,6 +59,8 @@ __all__ = ["AugmentationAuditReport", "AugmentationAuditStep", "SpatialAudit", "
 
 _T = TypeVar("_T")
 _BOX_MODES = {DataKey.BBOX: "vertices_plus", DataKey.BBOX_XYXY: "xyxy_plus", DataKey.BBOX_XYWH: "xywh"}
+# The tensor keys whose boxes the container keeps in the legacy inclusive storage, as pixel-centre corners.
+_LEGACY_BOX_KEYS = (DataKey.BBOX, DataKey.BBOX_XYXY)
 
 
 def _snapshot(value: _T) -> _T:
@@ -91,18 +104,23 @@ def _json_value(value: Any) -> Any:
 
 @dataclass(frozen=True)
 class AugmentationAuditStep:
-    """Snapshot of one captured leaf operation, including repeated occurrences.
+    """Record one executed operation of an audit: its parameters, shapes and matrix.
 
-    ``matrix`` maps this occurrence's local input pixel coordinates to its output
-    coordinates, including RandomCrop prepadding. The full pipeline mapping is
-    stored separately on the report. ``None`` means that the
-    operation has no supported 2D matrix, not that it is an identity transform.
-    Parameters and flags are detached copies; ``occurrence`` is zero-based for
-    each qualified module name. Shapes describe the image path. Flags include
-    keyword overrides observed on that image call.
+    ``report.steps`` of an :class:`AugmentationAuditReport` lists one step per executed leaf operation, in execution
+    order. ``name`` is the qualified module name in the pipeline, ``module`` the class name, and ``occurrence`` counts
+    repeated runs of one ``name`` from 0. ``params`` and ``flags`` are detached copies; ``flags`` include the keyword
+    overrides of that image call. ``input_shape`` and ``output_shape`` are those of the image.
+
+    ``matrix`` is the ``(B, 3, 3)`` map from this operation's input pixel coordinates to its output coordinates,
+    including ``RandomCrop`` prepadding. ``None`` means the operation has no supported 2D matrix, not that it is an
+    identity, and ``unsupported_reason`` then says why.
 
     Convention:
         See :ref:`augmentation-audit`.
+
+    See Also:
+        - :class:`AugmentationAuditReport`: holds the steps and the matrix composed over all of them.
+        - :class:`SpatialAudit`: the label statistics, measured with the composed matrix.
     """
 
     name: str
@@ -118,24 +136,23 @@ class AugmentationAuditStep:
 
 @dataclass(frozen=True)
 class SpatialAudit:
-    """Per-batch diagnostics for one returned box or keypoint input.
+    """Hold the per-sample out-of-frame counts and round-trip errors of one keypoint or box input.
 
-    Each point or box is one item. A box is outside if any corner is outside
-    the inclusive pixel-center rectangle ``[0, width-1] x [0, height-1]``.
-    Nonfinite items are counted separately, not counted as outside. Fractions
-    use the total item count; empty inputs have a NaN fraction.
-
-    Round trips inverse-map the *actual returned coordinates* with the recorded
-    composed matrix. Errors are Euclidean point distances or symmetric Hausdorff
-    distances between the four box corners (independent of corner ordering).
-    Tensor box exports can lose orientation by taking an axis-aligned envelope;
-    this loss is included in the measurement. ``Boxes`` objects retain corners.
-    Statistics cover only finite errors, in pixels; a batch with no valid errors
-    has NaN statistics and zero ``roundtrip_valid_count``. Diagnostics use float32
-    for half inputs, otherwise the image dtype.
+    ``report.spatial`` of an :class:`AugmentationAuditReport` has one entry per keypoint or box input, and each of its
+    tensor fields is ``(B,)``, one value per sample. ``count`` holds the items present, and ``out_of_frame_fraction``
+    divides by it, so an empty input has a NaN fraction. ``out_of_frame`` and ``nonfinite`` count present items too.
+    A returned box row that holds no box is not present: a row the returned ``Boxes`` object marks invalid, or a
+    zero-extent row under ``"bbox_xywh"``. The container returns the rows that hold no box in its input that way. The
+    round-trip statistics cover only finite errors of present items, in pixels; a sample with no such error has NaN
+    statistics and a zero ``roundtrip_valid_count``.
 
     Convention:
         See :ref:`augmentation-audit`.
+
+    See Also:
+        - :class:`AugmentationAuditReport`: holds these entries with the composed matrix they invert.
+        - :class:`AugmentationAuditStep`: the per-operation record, without label statistics.
+
     """
 
     input_index: int
@@ -153,10 +170,15 @@ class SpatialAudit:
 
 @dataclass(frozen=True)
 class AugmentationAuditReport:
-    """Geometry provenance and spatial diagnostics from one augmentation call.
+    """Hold the executed operations, composed matrix and label diagnostics of one audit call.
 
-    ``params`` is a detached snapshot of native ``ParamItem`` values for replay
-    with the same pipeline configuration. JSON is a diagnostic export, not a
+    ``outputs, report = audit(sequence, image, ...)`` returns it. ``report.summary()`` describes it in text,
+    ``report.to_dict()`` and ``report.to_json()`` export it, and ``sequence(image, ..., params=report.params)``
+    replays the call. ``matrix`` is the ``(B, 3, 3)`` map from input to output pixel coordinates composed over
+    ``steps``, or ``None`` when ``geometry_status`` is ``"unsupported"``, and ``spatial`` holds one
+    :class:`SpatialAudit` per keypoint or box input.
+
+    ``params`` is a detached snapshot of native ``ParamItem`` values. JSON is a diagnostic export, not a
     parameter deserializer. Reports retain neither image pixels nor autograd
     graphs. Tensor fields are independent snapshots, not read-only tensors.
 
@@ -170,6 +192,11 @@ class AugmentationAuditReport:
 
     Convention:
         See :ref:`augmentation-audit`.
+
+    See Also:
+        - :func:`audit`: runs a pipeline and builds this report.
+        - :class:`AugmentationAuditStep`: one entry of ``steps``.
+        - :class:`SpatialAudit`: one entry of ``spatial``.
     """
 
     inputs: list[dict[str, Any]]
@@ -252,7 +279,17 @@ def _capture_warnings(sequence: AugmentationSequential, steps: list[Augmentation
     return []
 
 
-def _coordinates(value: DataType, key: DataKey) -> Tensor:
+def _coordinates(value: DataType, key: DataKey) -> tuple[Tensor, float, Tensor | None]:
+    """Return the stored coordinates, their offset from the pixel-centre frame of the image matrices, and box presence.
+
+    Exclusive box vertices are edges, half a pixel from that frame: the offset is ``0.5``, and they lie in
+    ``[0, W] x [0, H]``. The legacy inclusive storage holds pixel-centre corners, as keypoints do: offset ``0``, in
+    ``[0, W - 1] x [0, H - 1]``.
+
+    The ``(B, N)`` presence mask is ``False`` for rows that hold no box: the rows a ``Boxes`` object marks invalid, and
+    the zero-extent rows of a ``"bbox_xywh"`` tensor, which the container removes and exports as all-zero rows. It is
+    ``None`` for keypoints and the bare box keys, whose zero rows the container transforms as coordinates.
+    """
     if (isinstance(value, Boxes) and key not in _BOX_MODES) or (
         isinstance(value, Keypoints) and key != DataKey.KEYPOINTS
     ):
@@ -260,13 +297,41 @@ def _coordinates(value: DataType, key: DataKey) -> Tensor:
     if isinstance(value, (Boxes, Keypoints)):
         if value._N is not None:
             raise ValueError("audit does not support ragged Boxes or Keypoints constructed from lists.")
-        return value.data
+        if isinstance(value, Keypoints):
+            return value.data, 0.0, None
+        return value.data, 0.0 if value._inclusive else 0.5, value._valid
     if not isinstance(value, Tensor):
         raise ValueError("audit requires batched tensors, Boxes or Keypoints; ragged inputs are unsupported.")
     if key in _BOX_MODES:
         # Match the container's public representation, including axis-aligned tensor exports.
-        return Boxes.from_tensor(value, mode=_BOX_MODES[key], validate_boxes=False).data
-    return value
+        if key in _LEGACY_BOX_KEYS:
+            legacy = Boxes._from_tensor(value, mode=_BOX_MODES[key], validate_boxes=False, inclusive=True)
+            return legacy.data, 0.0, None
+        # The corners are built in at least float32, as ``x + w`` rounds in half precision; the pipeline's own labels
+        # keep their dtype. Zero extents are removed as the container removes them.
+        value = value.to(torch.promote_types(value.dtype, torch.float32))
+        boxes = Boxes._from_tensor(value, mode=_BOX_MODES[key], validate_boxes=False, allow_empty=True)
+        return boxes.data, 0.5, boxes._valid
+    return value, 0.0, None
+
+
+def _spatial_audits(
+    sources: dict[int, Tensor],
+    values: list[Any],
+    keys: list[DataKey],
+    shape: tuple[int, ...],
+    inverse: Tensor | None,
+    dtype: torch.dtype,
+) -> list[SpatialAudit]:
+    audits = []
+    for index, source in sources.items():
+        # A row the pipeline returns without a box has no round trip to measure; the pipeline removes the rows that
+        # hold no box in its input as well.
+        result, offset, present = _coordinates(values[index], keys[index])
+        audits.append(
+            _spatial_audit(source, result, keys[index], index, shape, inverse, dtype, offset=offset, present=present)
+        )
+    return audits
 
 
 def _capture(
@@ -345,21 +410,30 @@ def _spatial_audit(
     shape: tuple[int, ...],
     inverse: Tensor | None,
     dtype: torch.dtype,
+    offset: float = 0.0,
+    present: Tensor | None = None,
 ) -> SpatialAudit:
     if source.shape != result.shape:
         raise ValueError("audit requires spatial outputs to preserve the source shape and label cardinality.")
-    source, result = source.to(dtype=dtype), result.detach().to(dtype=dtype)
+    result = result.detach()
     batch, count = result.shape[:2]
-    finite = result.isfinite().flatten(2).all(-1)
+    # The frame is checked on the coordinates as returned, in float32 or wider: the float32 diagnostic dtype would
+    # round a float64 edge at ``4 + 1e-7`` onto 4. Edges of exclusive boxes are checked unshifted, since shifting by
+    # ``offset`` would round an edge just below 0 onto -0.5.
+    returned = result.to(torch.promote_types(result.dtype, torch.float32))
+    finite = returned.isfinite().flatten(2).all(-1)
     outside = (
-        (result[..., 0] < 0)
-        | (result[..., 0] > shape[-1] - 1)
-        | (result[..., 1] < 0)
-        | (result[..., 1] > shape[-2] - 1)
+        (returned[..., 0] < 0)
+        | (returned[..., 0] > shape[-1] - 1 + 2 * offset)
+        | (returned[..., 1] < 0)
+        | (returned[..., 1] > shape[-2] - 1 + 2 * offset)
     )
     if key in _BOX_MODES:
         outside = outside.any(-1)
-    counts = torch.full((batch,), count, device=result.device, dtype=torch.long)
+    present = torch.ones_like(finite) if present is None else present.to(finite.device)
+    # The inverse matrix maps pixel centres, so the round trip runs in that frame, in the diagnostic dtype.
+    source, result = source.to(dtype=dtype) - offset, result.to(dtype=dtype) - offset
+    counts = present.sum(-1)
     errors = torch.full((batch, count), float("nan"), device=result.device, dtype=dtype)
     if inverse is not None and count:
         flat = result.reshape(batch, -1, 2)
@@ -371,7 +445,7 @@ def _spatial_audit(
             errors = torch.maximum(distances.amin(-1).amax(-1), distances.amin(-2).amax(-1))
         else:
             errors = torch.linalg.vector_norm(restored - source, dim=-1)
-    valid = errors.isfinite()
+    valid = errors.isfinite() & present
     errors = torch.where(valid, errors, torch.full_like(errors, float("nan")))
     valid_count = valid.sum(-1)
     mean = errors.nansum(-1) / valid_count
@@ -381,14 +455,14 @@ def _spatial_audit(
         maximum = torch.where(valid_count > 0, maximum, torch.full_like(maximum, float("nan")))
     else:
         median, maximum = mean.clone(), mean.clone()
-    out_of_frame = (outside & finite).sum(-1)
+    out_of_frame = (outside & finite & present).sum(-1)
     return SpatialAudit(
         index,
         key.name,
         "corner_hausdorff" if key in _BOX_MODES else "euclidean",
         counts,
         out_of_frame,
-        (~finite).sum(-1),
+        (~finite & present).sum(-1),
         out_of_frame / counts,
         valid_count,
         mean,
@@ -405,19 +479,19 @@ def audit(
     roundtrip_tolerance: float = 1e-3,
     out_of_frame_tolerance: float = 0.0,
 ) -> tuple[DataType | list[DataType] | dict[str, DataType], AugmentationAuditReport]:
-    """Run an augmentation sequence once and return its outputs plus a geometry audit report.
+    """Run an augmentation pipeline once and return its outputs with a geometry audit report.
 
-    The sequence must use one BCHW image first, followed by batched masks (``(B, C, H, W)`` or ``(B, H, W)``), boxes or
-    keypoints described by positional ``data_keys``. ``params`` and ``data_keys``
-    have the same meaning as in :meth:`kornia.augmentation.AugmentationSequential.forward`.
-    Unknown or non-rigid operations run normally and make composed geometry unavailable. Keypoints and boxes through
+    ``outputs, report = audit(sequence, image, *labels)`` runs ``sequence`` once on a nonempty ``(B, C, H, W)`` image
+    followed by optional batched masks (``(B, C, H, W)`` or ``(B, H, W)``), keypoints or boxes, in the order of
+    ``data_keys``. ``outputs`` has the structure, values and gradients of an ordinary forward call, and ``report`` is
+    an :class:`AugmentationAuditReport` of the executed operations, their composed matrix and the round-trip errors
+    of every keypoint and box input. ``params`` and ``data_keys`` have the meaning they have in
+    :meth:`~kornia.augmentation.container.AugmentationSequential.forward`.
+
+    Unknown or non-rigid operations run normally and make the composed geometry unsupported. Keypoints and boxes through
     ``RandomElasticTransform``, ``RandomThinPlateSpline`` or ``RandomFisheye`` raise ``NotImplementedError``, as in
-    the sequence (`#4420 <https://github.com/kornia/kornia/issues/4420>`_).
-
-    Reporting is an eager diagnostic operation. It snapshots executed operations and
-    parameters, checks spatial round trips, and never evaluates image reconstruction.
-    The returned outputs retain the ordinary forward structure, values and gradients.
-    Do not audit the same stateful sequence concurrently.
+    the sequence (`#4420 <https://github.com/kornia/kornia/issues/4420>`_). The audit runs eagerly; do not audit the
+    same stateful sequence concurrently.
 
     Convention:
         :ref:`augmentation-audit` states the direction of ``report.matrix``, the pixel-centre rectangle of the
@@ -432,7 +506,18 @@ def audit(
         out_of_frame_tolerance: Fraction in ``[0, 1]`` above which an input gets a warning.
 
     Returns:
-        A pair ``(outputs, report)``. ``outputs`` matches an ordinary forward call.
+        A pair ``(outputs, report)``.
+
+    Raises:
+        ValueError: if a tolerance is out of range, ``data_keys`` do not start with the only image or do not match
+            the inputs, a data key is unsupported, the image is not a nonempty ``(B, C, H, W)`` tensor, or a label
+            input is unbatched, ragged or on another device; if the pipeline holds a video, patch or 3D
+            augmentation or a module registered under two names, or an operation changes the batch, the layout or
+            the label cardinality.
+
+    See Also:
+        - :meth:`~kornia.augmentation.container.AugmentationSequential.forward`: the same call without a report.
+        - :class:`AugmentationAuditReport`: the report this returns.
     """
     if not math.isfinite(roundtrip_tolerance) or roundtrip_tolerance < 0:
         raise ValueError("roundtrip_tolerance must be finite and nonnegative.")
@@ -455,7 +540,7 @@ def audit(
     for index, (value, key) in enumerate(zip(args, keys)):
         if key not in (DataKey.INPUT, DataKey.MASK, DataKey.KEYPOINTS, *_BOX_MODES):
             raise ValueError(f"audit does not support the data key {key.name}.")
-        tensor = _coordinates(value, key)
+        tensor, _, _ = _coordinates(value, key)
         # All box coordinates have been converted to (B, N, 4, 2).
         expected_ndims = (3,) if key == DataKey.KEYPOINTS else (3, 4) if key == DataKey.MASK else (4,)
         if tensor.ndim not in expected_ndims or tensor.shape[0] != image.shape[0] or tensor.device != image.device:
@@ -495,18 +580,7 @@ def audit(
             "unsupported" if matrix is None else "available" if bool(valid.all()) else "singular"
         )
         diagnostic_dtype = torch.float64 if image.dtype == torch.float64 else torch.float32
-        spatial = [
-            _spatial_audit(
-                source,
-                _coordinates(values[index], keys[index]),
-                keys[index],
-                index,
-                output_shape,
-                inverse,
-                diagnostic_dtype,
-            )
-            for index, source in sources.items()
-        ]
+        spatial = _spatial_audits(sources, values, keys, output_shape, inverse, diagnostic_dtype)
         warnings = capture_warnings + [
             f"{step.name}: {step.unsupported_reason}." for step in steps if step.unsupported_reason
         ]

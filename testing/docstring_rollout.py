@@ -15,10 +15,10 @@
 # limitations under the License.
 #
 
-"""Which parts of kornia the docstring-style checks enforce, widened one batch at a time.
+"""Which parts of kornia the docstring-style checks enforce, and the exceptions they allow.
 
-``tests/test_docstring_style.py`` reads these values. A rollout batch converts a module and then adds it to the
-lists below, so that the style it was converted to cannot regress.
+``tests/test_docstring_style.py`` reads these values. The checks cover every public object of the packages in
+``IN_SCOPE_PACKAGES``, and the module catalogs that ``testing.docstring_style.catalog_namespaces`` selects there.
 """
 
 from __future__ import annotations
@@ -38,19 +38,19 @@ IN_SCOPE_PACKAGES: tuple[str, ...] = (
     "io",
     "losses",
     "metrics",
-    "models",
     "morphology",
     "onnx",
     "sensors",
     "tracking",
 )
-"""Top-level ``kornia`` packages and modules the rollout covers."""
+"""Top-level ``kornia`` packages and modules the docstring checks cover."""
 
 EXCLUDED_PACKAGES: dict[str, str] = {
     "utils": "deprecated shims that keep their 'Deprecated: use X' first lines",
+    "models": "not converted to the docstring style; its docstrings keep their earlier form",
     "transpiler": "a removal stub",
 }
-"""Top-level packages left out of the rollout, with the reason."""
+"""Top-level packages the docstring checks leave out, with the reason."""
 
 CATALOG_EXCEPTIONS: dict[str, str] = {
     "kornia.augmentation.utils": (
@@ -59,116 +59,20 @@ CATALOG_EXCEPTIONS: dict[str, str] = {
 }
 """Namespaces intentionally omitted from public catalogs, with a reason; exports remain unchanged."""
 
-CATALOG_NAMESPACES: tuple[str, ...] = (
-    "kornia.augmentation",
-    "kornia.augmentation.auto",
-    "kornia.augmentation.auto.operations.ops",
-    "kornia.augmentation.container.base",
-    "kornia.augmentation.container.params",
-    "kornia.color",
-    "kornia.enhance",
-    "kornia.feature",
-    "kornia.feature.dedode.transformer",
-    "kornia.filters",
-    "kornia.filters.blur_pool",
-    "kornia.geometry.bbox",
-    "kornia.geometry.boxes",
-    "kornia.geometry.calibration",
-    "kornia.geometry.camera",
-    "kornia.geometry.camera.stereo",
-    "kornia.geometry.conversions",
-    "kornia.geometry.depth",
-    "kornia.geometry.epipolar",
-    "kornia.geometry.grid",
-    "kornia.geometry.homography",
-    "kornia.geometry.keypoints",
-    "kornia.geometry.liegroup",
-    "kornia.geometry.linalg",
-    "kornia.geometry.line",
-    "kornia.geometry.plane",
-    "kornia.geometry.pointcloud",
-    "kornia.geometry.pose",
-    "kornia.geometry.ransac",
-    "kornia.geometry.solvers",
-    "kornia.geometry.subpix",
-    "kornia.geometry.transform.affwarp",
-    "kornia.geometry.transform.crop2d",
-    "kornia.geometry.transform.crop3d",
-    "kornia.geometry.transform.elastic_transform",
-    "kornia.geometry.transform.flips",
-    "kornia.geometry.transform.homography_warper",
-    "kornia.geometry.transform.image_registrator",
-    "kornia.geometry.transform.imgwarp",
-    "kornia.geometry.transform.pyramid",
-    "kornia.geometry.transform.thin_plate_spline",
-    "kornia.geometry.vector",
-    "kornia.losses",
-    "kornia.metrics",
-)
-"""Namespaces whose module docstring must name every export in ``__all__``."""
-
-DOCSTRING_MODULES: tuple[str, ...] = (
-    "kornia.augmentation",
-    "kornia.color",
-    "kornia.enhance",
-    "kornia.feature.adalam",
-    "kornia.feature.affine_shape",
-    "kornia.feature.aliked",
-    "kornia.feature.dedode",
-    "kornia.feature.defmo",
-    "kornia.feature.disk",
-    "kornia.feature.hardnet",
-    "kornia.feature.hynet",
-    "kornia.feature.integrated",
-    "kornia.feature.keynet",
-    "kornia.feature.laf",
-    "kornia.feature.lightglue",
-    "kornia.feature.lightglue_onnx",
-    "kornia.feature.loftr",
-    "kornia.feature.matching",
-    "kornia.feature.mkd",
-    "kornia.feature.orientation",
-    "kornia.feature.responses",
-    "kornia.feature.scale_space_detector",
-    "kornia.feature.sift",
-    "kornia.feature.siftdesc",
-    "kornia.feature.sold2.sold2",
-    "kornia.feature.sold2.sold2_detector",
-    "kornia.feature.sosnet",
-    "kornia.feature.tfeat",
-    "kornia.feature.xfeat",
-    "kornia.filters",
-    "kornia.geometry.bbox",
-    "kornia.geometry.boxes",
-    "kornia.geometry.calibration",
-    "kornia.geometry.camera",
-    "kornia.geometry.conversions",
-    "kornia.geometry.depth",
-    "kornia.geometry.epipolar",
-    "kornia.geometry.grid",
-    "kornia.geometry.homography",
-    "kornia.geometry.keypoints",
-    "kornia.geometry.liegroup",
-    "kornia.geometry.linalg",
-    "kornia.geometry.line",
-    "kornia.geometry.plane",
-    "kornia.geometry.pointcloud",
-    "kornia.geometry.pose",
-    "kornia.geometry.quaternion",
-    "kornia.geometry.ransac",
-    "kornia.geometry.solvers",
-    "kornia.geometry.subpix",
-    "kornia.geometry.transform",
-    "kornia.geometry.vector",
-    "kornia.losses",
-    "kornia.metrics",
-)
-"""Prefixes of the defining modules whose public objects carry the converted docstring style."""
-
 SEE_ALSO_EXCEPTIONS: dict[str, str] = {
+    "kornia.contrib.kmeans.KMeans": "the only clustering in kornia; no other object fits or assigns centres",
     "kornia.feature.defmo.DeFMO": "the only deblurring model in kornia; no other object serves a nearby task",
+    "kornia.core.exceptions.BaseError": (
+        "the base of every kornia check error; the kornia.core.exceptions catalog lists its subclasses"
+    ),
+    "kornia.constants.DType": "the only dtype-code enum in kornia; no other object names a dtype by an integer",
+    "kornia.config.InstallationMode": "the only configuration enum in kornia; no other object sets a nearby policy",
+    "kornia.core.utils.batched_forward": (
+        "the only micro-batching helper, apart from its deprecated alias in kornia.utils"
+    ),
+    "kornia.core.utils.is_autocast_enabled": "the only autocast query, apart from its deprecated alias in kornia.utils",
 }
-"""Qualified name of a converted object that needs no ``See Also:`` section, with the reason."""
+"""Qualified name of a checked object that needs no ``See Also:`` section, with the reason."""
 
 MATH_NON_SHAPES: dict[str, dict[str, str]] = {
     "docs/source/geometry.calibration.rst": {"(X, Y, Z)": "the coordinates of one 3D point"},

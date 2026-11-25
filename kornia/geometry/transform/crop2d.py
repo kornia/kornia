@@ -50,7 +50,7 @@ from torch import nn
 from kornia.constants import Resample
 from kornia.core._compat import _emit_deprecation_warning
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
-from kornia.core.utils import is_compiling, is_exporting
+from kornia.core.utils import _samples_half_in_float32, is_compiling, is_exporting
 from kornia.geometry.bbox import infer_bbox_shape
 from kornia.geometry.transform._crop import _compiled_slice_resize
 
@@ -86,9 +86,10 @@ def crop_and_resize(
     :func:`crop_and_resize3d`.
 
     Convention:
-        See :doc:`Conventions & Pitfalls </get-started/conventions>` for the ``align_corners``
-        defaults and sampling rules.
-
+        - see :doc:`Conventions & Pitfalls </get-started/conventions>` for the ``align_corners``
+          defaults and sampling rules
+        - a ``float16`` or ``bfloat16`` image is cropped in ``float32``, its homography solved and kept in
+          ``float32``, and the patches rounded once to the image dtype; ``float32`` boxes keep their precision
         - input: ``(B, C, H, W)``; ``size`` is ``(h, w)``
         - ``boxes``: ``(B, 4, 2)`` corner points in ``(x, y)`` order
           top-left, top-right, bottom-right, bottom-left; coordinates are
@@ -160,14 +161,16 @@ def crop_and_resize(
 
     # [x, y] origin
     # top-left, top-right, bottom-right, bottom-left
-    points_src = boxes.to(input_tensor)
+    # float32 boxes keep their precision for a float16/bfloat16 image, which _crop_by_boxes_to_size warps in float32
+    points_src = boxes.to(device=input_tensor.device, dtype=torch.promote_types(input_tensor.dtype, torch.float32))
 
     # [x, y] destination
     # top-left, top-right, bottom-right, bottom-left
     points_dst = torch.tensor(
         [[[0, 0], [dst_w - 1, 0], [dst_w - 1, dst_h - 1], [0, dst_h - 1]]],
         device=input_tensor.device,
-        dtype=input_tensor.dtype,
+        # the source dtype: a half-precision destination corner rounds (bfloat16 257 -> 256) and stretches the crop
+        dtype=points_src.dtype,
     ).expand(points_src.shape[0], -1, -1)
 
     return _crop_by_boxes_to_size(
@@ -232,6 +235,8 @@ def center_crop(
         - offset: the crop starts at the integer pixel ``int(H / 2 - h / 2)`` (likewise for the width), as in
           :class:`CenterCrop2D`, so the output is a sub-image of the input. With an odd margin the extra pixel is
           left at the bottom/right; for a ``size`` larger than the input, the extra padding pixel goes there too.
+        - a ``float16`` or ``bfloat16`` image is cropped in ``float32`` and the patches rounded once to the image
+          dtype, so the window starts at the same pixel as in ``float32``
 
     Args:
         input_tensor: the 2D image torch.Tensor with shape ``(B, C, H, W)``.
@@ -291,12 +296,18 @@ def center_crop(
     end_x: int = start_x + dst_w - 1
     end_y: int = start_y + dst_h - 1
 
+    # A float16/bfloat16 image is cropped in float32, as in crop_by_boxes: in the half dtype the corners below and
+    # the matrix that crop_by_transform_mat casts to it round a start such as 257 (bfloat16) to a nearby value.
+    out_dtype = input_tensor.dtype
+    in_float32 = _samples_half_in_float32(input_tensor)
+    box_dtype = torch.float32 if in_float32 else input_tensor.dtype
+
     # [y, x] origin
     # top-left, top-right, bottom-right, bottom-left
     points_src: torch.Tensor = torch.tensor(
         [[[start_x, start_y], [end_x, start_y], [end_x, end_y], [start_x, end_y]]],
         device=input_tensor.device,
-        dtype=input_tensor.dtype,
+        dtype=box_dtype,
     )
 
     # [y, x] destination
@@ -304,14 +315,18 @@ def center_crop(
     points_dst: torch.Tensor = torch.tensor(
         [[[0, 0], [dst_w - 1, 0], [dst_w - 1, dst_h - 1], [0, dst_h - 1]]],
         device=input_tensor.device,
-        dtype=input_tensor.dtype,
+        dtype=box_dtype,
     ).expand(points_src.shape[0], -1, -1)
 
     transform = _crop_translation(points_src, points_dst)
+    # Upcast after the two host-to-device corner copies above: queued before them, the image copy would make those
+    # pageable copies wait for it on the host.
+    if in_float32:
+        input_tensor = input_tensor.float()
 
     return crop_by_transform_mat(
         input_tensor, transform, (dst_h, dst_w), mode=mode, padding_mode=padding_mode, align_corners=align_corners
-    )
+    ).to(out_dtype)
 
 
 def crop_by_boxes(
@@ -346,6 +361,8 @@ def crop_by_boxes(
         - a box axis of one pixel in one box but not in the other returns NaN (a meaningless finite value with
           ``mode='nearest'``), as in :func:`crop_and_resize`
           (`#4747 <https://github.com/kornia/kornia/issues/4747>`_)
+        - a ``float16`` or ``bfloat16`` image is cropped in ``float32``, its homography solved and kept in
+          ``float32``, and the patches rounded once to the image dtype
 
     Args:
         input_tensor: the 2D image torch.Tensor with shape ``(B, C, H, W)``.
@@ -439,6 +456,13 @@ def _crop_by_boxes_to_size(
     if len(input_tensor.shape) != 4:
         raise AssertionError(f"Only torch.Tensor with shape (B, C, H, W) supported. Got {input_tensor.shape}.")
 
+    # The warp samples a float16/bfloat16 image in float32 and returns its dtype. The homography is solved and kept in
+    # float32 too: rounding it to the half dtype first moved the samples, up to 0.875 off at a value of 30 for a
+    # bfloat16 trapezoid crop. Other dtypes run unchanged.
+    out_dtype = input_tensor.dtype
+    if _samples_half_in_float32(input_tensor):
+        input_tensor = input_tensor.float()
+
     # compute transformation between points and warp
     # Note: torch.Tensor.dtype must be float. "solve_cpu" not implemented for 'Long'
     src_box = src_box.to(input_tensor)
@@ -475,7 +499,7 @@ def _crop_by_boxes_to_size(
 
     return crop_by_transform_mat(
         input_tensor, dst_trans_src, out_size, mode=mode, padding_mode=padding_mode, align_corners=align_corners
-    )
+    ).to(out_dtype)
 
 
 def crop_by_transform_mat(
@@ -594,12 +618,15 @@ def crop_by_indices(
           where the box overflowed, so every kept pixel stays at its position in the box.
 
     .. note::
-        Under :func:`torch.compile` a non-empty batch with ``size`` given, ``'bilinear'``,
-        ``'bicubic'`` or ``'nearest'`` interpolation, ``antialias=False`` and
-        ``shape_compensation='resize'`` is cropped by a gather that keeps the box coordinates
-        on the device, so it traces with ``fullgraph=True`` and matches the eager result up to
-        float rounding. Every other call keeps the eager path, which reads the box coordinates
-        back to Python and breaks the graph. Graph export is described in the note below.
+        Under :func:`torch.compile` a non-empty batch with ``size`` given, ``'bilinear'`` or
+        ``'bicubic'`` interpolation (or ``'nearest'`` with ``align_corners=None``),
+        ``antialias=False`` and ``shape_compensation='resize'`` is cropped by a gather that keeps
+        the box coordinates on the device, so it traces with ``fullgraph=True`` and matches the
+        eager result up to float rounding, on every supported torch release. From torch 2.12
+        every other call keeps the eager path, which reads the box coordinates back to Python
+        and breaks the graph. Before torch 2.12 ``torch.compile`` also reports graph export, so
+        every other call with ``size`` given takes the export path of the note below: the warp,
+        or a ``ValueError`` for ``'nearest-exact'`` and ``'area'``.
 
     Args:
         input_tensor: the 2D image torch.Tensor with shape ``(B, C, H, W)``.
@@ -636,12 +663,14 @@ def crop_by_indices(
 
     .. note::
         Under graph export (:func:`torch.export.export` / :func:`torch.onnx.export`) the box
-        coordinates cannot be read back to Python, so the crop is captured as the same warp as
-        :func:`crop_and_resize` (``align_corners=True``), which keeps the box coordinates dynamic.
-        This needs ``size``: a box that is exactly ``size`` pixels (what
-        :class:`~kornia.augmentation.RandomCrop` and :class:`CenterCrop2D` produce) is reproduced
-        exactly, any other box is resampled to ``size`` with ``align_corners=True`` regardless of
-        ``shape_compensation`` and ``align_corners``. Without ``size`` the eager path is kept: it
+        coordinates cannot be read back to Python. This needs ``size``. The calls that
+        :func:`torch.compile` crops by a gather (see the note above) are captured as the same
+        gather, which keeps the box coordinates dynamic and matches the eager result up to float
+        rounding; :class:`CenterCrop2D` in its default mode is one of them. Any other call is
+        captured as the same warp as :func:`crop_and_resize` (``align_corners=True``): a box that
+        is exactly ``size`` pixels is reproduced up to float rounding, any other box is resampled
+        to ``size`` with ``align_corners=True`` regardless of ``shape_compensation`` and
+        ``align_corners``. Without ``size`` the eager path is kept: it
         reads the box coordinates back to Python, which breaks the graph under
         :func:`torch.compile` and is rejected by ``torch.export`` as data-dependent.
 
@@ -663,11 +692,9 @@ def crop_by_indices(
     y1 = src[:, 0, 1]
     y2 = src[:, 3, 1] + 1
 
-    if size is not None and is_exporting():
-        return _crop_by_indices_export(input_tensor, src_box, size, interpolation)
     if (
         size is not None
-        and is_compiling()
+        and (is_compiling() or is_exporting())
         and B > 0
         and (interpolation in ("bilinear", "bicubic") or (interpolation == "nearest" and align_corners is None))
         and not antialias
@@ -675,7 +702,12 @@ def crop_by_indices(
     ):
         # ``_compiled_slice_resize`` implements only these three modes (any other one would be resampled as
         # bicubic) and cannot gather from an empty batch; ``interpolate`` rejects ``align_corners`` for nearest.
+        # It keeps the box coordinates on the device, so graph export takes it too and matches the eager crop,
+        # where the warp below resamples any box that is not exactly ``size`` pixels. Checked before the export
+        # branch also because ``is_exporting()`` is true under ``torch.compile`` on some torch releases.
         return _compiled_slice_resize(input_tensor, src_box, size, interpolation, align_corners)
+    if size is not None and is_exporting():
+        return _crop_by_indices_export(input_tensor, src_box, size, interpolation)
 
     # ``RandomCrop`` passes its ``size`` through as given, and a list never compares equal to a ``torch.Size``:
     # every slice would look mismatched and be resized to its own size.
@@ -718,6 +750,10 @@ def crop_by_indices(
                     antialias=antialias,
                 )
             return _pad_to_size(out, size, left[0], top[0])
+        if size is not None:
+            # The whole batch is already the requested size (#4531). Copy once rather than rebuilding
+            # per-row views; keep the fresh, default-contiguous output of the general path.
+            return out.clone(memory_format=torch.contiguous_format)
 
     if size is None:
         h, w = infer_bbox_shape(src)
@@ -770,6 +806,10 @@ def crop_by_indices(
             out[i] = _out
     if out is None:
         return torch.cat(crops).contiguous()
+    if B == 0:
+        # No row was copied into ``out`` (#4429). A zero-element copy keeps the image autograd link, with no
+        # pixel work; measured eager overhead is a few microseconds (CPU/CUDA, torch 2.5.1).
+        out.copy_(input_tensor.reshape_as(out))
     return out
 
 
@@ -796,14 +836,16 @@ def _crop_by_indices_export(
             f"`crop_by_indices` can export with bilinear, nearest or bicubic interpolation. Got {interpolation}."
         )
     dst_h, dst_w = size
+    # at least float32, as _crop_by_boxes_to_size samples a float16/bfloat16 image: in the half dtype the corners
+    # round to the nearest value it holds (bfloat16 257 -> 256), and the crop moves with them
+    box_dtype = torch.promote_types(input_tensor.dtype, torch.float32)
     points_dst = torch.tensor(
         [[[0, 0], [dst_w - 1, 0], [dst_w - 1, dst_h - 1], [0, dst_h - 1]]],
         device=input_tensor.device,
-        dtype=input_tensor.dtype,
+        dtype=box_dtype,
     ).expand(src_box.shape[0], -1, -1)
-    return _crop_by_boxes_to_size(
-        input_tensor, src_box.to(input_tensor), points_dst, size, interpolation, "zeros", align_corners=True
-    )
+    src_box = src_box.to(device=input_tensor.device, dtype=box_dtype)
+    return _crop_by_boxes_to_size(input_tensor, src_box, points_dst, size, interpolation, "zeros", align_corners=True)
 
 
 class CenterCrop2D(nn.Module):
@@ -908,20 +950,22 @@ class CenterCrop2D(nn.Module):
         self.points_src[0, 3, 1] = end_y
 
         if self.flags["cropping_mode"] == "resample":  # uses bilinear interpolation to crop
+            # in float32 for a float16/bfloat16 image, as in center_crop
+            image = input.float() if _samples_half_in_float32(input) else input
             transform = _crop_translation(
-                self.points_src.expand(batch_size, -1, -1).to(input),
-                self.points_dst.expand(batch_size, -1, -1).to(input),
+                self.points_src.expand(batch_size, -1, -1).to(image),
+                self.points_dst.expand(batch_size, -1, -1).to(image),
             )
             transform = transform.expand(batch_size, -1, -1)
 
             return crop_by_transform_mat(
-                input,
+                image,
                 transform[:, :2, :],
                 self.size,
                 self.flags["resample"].name.lower(),
                 "zeros",
                 self.flags["align_corners"],
-            )
+            ).to(input.dtype)
 
         if self.flags["cropping_mode"] == "slice":  # uses advanced slicing to crop
             if dst_h > src_h or dst_w > src_w:
@@ -930,6 +974,8 @@ class CenterCrop2D(nn.Module):
                 left, top = max(-start_x, 0), max(-start_y, 0)
                 padded = F.pad(input, [left, max(end_x + 1 - src_w, 0), top, max(end_y + 1 - src_h, 0)])
                 return padded[..., start_y + top : end_y + 1 + top, start_x + left : end_x + 1 + left].contiguous()
-            return crop_by_indices(input, self.points_src.expand(batch_size, -1, -1).to(input), self.flags["size"])
+            # the integer box as is: crop_by_indices converts it, where a half dtype rounded it (bfloat16 257 -> 256)
+            box = self.points_src.expand(batch_size, -1, -1).to(device=input.device)
+            return crop_by_indices(input, box, self.flags["size"])
 
         raise NotImplementedError(f"Not supported type: {self.flags['cropping_mode']}.")

@@ -15,6 +15,14 @@
 # limitations under the License.
 #
 
+"""Chain several ONNX models into one merged graph and run it with one ONNX Runtime session.
+
+Which class to use:
+
+- Models run one after another, the outputs of each feeding the inputs of the next: :class:`ONNXSequential`.
+- One model: :class:`~kornia.onnx.module.ONNXModule`.
+"""
+
 from __future__ import annotations
 
 import os
@@ -28,49 +36,78 @@ __all__ = ["ONNXSequential"]
 
 
 class ONNXSequential(ONNXMixin, ONNXRuntimeMixin):
-    """ONNXSequential to chain multiple ONNX operators together.
+    """Chain several ONNX models into one graph and run it with one ONNX Runtime session.
 
-    Calling the object runs the combined graph on numpy arrays or CPU torch tensors of a dtype numpy has (not
-    bfloat16) and returns a list of numpy arrays; see ``ONNXRuntimeMixin.__call__``. The metadata of the models are
-    merged into the combined model with one entry per key: each key keeps its first position and takes the value of
-    the last model that sets it. The models passed in are not modified.
+    ``seq = ONNXSequential(model_a, model_b, ...)`` merges the models into one graph and opens one session on it. Each
+    joint connects the output named ``"output"`` to the input named ``"input"`` unless ``io_maps`` says otherwise, and
+    an output that feeds nothing stays a graph output. ``outputs = seq(*inputs)`` takes one input per unconnected
+    graph input, as :class:`~kornia.onnx.module.ONNXModule` does, and returns a list of numpy arrays. The names of
+    model ``i`` get the prefix ``K`` and ``i`` in two digits (``K00-input``, ``K01-output``). The models passed in are
+    not modified.
 
     Args:
-        *args: A variable number of ONNX models (ONNX ModelProto objects, or file paths as ``str`` or
-            :class:`os.PathLike`; a path object always names a local file). For Hugging Face-hosted models, use the
-            format 'hf://model_name'. Valid `model_name` can be found on https://huggingface.co/kornia/ONNX_models.
-            Or a URL to the ONNX model.
+        *args: The ONNX models, in the order they run, each as :class:`~kornia.onnx.module.ONNXModule` takes it: an
+            ONNX ModelProto object, a file path as ``str`` or :class:`os.PathLike` (a path object always names a
+            local file), or a ``str`` HTTP(S) URL or ``hf://<folder>/<name>`` name.
         providers: A list of execution providers for ONNXRuntime
             (e.g., ['CUDAExecutionProvider', 'CPUExecutionProvider']). A provider that the installed onnxruntime
             build does not offer is skipped with onnxruntime's ``UserWarning``; the session runs on the CPU if none
             is left. If None, the CPU.
-        session_options: Optional ONNXRuntime session options for optimizing the session.
+        session_options: ONNX Runtime ``SessionOptions``, used as given. If None, the session uses
+            ``ORT_ENABLE_EXTENDED`` graph optimizations.
         io_maps: An optional list with one list of ``(output, input)`` name pairs per joint between consecutive
             models: ``io_maps[0]`` connects outputs of the first model to inputs of the second, ``io_maps[1]`` the
             second to the third, and so on, as in ``[[("out_a", "in_b")], [("out_b", "in_c")]]`` for three models.
             Each entry may be any iterable of pairs (a ``zip``, ``dict.items()``, ...), and ``io_maps`` anything
             indexed by the joint; entries past the last joint are not read.
-            If None, we assume the default input name and output name are "input" and "output" accordingly, and
-            only one input and output node for each graph.
-            The merged graph does not check a later model's declared input types: a ``UserWarning`` says so when the
-            tensor element types of an output and the input it feeds differ. Declared dimensions are not compared.
-        cache_dir: The directory where downloaded ONNX models (``hf://`` names and URLs) are cached locally.
-            Defaults to None, which will use a default `kornia.config.hub_onnx_dir` directory.
+        cache_dir: The directory where downloaded ONNX models (``hf://`` names and URLs) are cached, as
+            :meth:`~kornia.onnx.utils.ONNXLoader.load_model` lays it out. If None,
+            ``kornia.config.kornia_config.hub_onnx_dir`` (``.kornia_hub/onnx_models`` under the working directory).
         auto_ir_version_conversion: If True, convert the models to one IR version and one OPSET version before
             combining them: IR version 9, and the highest OPSET version among the models, to which the others are
-            converted up. Other versions may be pointed to by `target_ir_version` and `target_opset_version`.
+            converted up.
         target_ir_version: The IR version to convert every model to before combining them, whether or not
             `auto_ir_version_conversion` is set. If None, the models keep their IR versions, unless
             `auto_ir_version_conversion` converts them to 9.
         target_opset_version: The OPSET version to convert every model to before combining them, whether or not
             `auto_ir_version_conversion` is set. If None, the models keep their OPSET versions, unless
-            `auto_ir_version_conversion` converts them to the highest among them. A conversion that fails raises its
-            error: the ONNX version converter's where it has no adapter for an operator (for example ``Resize`` or
-            ``Pad`` from opset 18 to 17), ``onnx.checker``'s where the converted graph is invalid (for example a
-            ``ReduceMean`` from opset 18 to 17), or ONNX Runtime's where it does not support the target IR version.
+            `auto_ir_version_conversion` converts them to the highest among them. A conversion that fails raises the
+            error of the ONNX version converter, of ``onnx.checker`` or of ONNX Runtime.
         force_download: If True, every ``hf://`` name and URL is downloaded again, and replaces the cached file, even
             when it is cached. By default a cached file is used as it is, however old, and one that does not load
             fails every time until it is deleted. It has no effect on a model object or a path to a local file.
+
+    Raises:
+        TypeError: If a model is not a ModelProto, a ``str`` or an :class:`os.PathLike`.
+        ValueError: If no model is given, if a local file does not exist, if a joint, set by ``io_maps`` or by
+            default, names an output or input a model does not have, if ``io_maps`` has no entry for a joint or an
+            ``io_maps`` entry is not name pairs, or if the models differ in IR version or opset and no conversion makes
+            them agree.
+
+    Warns:
+        UserWarning: If an output and the input it feeds have different tensor element types; declared dimensions are
+            not compared.
+
+    See Also:
+        - :class:`~kornia.onnx.module.ONNXModule`: one model, with its own input and output names.
+        - :func:`~kornia.onnx.utils.io_name_conversion`: rename a model's inputs and outputs to ``"input"`` and
+          ``"output"``, so that it chains without ``io_maps``.
+
+    Example:
+        >>> import numpy as np
+        >>> from onnx import TensorProto, helper
+        >>> from kornia.onnx import ONNXSequential
+        >>> def unary(op):
+        ...     graph = helper.make_graph(
+        ...         [helper.make_node(op, ["input"], ["output"])], op,
+        ...         [helper.make_tensor_value_info("input", TensorProto.FLOAT, [None, 3])],
+        ...         [helper.make_tensor_value_info("output", TensorProto.FLOAT, [None, 3])])
+        ...     return helper.make_model(graph, opset_imports=[helper.make_opsetid("", 17)], ir_version=8)
+        >>> seq = ONNXSequential(unary("Neg"), unary("Relu"))
+        >>> [i.name for i in seq.get_session().get_inputs()], [o.name for o in seq.get_session().get_outputs()]
+        (['K00-input'], ['K01-output'])
+        >>> seq(np.array([[-1.0, 2.0, -3.0]], dtype=np.float32))
+        [array([[1., 0., 3.]], dtype=float32)]
 
     """
 
@@ -136,7 +173,10 @@ class ONNXSequential(ONNXMixin, ONNXRuntimeMixin):
         return op_list
 
     def combine(self, io_maps: Optional[list[list[tuple[str, str]]]] = None) -> onnx.ModelProto:
-        """Combine the stored ONNX operators into one executable graph.
+        """Merge the stored ONNX models into one graph, without changing the object's session.
+
+        The constructor calls it once; a call after construction returns a new graph and leaves the running one as
+        it was.
 
         Args:
             io_maps: Optional list with one list of ``(output, input)`` name pairs per joint between consecutive
@@ -152,6 +192,8 @@ class ONNXSequential(ONNXMixin, ONNXRuntimeMixin):
         Raises:
             ValueCheckError: If ``io_maps`` has no entry for a joint, or an entry is not an iterable of name pairs.
                 It is a :exc:`ValueError` too.
+            ValueError: From ``onnx.compose.merge_models``, if a joint names an output or input that an operator does
+                not have, or the operators differ in IR version or opset.
 
         Warns:
             UserWarning: If an output and the input it feeds have different tensor element types: the merged graph
@@ -162,30 +204,36 @@ class ONNXSequential(ONNXMixin, ONNXRuntimeMixin):
     def create_session(
         self, providers: list[str] | None = None, session_options: Any | None = None
     ) -> ort.InferenceSession:
-        """Create an ONNX Runtime session for the combined graph.
+        """Create an ONNX Runtime session for the combined graph, without making it the object's session.
+
+        Pass the result to ``set_session`` to run the object on it.
 
         Args:
-            providers: Optional ordered list of execution providers used by ONNX
-                Runtime, for example GPU first and CPU as fallback.
-            session_options: Optional ONNX Runtime session options controlling
-                optimization, threading, and runtime behavior.
+            providers: Ordered list of ONNX Runtime execution providers, such as ``"CUDAExecutionProvider"`` followed
+                by ``"CPUExecutionProvider"``. A provider the installed onnxruntime build does not offer is skipped
+                with onnxruntime's ``UserWarning``. If None, the CPU.
+            session_options: ONNX Runtime ``SessionOptions``, used as given. If None, ``ORT_ENABLE_EXTENDED`` graph
+                optimizations.
 
         Returns:
-            ONNX Runtime inference session for ``self._combined_op``.
+            ONNX Runtime inference session for the combined graph.
         """
         return super()._create_session(self._combined_op, providers, session_options)
 
     def export(self, file_path: str, **kwargs: Any) -> None:
-        """Serialize the combined ONNX graph to an ``.onnx`` file.
+        """Save the combined ONNX graph to an ``.onnx`` file with ``onnx.save``.
 
         Args:
-            file_path: Destination path where the composed ONNX graph is saved.
-            kwargs: Additional keyword arguments forwarded to the export helper.
+            file_path: Destination path for the ``.onnx`` file.
+            kwargs: Keyword arguments of ``onnx.save``, such as ``save_as_external_data``.
         """
         return super()._export(self._combined_op, file_path, **kwargs)
 
     def add_metadata(self, additional_metadata: Optional[list[tuple[str, str]]] = None) -> onnx.ModelProto:
         """Attach metadata entries to the combined ONNX graph.
+
+        The metadata is written into the combined graph in place, as :func:`~kornia.onnx.utils.add_metadata` writes
+        it. The running session keeps the metadata it was created with; :meth:`export` saves the new entries.
 
         Args:
             additional_metadata: Optional list of ``(key, value)`` pairs to add

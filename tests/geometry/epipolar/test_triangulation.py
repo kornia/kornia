@@ -153,6 +153,7 @@ class TestTriangulation(BaseTester):
     # Cofactor sign-alignment regression
     # ------------------------------------------------------------------
 
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason="cofactor sign test only runs for float32/float64")
     def test_cofactor_sign_alignment(self, device, dtype):
         """Cofactor solver must not produce NaN/Inf due to sign cancellation.
 
@@ -163,8 +164,6 @@ class TestTriangulation(BaseTester):
         SVD solvers, and checks that the cofactor output is finite and
         directionally consistent with the SVD result.
         """
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("cofactor sign test only runs for float32/float64")
 
         torch.manual_seed(3)
         B, N = 1, 8
@@ -224,6 +223,9 @@ class TestTriangulation(BaseTester):
     # Noisy correspondences — compare against OpenCV DLT reference
     # ------------------------------------------------------------------
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="noisy-correspondence test only runs for float32/float64"
+    )
     @pytest.mark.parametrize("solver", ["svd", "eigh"])
     def test_noisy_correspondences_dlt(self, solver, device, dtype):
         """Triangulation from noisy correspondences matches the numpy DLT reference.
@@ -244,8 +246,6 @@ class TestTriangulation(BaseTester):
         #     _, _, V = np.linalg.svd(A)
         #     X_expected[i] = V[-1, :3] / V[-1, 3]
         """
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("noisy-correspondence test only runs for float32/float64")
 
         # Hardcoded inputs (torch.manual_seed(7), noise sigma=0.05)
         P1 = torch.tensor(
@@ -387,7 +387,7 @@ class TestConventionTriangulation(BaseTester):
 
     def test_convention_triangulate_points_unchecked_cheirality_and_baseline(self, device, dtype):
         two_view = two_view_scene(device, dtype)
-        P1, P2, K2, R, t, X = (two_view[k] for k in ("P1", "P2", "K2", "R", "t", "X"))
+        P1, P2, R, t, X = (two_view[k] for k in ("P1", "P2", "R", "t", "X"))
 
         def project(P: torch.Tensor, Y: torch.Tensor) -> torch.Tensor:
             return _dehom(torch.cat([Y, torch.ones_like(Y[..., :1])], -1) @ P.transpose(-2, -1))
@@ -401,26 +401,30 @@ class TestConventionTriangulation(BaseTester):
             behind = epi.triangulate_points(P1, P2, project(P1, -X), project(P2, -X), solver=solver)
             assert (behind[..., 2] < 0).all()
             assert (epi.depth_from_point(R, t, behind) < 0).all()
-        # Zero baseline raises nothing: svd and eigh return a point on the line of sight, or NaN when their arbitrary
-        # choice in the 2-D null space lands at infinity (one bfloat16 point here), and cofactor NaN (every 3x4
-        # sub-system is rank-deficient). Both cameras sit at C, away from the world origin, so that a solver
-        # collapsing to the origin cannot pass; the line of sight through X + C is the ray from C in the direction X.
-        C = torch.tensor([[[1.0], [2.0], [-3.0]]], device=device, dtype=dtype)
-        P1_C = epi.projection_from_KRt(two_view["K1"], torch.eye(3, device=device, dtype=dtype)[None], -C)
-        P2_C = epi.projection_from_KRt(K2, R, -R @ C)
-        X_C = X + C.transpose(-2, -1)
+        # An exact shared camera centre C in every dtype. The second camera rolls 90 degrees:
+        # (u, v) goes to (-v, u). Rounded rotations or independent projection products can introduce
+        # an unintended baseline or inconsistent rays in half precision and make the null space 1-D.
+        C = torch.tensor([1.0, 2.0, -3.0], device=device, dtype=dtype)
+        P1_C = torch.tensor([[1, 0, 0, -1], [0, 1, 0, -2], [0, 0, 1, 3]], device=device, dtype=dtype)
+        P2_C = torch.stack([-P1_C[1], P1_C[0], P1_C[2]])
+        x1 = (
+            torch.tensor(
+                [[-4, 1], [-3, 2], [-2, -1], [-1, 3], [1, -3], [2, 1], [3, -2], [4, 3]], device=device, dtype=dtype
+            )
+            / 8
+        )
+        x2 = torch.stack([-x1[..., 1], x1[..., 0]], dim=-1)
+        rays = torch.cat([x1, torch.ones_like(x1[..., :1])], dim=-1).cpu().double()
         for solver in ("svd", "eigh"):
-            out = epi.triangulate_points(P1_C, P2_C, project(P1_C, X_C), project(P2_C, X_C), solver=solver)
+            out = epi.triangulate_points(P1_C, P2_C, x1, x2, solver=solver).cpu().double()
             finite = torch.isfinite(out).all(-1)
-            assert finite.sum() >= 10  # of 12: the line-of-sight check below is not vacuous
-            # float64 on the CPU: MPS has no float64
-            finite = finite.cpu()
-            v, X64 = (out - C.transpose(-2, -1)).cpu().double()[finite], X.cpu().double()[finite]
-            assert (torch.linalg.cross(v, X64, dim=-1).norm(dim=-1) / X64.norm(dim=-1)).max() <= _OFF_RAY_TOL[dtype]
-            assert (v.norm(dim=-1) / X64.norm(dim=-1)).min() > 1e-3  # not the centre itself
-        if dtype in (torch.float32, torch.float64):  # in half precision the rows' roundoff leaves the rank
-            out = epi.triangulate_points(P1_C, P2_C, project(P1_C, X_C), project(P2_C, X_C), solver="cofactor")
-            assert torch.isnan(out).all()
+            assert finite.sum() >= 6  # the line-of-sight check below is not vacuous
+            v, direction = out[finite] - C.cpu().double(), rays[finite]
+            assert (
+                torch.linalg.cross(v, direction, dim=-1).norm(dim=-1) / direction.norm(dim=-1)
+            ).max() <= _OFF_RAY_TOL[dtype]
+            assert (v.norm(dim=-1) > 1e-3).any()
+        assert torch.isnan(epi.triangulate_points(P1_C, P2_C, x1, x2, solver="cofactor")).all()
 
     def test_convention_triangulate_points_infinity_is_nan(self, device, dtype):
         two_view = two_view_scene(device, dtype)
@@ -438,9 +442,10 @@ class TestConventionTriangulation(BaseTester):
             assert torch.isfinite(epi.triangulate_points(P1, P2, two_view["x1"], two_view["x2"], solver=solver)).all()
             assert torch.isfinite(epi.triangulate_points(P1, P2, x1_far, x2_far, solver=solver)).all()
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="the gradient check of the NaN mask runs in float32 and float64"
+    )
     def test_convention_triangulate_points_masked_infinity_keeps_gradients_finite(self, device, dtype):
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("the gradient check of the NaN mask runs in float32 and float64")
         two_view = two_view_scene(device, dtype)
         # A point at infinity is NaN, but masking its row before the loss leaves every gradient finite, including
         # the cameras' gradients, which sum over all rows: the NaN is substituted, not produced by the solve.
@@ -458,10 +463,11 @@ class TestConventionTriangulation(BaseTester):
             for grad in torch.autograd.grad(out[finite].sum(), (p1, p2, x1, x2)):
                 assert torch.isfinite(grad).all()
 
+    @pytest.mark.applies_to(
+        dtypes=("float16", "bfloat16"), reason="the half-precision overflow of the unnormalised cofactor null vector"
+    )
     def test_convention_triangulate_cofactor_half_precision_is_finite(self, device, dtype):
         two_view = two_view_scene(device, dtype)
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("the half-precision overflow of the unnormalised cofactor null vector")
         # The cofactor null vector of pixel-scale rows is normalised in float32 before the cast back to the input
         # dtype; cast first, it overflowed float16 and every point was NaN. bfloat16 keeps float32's exponent range
         # but only 8 bits of mantissa, hence its looser bound.
@@ -471,10 +477,55 @@ class TestConventionTriangulation(BaseTester):
         assert torch.isfinite(out).all()
         self.assert_close(out, X, rtol=0.0, atol={torch.float16: 5e-2, torch.bfloat16: 1.0}[dtype])
 
+    @pytest.mark.applies_to(dtypes=("float16",), reason="overflow of a float16 product before subtraction")
+    @pytest.mark.parametrize("solver", SOLVERS)
+    def test_triangulate_points_avoids_float16_row_overflow(self, solver, device, dtype):
+        # Rectified stereo with focal length 384, principal point (320, 200), and baseline 0.5.
+        # The two projections are u_left = 320 + 384*x/z, u_right = 320 + 384*(x-0.5)/z, v = 200 + 384*y/z.
+        projection = torch.tensor([[384, 0, 320, 0], [0, 384, 200, 0], [0, 0, 1, 0]], device=device, dtype=dtype)
+        right = projection.clone()
+        right[0, 3] = -192
+        left_pixels = torch.tensor([[344, 152], [576, 264]], device=device, dtype=dtype)
+        right_pixels = torch.tensor([[296, 152], [512, 264]], device=device, dtype=dtype)
+        expected = torch.tensor([[0.25, -0.5, 4.0], [2.0, 0.5, 3.0]], device=device, dtype=dtype)
+        # Rescaling both matrices by 128 preserves the reconstruction. For the second point, 576 * 128
+        # overflows float16 before subtraction, even though the resulting coefficient is representable.
+        result = epi.triangulate_points(128 * projection, 128 * right, left_pixels, right_pixels, solver=solver)
+        self.assert_close(result, expected)
+
+    @pytest.mark.applies_to(dtypes=("bfloat16",), reason="roundoff of a bfloat16 product before subtraction")
+    @pytest.mark.parametrize("solver", SOLVERS)
+    def test_triangulate_points_avoids_bfloat16_row_roundoff(self, solver, device, dtype):
+        # Rectified cameras with focal length 512, baseline 1 and camera depth z + 13.
+        # From disparity 16, camera depth is 512/16 = 32. With principal point (512, 256),
+        # x = (668 - 512)/16 = 9.75 and y = (284 - 256)/16 = 1.75.
+        left = torch.tensor([[512, 0, 512, 6656], [0, 512, 256, 3328], [0, 0, 1, 13]], device=device, dtype=dtype)
+        right = left.clone()
+        right[0, 3] = 6144
+        left_pixels = torch.tensor([[668, 284]], device=device, dtype=dtype)
+        right_pixels = torch.tensor([[652, 284]], device=device, dtype=dtype)
+        expected = torch.tensor([[9.75, 1.75, 19.0]], device=device, dtype=dtype)
+        self.assert_close(epi.triangulate_points(left, right, left_pixels, right_pixels, solver=solver), expected)
+
+    @pytest.mark.applies_to(
+        devices=("cpu", "cuda"), dtypes=("float16",), reason="float64 accumulation of the normal equations"
+    )
+    def test_triangulate_eigh_preserves_half_solution_at_offset_world_origin(self, device, dtype):
+        # Focal length 512, principal point (512, 208), baseline 1. A disparity of 8 gives camera
+        # depth 64 and world z = 64 - 80 = -16. World x and y are the principal-point offsets divided by 8.
+        left = torch.tensor([[512, 0, 512, 40960], [0, 512, 208, 16640], [0, 0, 1, 80]], device=device, dtype=dtype)
+        right = left.clone()
+        right[0, 3] = 40448
+        left_pixels = torch.tensor([[704, 264], [576, 232]], device=device, dtype=dtype)
+        right_pixels = torch.tensor([[696, 264], [568, 232]], device=device, dtype=dtype)
+        expected = torch.tensor([[24.0, 7.0, -16.0], [8.0, 3.0, -16.0]], device=device, dtype=dtype)
+        self.assert_close(epi.triangulate_points(left, right, left_pixels, right_pixels), expected)
+
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="in half precision the rows' roundoff leaves the sub-systems full rank"
+    )
     def test_convention_triangulate_cofactor_rank_deficient_sub_system(self, device, dtype):
         two_view = two_view_scene(device, dtype)
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("in half precision the rows' roundoff leaves the sub-systems full rank")
         # A 3x4 sub-system of the DLT matrix that is rank-deficient, or nearly so with noise, has a null vector set
         # by roundoff or noise; cofactor used to average a fixed pair of them after normalising (#4900). It now
         # refines the longest sub-system null vector through the adjugate and returns the svd point: NaN when every

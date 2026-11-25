@@ -24,7 +24,7 @@ from torch.fx.experimental.proxy_tensor import make_fx
 import kornia
 from kornia.core.exceptions import BaseError, TypeCheckError
 
-from testing.base import BaseTester
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
 
 
 class TestConvDistanceTransform(BaseTester):
@@ -81,10 +81,9 @@ class TestConvDistanceTransform(BaseTester):
         with torch._subclasses.fake_tensor.FakeTensorMode():
             assert kornia.contrib.distance_transform(torch.zeros(shape)).shape == shape
 
+    @pytest.mark.applies_to(devices=("cuda",), reason="CUDA graphs need a CUDA device")
     @pytest.mark.parametrize("spatial_shape", [(33, 33), (17, 17, 17)])
     def test_cuda_graph_capture(self, spatial_shape, device, dtype):
-        if device.type != "cuda":
-            pytest.skip("CUDA graphs need a CUDA device")
         sample = torch.zeros(2, 1, *spatial_shape, device=device, dtype=dtype)
         sample[(0, 0) + (4,) * len(spatial_shape)] = 1
         sample[(1, 0) + (12,) * len(spatial_shape)] = 1
@@ -408,6 +407,22 @@ class TestConvDistanceTransform(BaseTester):
         # Both sources have cost 1 - h*log(0.5). The first minimum receives the subgradient.
         expected = torch.zeros_like(image)
         expected[0, 0, 0, 0] = -0.35 / math.sqrt(1 - 0.35 * math.log(0.5))
+        self.assert_close(image.grad, expected)
+
+    @pytest.mark.parametrize(
+        "strict",
+        [
+            False,
+            pytest.param(True, marks=pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)),
+        ],
+    )
+    def test_convention_export_keeps_tie_gradient(self, device, dtype, strict):
+        image = torch.tensor([0.5, 0.0, 0.5], device=device, dtype=dtype).reshape(1, 1, 1, 3)
+        exported = torch.export.export(kornia.contrib.DistanceTransform(), (image,), strict=strict).module()
+        image.requires_grad_()
+        exported(image)[0, 0, 0, 1].backward()
+        # The two sources tie at the center; the first gets the whole derivative.
+        expected = image.new_tensor([-0.35 / math.sqrt(1 - 0.35 * math.log(0.5)), 0, 0]).reshape_as(image)
         self.assert_close(image.grad, expected)
 
     def test_zero_distance_has_zero_finite_gradient(self, device, dtype):

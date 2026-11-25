@@ -23,6 +23,7 @@ import torch
 from torch import Tensor
 
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation.utils.helpers import _exact_in_float64, _float_numbers
 from kornia.enhance import normalize
 
 
@@ -56,6 +57,8 @@ class Normalize(IntensityAugmentationBase2D):
           and takes no ``same_on_batch`` argument.
         - the statistics live in ``flags`` rather than in a buffer: ``state_dict()`` is empty and
           ``Module.to(...)`` does not move them; they are cast to the input's device and dtype on each call.
+          A float64 input uses a ``mean`` or ``std`` given as numbers exactly, rather than the float32 rounding
+          held in ``flags``, unless that entry has been changed since construction.
         - :class:`Denormalize` built with the same ``mean`` and nonzero ``std`` inverts this class, up to
           floating-point rounding, when both transforms apply and their intermediate values remain finite.
         - the result is not clamped: moving an image out of ``[0, 1]`` is what this class is for.
@@ -84,6 +87,9 @@ class Normalize(IntensityAugmentationBase2D):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=True, keepdim=keepdim)
+        # The numbers themselves, for a float64 image: the flags hold them rounded to float32.
+        self._mean_numbers = _float_numbers(mean)
+        self._std_numbers = _float_numbers(std)
         if isinstance(mean, (int, float)):
             mean = torch.tensor([mean])
 
@@ -103,6 +109,9 @@ class Normalize(IntensityAugmentationBase2D):
     ) -> Tensor:
         mean: Tensor = flags["mean"]
         std: Tensor = flags["std"]
+        if input.dtype == torch.float64:  # the numbers are absent from an older pickle
+            mean = _exact_in_float64(mean, self.__dict__.get("_mean_numbers"), input.device)
+            std = _exact_in_float64(std, self.__dict__.get("_std_numbers"), input.device)
         if torch.onnx.is_in_onnx_export():
             if mean.dim() == 1:
                 mean = mean.view(1, -1)

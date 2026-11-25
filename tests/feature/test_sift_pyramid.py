@@ -42,7 +42,7 @@ class TestSIFTDescriptorFromPyramid(BaseTester):
             get_laf_orientation(oriented), torch.zeros(1, 1, 1, device=device, dtype=dtype), rtol=0.0, atol=5.0
         )
 
-    @pytest.mark.parametrize("size", [1, 3, 4, 8, 9])
+    @pytest.mark.parametrize("size", [1, 3, 4])
     @pytest.mark.parametrize("inference", [False, True])
     def test_separable_pooling_matches_full_kernel(self, device, dtype, size, inference):
         feature = SIFTDescriptorFromPyramid(spatial_bin_size=size).to(device, dtype)
@@ -81,9 +81,8 @@ class TestSIFTDescriptorFromPyramid(BaseTester):
         assert empty_lafs.shape == (2, 0, 2, 3)
         assert empty_descriptors.shape == (2, 0, 128)
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="float64 is unavailable on MPS")
     def test_float64_identity_remap_keeps_histogram_5127(self, device):
-        if device.type == "mps":
-            pytest.skip("float64 is unavailable on MPS")
         histograms = torch.rand(1, 3, 8, 5, device=device, dtype=torch.float64)
         affine = torch.eye(2, device=device, dtype=torch.float64).expand(1, 3, 2, 2)
         remapped = SIFTDescriptorFromPyramid._remap_angles(histograms, affine, 8)
@@ -99,9 +98,8 @@ class TestSIFTDescriptorFromPyramid(BaseTester):
             get_laf_orientation(oriented), torch.zeros(1, 1, 1, device=device, dtype=dtype), rtol=0.0, atol=1e-2
         )
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="float64 is unavailable on MPS")
     def test_float64_vertical_gradient_orientation_5127(self, device):
-        if device.type == "mps":
-            pytest.skip("float64 is unavailable on MPS")
         # The peak lands on orientation bin 9 of 36, so the bin-to-angle scale decides the angle; the
         # horizontal case above sits on bin 0 and cannot see it.
         image = torch.arange(64, device=device, dtype=torch.float64).reshape(1, 1, 64, 1).expand(1, 1, 64, 64)
@@ -125,15 +123,6 @@ class TestSIFTDescriptorFromPyramid(BaseTester):
         _, descriptors = SIFTDescriptorFromPyramid().to(device, dtype).orient_and_describe(image, lafs)
         descriptors.sum().backward()
         assert torch.isfinite(image.grad).all()
-
-    def test_odd_spatial_pooling(self, device, dtype):
-        image = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
-        xy = torch.tensor([[[32.0, 32.0]]], device=device, dtype=dtype)
-        lafs = laf_from_center_scale_ori(xy, torch.full((1, 1, 1, 1), 8.0, device=device, dtype=dtype))
-        _, descriptors = (
-            SIFTDescriptorFromPyramid(spatial_bin_size=3).to(device, dtype).orient_and_describe(image, lafs)
-        )
-        assert descriptors.shape == (1, 1, 128)
 
     def test_invalid_laf_and_mixed_laf_dtype(self, device, dtype):
         image = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)

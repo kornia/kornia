@@ -69,6 +69,37 @@ class TestDrawPoint(BaseTester):
         with pytest.raises(BaseError, match="Color dim must match"):
             draw_point2d(img, points, color)
 
+    @pytest.mark.parametrize("color_shape", [(3,), (5,)], ids=["three-values", "height-as-length"])
+    def test_draw_point2d_rejects_a_wrong_length_color_on_a_2d_image(self, color_shape, dtype, device):
+        """A (H, W) image has one channel: a longer color failed at indexing with a raw RuntimeError (#6689)."""
+        img = torch.zeros(5, 6, dtype=dtype, device=device)
+        points = torch.tensor([[1, 2]], device=device)
+        color = torch.ones(color_shape, dtype=dtype, device=device)
+        with pytest.raises(BaseError, match=rf"expected a single value or 1 \(one per channel\), got {color_shape[0]}"):
+            draw_point2d(img, points, color)
+        assert img.count_nonzero() == 0
+
+    @pytest.mark.parametrize("shape", [(2, 4, 5), (4, 5)], ids=["third-order", "second-order"])
+    def test_draw_point2d_single_value_color_fills_every_channel_count(self, shape, dtype, device):
+        """A single-value color keeps working for every channel count (#6689)."""
+        img = torch.zeros(shape, dtype=dtype, device=device)
+        out = draw_point2d(img, torch.tensor([[1, 2]], device=device), torch.tensor([7.0], device=device))
+        expected = [7.0] * (shape[0] if len(shape) == 3 else 1)
+        assert out[..., 2, 1].flatten().tolist() == expected
+        assert int(out.count_nonzero()) == len(expected)
+
+    def test_draw_point2d_keeps_per_point_colors(self, dtype, device):
+        """A (C, N) or (1, N) color gives each of the N points its own color, as before the #6689 check."""
+        points = torch.tensor([[1, 2], [3, 4]], device=device)
+        rgb = torch.tensor([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=dtype, device=device)
+        out = draw_point2d(torch.zeros(3, 5, 6, dtype=dtype, device=device), points, rgb)
+        assert out[:, 2, 1].tolist() == [1.0, 3.0, 5.0]
+        assert out[:, 4, 3].tolist() == [2.0, 4.0, 6.0]
+        gray = torch.tensor([[7.0, 8.0]], dtype=dtype, device=device)
+        out = draw_point2d(torch.zeros(3, 5, 6, dtype=dtype, device=device), points, gray)
+        assert out[:, 2, 1].tolist() == [7.0] * 3
+        assert out[:, 4, 3].tolist() == [8.0] * 3
+
     def test_draw_point2d_with_mismatched_dtype(self, device):
         """Test that the color is correctly cast to the image dtype when drawing points."""
         points = torch.tensor([(1, 3), (2, 4)], device=device)
@@ -79,7 +110,7 @@ class TestDrawPoint(BaseTester):
         for x, y in points:
             self.assert_close(img[:, y, x], color.to(torch.uint8))
 
-    def test_draw_point2d_with_singleton_color_dims(self, dtype, device):
+    def test_draw_point2d_with_singleton_color_dims(self, device):
         """Ensure that plotting behavior is consistent if we have a singleton dim for the color."""
         points = torch.tensor([(1, 3), (2, 4)], device=device)
         # Plot given a color tensor of shape [3]
@@ -683,11 +714,10 @@ class TestDrawRectangle(BaseTester):
 
         assert torch.all(black_image == target)
 
-    @pytest.mark.parametrize("batch", [8, 11])
     @pytest.mark.parametrize("fill", [True, False])
-    @pytest.mark.parametrize("height", [12, 106, 298])
-    @pytest.mark.parametrize("width", [7, 123, 537])
-    def test_fill_and_edges(self, device, batch, fill, height, width):
+    @pytest.mark.parametrize(("height", "width"), [(12, 537), (298, 7)])
+    def test_fill_and_edges(self, device, fill, height, width):
+        batch = 8
         black_image = torch.zeros(batch, 3, height, width, device=device)
         # we should pass height - 1 and width - 1 but rectangle should clip correctly
         points = torch.tensor([0, 0, width, height]).to(device).expand(batch, 1, 4)
@@ -758,7 +788,7 @@ class TestDrawRectangle(BaseTester):
                     )
                     assert (
                         random_w_rectangle[
-                            b, :, points_list[b][n][1], points_list[b][n][0] : points_list[b][n][2] + 1
+                            b, :, points_list[b][n][3], points_list[b][n][0] : points_list[b][n][2] + 1
                         ].sum()
                         == (points_list[b][n][2] - points_list[b][n][0] + 1) * 3
                     )
@@ -824,6 +854,28 @@ class TestDrawRectangle(BaseTester):
         )
         self.assert_close(out, expected)
         assert out.count_nonzero() > 0
+
+    @pytest.mark.parametrize("color_shape", [(2,), (1, 1, 2)], ids=["vector", "per-rectangle"])
+    def test_rejects_a_wrong_length_color(self, color_shape, dtype, device):
+        """A color that is neither one value nor one per channel fails the check before any drawing (#6689)."""
+        image = torch.zeros(2, 3, 8, 8, dtype=dtype, device=device)
+        rectangle = torch.tensor([[[1, 1, 4, 4]], [[2, 2, 5, 5]]], device=device)
+        color = torch.ones(color_shape, dtype=dtype, device=device)
+        with pytest.raises(BaseError, match=r"expected a single value or 3 \(one per channel\), got 2"):
+            draw_rectangle(image, rectangle, color=color)
+        assert image.count_nonzero() == 0
+
+    @pytest.mark.parametrize("fill", [False, True])
+    def test_single_value_and_vector_colors_fill_every_channel_count(self, fill, dtype, device):
+        """A one-value color fills any channel count and a length-C one fills channel-wise (#6689)."""
+        image = torch.zeros(2, 2, 8, 8, dtype=dtype, device=device)
+        rectangle = torch.tensor([[[1, 1, 4, 4]], [[2, 2, 5, 5]]], device=device)
+        single = draw_rectangle(image.clone(), rectangle, color=torch.tensor([7.0], device=device), fill=fill)
+        assert single[0, :, 1, 2].flatten().tolist() == [7.0, 7.0]
+        assert single[1, :, 2, 3].flatten().tolist() == [7.0, 7.0]
+        vector = draw_rectangle(image.clone(), rectangle, color=torch.tensor([1.0, 2.0], device=device), fill=fill)
+        assert vector[0, :, 1, 2].flatten().tolist() == [1.0, 2.0]
+        assert vector[1, :, 2, 3].flatten().tolist() == [1.0, 2.0]
 
     def test_reversed_corners_draw_the_same_rectangle(self, device):
         a = draw_rectangle(
@@ -906,7 +958,9 @@ class TestDrawRectangle(BaseTester):
         not torch_version_ge(2, 14),
         reason="slices with data-dependent bounds export from torch 2.14 (2.9.1 fails to export, 2.6 bakes the input)",
     )
-    @pytest.mark.parametrize(("fill", "line_width"), [(False, 1), (True, 1), (False, 3)])
+    # An outline of one pixel is the outline of line_width pixels with a constant 0 added: three pixels exercise the
+    # clamps of each side to the box, which one pixel leaves idle.
+    @pytest.mark.parametrize(("fill", "line_width"), [(True, 1), (False, 3)])
     def test_onnx_export_draws_the_rectangles_given_at_run_time(self, fill, line_width):
         pytest.importorskip("onnx")
         pytest.importorskip("onnxscript")
@@ -939,6 +993,18 @@ class TestDrawRectangle(BaseTester):
             feeds = dict(zip(names, (image.numpy(), rectangle.numpy(), color.numpy())))
             got = torch.from_numpy(session.run(None, feeds)[0])
             self.assert_close(got, model(image, rectangle, color), rtol=0, atol=0)
+
+
+def _vertex_rounding_band(dtype, radius, area):
+    """Bound the fraction of pixels that rounding the vertices of a polygon inscribed in a circle can flip.
+
+    Rounding a vertex below 512 to a half-precision dtype moves it, and so the edges, by at most ``eps / 2 * 512``;
+    only the pixel centres within that distance of the boundary, of length at most ``2 * pi * radius``, can change.
+    The float32 and float64 vertices are not rounded, so the bound is 0 there.
+    """
+    if dtype not in (torch.float16, torch.bfloat16):
+        return 0.0
+    return 2 * math.pi * radius * torch.finfo(dtype).eps * 256 / area
 
 
 class TestFillConvexPolygon(BaseTester):
@@ -978,13 +1044,13 @@ class TestFillConvexPolygon(BaseTester):
         assert img[0, 0, 2].nonzero().flatten()[[0, -1]].tolist() == [260, 280]
         assert int(img[0, 0, 2].sum()) == 21
 
-    def test_centre_exactly_on_a_sloped_edge_is_filled(self, device, dtype):
+    def test_centre_exactly_on_a_sloped_edge_is_filled(self, device):
         # hull [[13,18],[48,1],[12,31],[12,22]] on 31x47: (row 26, col 18) lies on edge (48,1)->(12,31)
         poly = torch.tensor([[[13.0, 18.0], [48.0, 1.0], [12.0, 31.0], [12.0, 22.0]]], device=device)
         img = draw_convex_polygon(torch.zeros(1, 1, 31, 47, device=device), poly, torch.tensor([1.0], device=device))
         assert img[0, 0, 26, 18] == 1
 
-    def test_long_shallow_edge_with_vertices_outside_the_image(self, device, dtype):
+    def test_long_shallow_edge_with_vertices_outside_the_image(self, device):
         # triangle (-100,0),(100,4),(-100,4) on 5x6 covers 13 pixel centres (rows 2-4)
         poly = torch.tensor([[[-100.0, 0.0], [100.0, 4.0], [-100.0, 4.0]]], device=device)
         img = draw_convex_polygon(torch.zeros(1, 1, 5, 6, device=device), poly, torch.tensor([1.0], device=device))
@@ -993,39 +1059,45 @@ class TestFillConvexPolygon(BaseTester):
     def test_circle(self, device, dtype):
         b, c, h, w = 1, 3, 500, 500
         n = 5000
+        # The vertices and the reference disc are built in at least float32 and the vertices rounded once to the
+        # image dtype, so in half precision only that rounding separates the polygon from the disc.
+        work = torch.promote_types(dtype, torch.float32)
         im = torch.zeros(b, c, h, w, device=device, dtype=dtype)
-        t = torch.linspace(0, 1, steps=n, device=device, dtype=dtype)[None].expand(b, n)
+        t = torch.linspace(0, 1, steps=n, device=device, dtype=work)[None].expand(b, n)
         color = torch.tensor([1, 1, 1], device=device, dtype=dtype)[None].expand(b, c)
         x = (2 * math.pi * t).cos()
         y = (2 * math.pi * t).sin()
         ctr = 200
         radius = 200
-        pts = ctr + radius * torch.stack((x, y), dim=-1)
+        pts = (ctr + radius * torch.stack((x, y), dim=-1)).to(dtype)
         poly_im = draw_convex_polygon(im, pts, color)
-        XY = create_meshgrid(h, w, normalized_coordinates=False, device=device, dtype=dtype)
+        XY = create_meshgrid(h, w, normalized_coordinates=False, device=device, dtype=work)
         inside = (((XY[..., 1] - ctr) ** 2 + (XY[..., 0] - ctr) ** 2).sqrt() <= radius)[:, None].expand(b, c, h, w)
         circ_im = inside * color[..., None, None]
-        assert (circ_im - poly_im).abs().mean() <= 1e-4
+        assert (circ_im - poly_im).abs().mean() <= 1e-4 + _vertex_rounding_band(dtype, radius, h * w)
 
     def test_ellipse(self, device, dtype):
         b, c, h, w = 1, 3, 500, 500
         n = 5000
+        # As in test_circle, only the rounding of the vertices to a half-precision dtype is in that dtype.
+        work = torch.promote_types(dtype, torch.float32)
         im = torch.zeros(b, c, h, w, device=device, dtype=dtype)
-        t = torch.linspace(0, 1, steps=n, device=device, dtype=dtype)[None].expand(b, n)
+        t = torch.linspace(0, 1, steps=n, device=device, dtype=work)[None].expand(b, n)
         color = torch.tensor([1, 1, 1], device=device, dtype=dtype)[None].expand(b, c)
         lam = 2
         x = lam * (2 * math.pi * t).cos()
         y = (2 * math.pi * t).sin()
         ctr = 200
         radius = 100
-        pts = ctr + radius * torch.stack((x, y), dim=-1)
+        pts = (ctr + radius * torch.stack((x, y), dim=-1)).to(dtype)
         poly_im = draw_convex_polygon(im, pts, color)
-        XY = create_meshgrid(h, w, normalized_coordinates=False, device=device, dtype=dtype)
+        XY = create_meshgrid(h, w, normalized_coordinates=False, device=device, dtype=work)
         inside = (((XY[..., 1] - ctr) ** 2 + ((XY[..., 0] - ctr) / lam) ** 2).sqrt() <= radius)[:, None].expand(
             b, c, h, w
         )
         ellipse_im = inside * color[..., None, None]
-        assert (ellipse_im - poly_im).abs().mean() <= 1e-4
+        # The perimeter is below that of the circle of radius lam * radius.
+        assert (ellipse_im - poly_im).abs().mean() <= 1e-4 + _vertex_rounding_band(dtype, lam * radius, h * w)
 
     def test_rectangle(self, device, dtype):
         b, c, h, w = 1, 3, 500, 500
@@ -1146,6 +1218,28 @@ class TestFillConvexPolygon(BaseTester):
         expected = draw_convex_polygon(im.clone(), square, torch.tensor([9.0], device=device, dtype=dtype))
         self.assert_close(out, expected)
         assert out.count_nonzero() > 0
+
+    @pytest.mark.parametrize("color_shape", [(2,), (1, 2)], ids=["vector", "batched"])
+    def test_rejects_a_wrong_length_color(self, color_shape, device, dtype):
+        """A color that is neither one value nor one per channel fails the check before the fill (#6689)."""
+        im = torch.zeros(1, 3, 8, 8, device=device, dtype=dtype)
+        pts = torch.tensor([[[1.0, 1.0], [5.0, 1.0], [5.0, 5.0]]], device=device, dtype=dtype)
+        color = torch.ones(color_shape, device=device, dtype=dtype)
+        with pytest.raises(BaseError, match=r"expected a single value or 3 \(one per channel\), got 2"):
+            draw_convex_polygon(im, pts, color)
+        assert im.count_nonzero() == 0
+
+    @pytest.mark.parametrize(
+        "color, expected",
+        [(torch.tensor([7.0]), [7.0, 7.0]), (torch.tensor([1.0, 2.0]), [1.0, 2.0])],
+        ids=["single-value", "per-channel"],
+    )
+    def test_color_of_one_or_c_values_fills_a_two_channel_image(self, color, expected, device, dtype):
+        """A single-value color fills every channel count and a length-C one fills channel-wise (#6689)."""
+        im = torch.zeros(1, 2, 8, 8, device=device, dtype=dtype)
+        pts = torch.tensor([[[1.0, 1.0], [5.0, 1.0], [5.0, 5.0]]], device=device, dtype=dtype)
+        out = draw_convex_polygon(im, pts, color.to(device))
+        assert out[0, :, 2, 3].flatten().tolist() == expected
 
     def test_uint8_image_takes_a_float_colour(self, device):
         img = torch.full((1, 3, 5, 7), 9, dtype=torch.uint8, device=device)

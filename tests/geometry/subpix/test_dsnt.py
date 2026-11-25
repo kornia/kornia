@@ -22,7 +22,16 @@ import kornia
 from kornia.core._compat import torch_version_ge
 from kornia.core.exceptions import AsyncCheckError
 
-from testing.base import BaseTester
+from testing.base import BaseTester, raises_cuda_device_assert
+
+
+def _tolerances(dtype):
+    """Return the float32/float64 tolerance of the rendered-Gaussian pins, or the half-precision defaults.
+
+    In half precision the fixture's outer product and normalisation round the expected map by a few eps / 2 relative,
+    as the rendered map does, which the dtype's default tolerances cover.
+    """
+    return {} if dtype in (torch.float16, torch.bfloat16) else {"rtol": 1e-5, "atol": 1e-5}
 
 
 class TestRenderGaussian2d(BaseTester):
@@ -75,7 +84,7 @@ class TestRenderGaussian2d(BaseTester):
 
         actual = kornia.geometry.subpix.render_gaussian2d(mean.view(1, 2), std.view(1, 2), (5, 5), True)
 
-        self.assert_close(actual[0], gaussian, rtol=1e-5, atol=1e-5)
+        self.assert_close(actual[0], gaussian, **_tolerances(dtype))
 
     def test_pixel_coordinates(self, gaussian, device, dtype):
         mean = torch.tensor([2.0, 2.0], dtype=dtype, device=device)
@@ -83,18 +92,23 @@ class TestRenderGaussian2d(BaseTester):
 
         actual = kornia.geometry.subpix.render_gaussian2d(mean.view(1, 2), std.view(1, 2), (5, 5), False)
 
-        self.assert_close(actual[0], gaussian, rtol=1e-5, atol=1e-5)
+        self.assert_close(actual[0], gaussian, **_tolerances(dtype))
 
+    @pytest.mark.cuda_device_assert
     @pytest.mark.parametrize("std", [[0.0, 0.25], [0.25, 0.0], [0.0, 0.0]])
-    def test_zero_std_raises(self, device: torch.device, dtype: torch.dtype, std: list[float]) -> None:
+    def test_zero_std_raises(
+        self, device: torch.device, dtype: torch.dtype, std: list[float], capfd: pytest.CaptureFixture[str]
+    ) -> None:
         # A zero std used to render an all-NaN map: the inverse variance is infinite and 0 * inf is NaN.
-        if device.type == "cuda":
-            pytest.skip("not on CUDA: the value check is a device-side assert that invalidates the context")
         mean = torch.tensor([[0.0, 0.0]], device=device, dtype=dtype)
         std_t = torch.tensor([std], device=device, dtype=dtype)
 
-        # From torch 2.13 the MPS assert raises at the next synchronization; elsewhere the host read raises at once.
-        if device.type == "mps" and torch_version_ge(2, 13):
+        # On CUDA, and on MPS from torch 2.13, the assert raises at the next synchronization; elsewhere the host read
+        # raises at once.
+        if device.type == "cuda":
+            with raises_cuda_device_assert("std should be nonzero", capfd):
+                kornia.geometry.subpix.render_gaussian2d(mean, std_t, (5, 5), True)
+        elif device.type == "mps" and torch_version_ge(2, 13):
             kornia.geometry.subpix.render_gaussian2d(mean, std_t, (5, 5), True)
             with pytest.raises(RuntimeError, match="std should be nonzero"):
                 torch.mps.synchronize()
@@ -332,9 +346,8 @@ class TestSpatialExpectation2d(BaseTester):
         assert actual.shape == (*shape[:2], 2)
         assert actual.dtype == dtype
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="MPS does not support float64")
     def test_float64_normalized_grid_is_exact_5019(self, device):
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64")
         # #5019: the normalised grid was built in float32 and cast afterwards, so float64 coordinates carried
         # float32 rounding error (4e-8 here). A width of 7 has spacing 1/3, which float32 cannot represent.
         heatmap = torch.zeros(1, 1, 4, 7, device=device, dtype=torch.float64)
@@ -360,7 +373,6 @@ class TestSpatialExpectation2d(BaseTester):
         expected = torch.tensor([[[2064.0, 0.0]]], device=device, dtype=torch.bfloat16)
         self.assert_close(out, expected, rtol=0.0, atol=0.0)
 
-    @pytest.mark.skip("After the op be optimized the results are not the same")
     def test_dynamo(self, dtype, device, torch_optimizer):
         data = torch.tensor([[[[0.0, 0.0, 1.0], [0.0, 0.0, 0.0]]]], device=device, dtype=dtype)
         op = kornia.geometry.subpix.spatial_expectation2d

@@ -30,15 +30,13 @@ from kornia.models.sam.architecture.transformer import TwoWayTransformer
 from kornia.models.sam.model import Sam, SamConfig
 from kornia.models.tiny_vit import TinyViT
 
-from testing.base import assert_close
+from testing.base import assert_close, onnx_exporter_params
 
 # Every test in this module must stay device-free: the mark deselects the whole file on non-CPU devices.
 pytestmark = pytest.mark.device_agnostic
 
 
-def test_sam_has_to_onnx():
-    """Sam exposes a to_onnx() method via ONNXExportMixin."""
-    assert hasattr(Sam, "to_onnx")
+_EXPORTERS = onnx_exporter_params()
 
 
 @pytest.mark.timeout(120)
@@ -131,8 +129,20 @@ def test_vit_encoder_legacy_onnx_matches_eager_at_every_batch():
     _check_onnx_against_eager(op, model.image_encoder, (1, 2, 3), 64)
 
 
+def _mobile_sam_at_64_px() -> Sam:
+    """MobileSAM with its TinyViT encoder layout at 64 px instead of 1024 px, one block per stage.
+
+    TinyViT-5M stacks 2, 2, 6 and 2 blocks of the same kind per stage; one each exports the same kinds of nodes, in a
+    third of the time on the dynamo exporter.
+    """
+    torch.manual_seed(0)
+    model = Sam.from_name("mobile_sam")
+    model.image_encoder = TinyViT.from_config("5m", img_size=64, mobile_sam=True, depths=(1, 1, 1, 1))
+    return model.eval()
+
+
 @pytest.mark.timeout(120)
-@pytest.mark.parametrize("export_kwargs", [{}, {"dynamo": False}], ids=["default", "legacy"])
+@pytest.mark.parametrize("export_kwargs", _EXPORTERS)
 def test_tiny_vit_encoder_onnx_runs_at_the_batches_it_declares(export_kwargs):
     """A MobileSAM (TinyViT) encoder: a dynamic batch on the dynamo exporter, the pseudo batch on the legacy one.
 
@@ -144,11 +154,7 @@ def test_tiny_vit_encoder_onnx_runs_at_the_batches_it_declares(export_kwargs):
     legacy = not export_kwargs.get("dynamo", torch_version_ge(2, 9, 0))
     if not legacy:
         pytest.importorskip("onnxscript")
-    torch.manual_seed(0)
-    model = Sam.from_name("mobile_sam")
-    # The MobileSAM encoder layout at 64 px instead of 1024 px.
-    model.image_encoder = TinyViT.from_config("5m", img_size=64, mobile_sam=True)
-    model.eval()
+    model = _mobile_sam_at_64_px()
 
     op = model.to_onnx(save=False, pseudo_shape=[1, 3, 64, 64], **export_kwargs)
 
@@ -165,10 +171,7 @@ def test_tiny_vit_encoder_onnx_runs_at_the_batches_it_declares(export_kwargs):
 def test_tiny_vit_encoder_legacy_onnx_declares_the_pseudo_batch():
     """On the legacy exporter, a TinyViT encoder is traced at the pseudo shape's batch, here 3, and declares it."""
     pytest.importorskip("onnx")
-    torch.manual_seed(0)
-    model = Sam.from_name("mobile_sam")
-    model.image_encoder = TinyViT.from_config("5m", img_size=64, mobile_sam=True)
-    model.eval()
+    model = _mobile_sam_at_64_px()
 
     op = model.to_onnx(save=False, pseudo_shape=[3, 3, 64, 64], dynamo=False)
 

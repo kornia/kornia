@@ -22,7 +22,7 @@ import torch
 from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
 from kornia.augmentation.random_generator.utils import _range_bound_dtype
 from kornia.augmentation.utils import _adapted_rsampling, _adapted_uniform, _common_param_check, _range_bound
-from kornia.core.utils import _extract_device_dtype
+from kornia.core.utils import _extract_device_dtype, _to_device_nonblocking
 
 
 class SaltAndPepperGenerator(RandomGeneratorBase):
@@ -83,11 +83,11 @@ class SaltAndPepperGenerator(RandomGeneratorBase):
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([self.amount, self.salt_and_pepper])
 
-        amount_factor = _adapted_rsampling((batch_size,), self.amount_sampler, same_on_batch).to(
-            device=_device, dtype=_dtype
+        amount_factor = _to_device_nonblocking(
+            _adapted_rsampling((batch_size,), self.amount_sampler, same_on_batch), _device, _dtype
         )
-        salt_and_pepper_factor = _adapted_rsampling((batch_size,), self.salt_and_pepper_sampler, same_on_batch).to(
-            device=_device, dtype=_dtype
+        salt_and_pepper_factor = _to_device_nonblocking(
+            _adapted_rsampling((batch_size,), self.salt_and_pepper_sampler, same_on_batch), _device, _dtype
         )
 
         ## Generate noise masks.

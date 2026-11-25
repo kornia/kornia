@@ -29,7 +29,7 @@ from kornia.geometry.liegroup.so3 import _so3_small_angle_coefficients
 from kornia.geometry.quaternion import Quaternion
 from kornia.geometry.vector import Vector3
 
-from testing.base import BaseTester
+from testing.base import BaseTester, assert_deepcopy_copies_state_as_leaves
 
 
 class TestSo3(BaseTester):
@@ -139,12 +139,13 @@ class TestSo3(BaseTester):
         self.assert_close(So3.right_jacobian(v)[0, 0, 1], expected, rtol=rtol, atol=0.0)
         self.assert_close(So3.left_jacobian(v)[0, 0, 1], -expected, rtol=rtol, atol=0.0)
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="the closed forms above the switch keep only a few bits in half precision"
+    )
     def test_small_angle_coefficients_across_the_switch(self, device, dtype):
         # The three coefficients on both sides of the series/closed-form switch (0.2 rad in float64, 0.5 in
         # float32), against 50-digit references. Generated with mpmath (mp.dps = 50):
         #   a = (1 - cos t) / t**2, b = (t - sin t) / t**3, c = (1 - (t / 2) * cot(t / 2)) / t**2
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("the closed forms above the switch keep only a few bits in half precision")
         ref = torch.tensor(
             [
                 (1e-6, 0.4999999999999583, 0.16666666666665833, 0.08333333333333472),
@@ -235,11 +236,12 @@ class TestSo3(BaseTester):
             self.assert_close(q, q_ref)
             self.assert_close(q.norm(dim=-1), torch.ones(2, device=device, dtype=dtype))
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="half precision keeps too few bits to see the series coefficients"
+    )
     def test_exp_across_the_series_switch_4928(self, device, dtype):
         # exp about z is (cos(t / 2), 0, 0, sin(t / 2)) on both sides of the 0.5 rad switch, against
         # 50-digit references. Generated with mpmath (mp.dps = 50): cos(t / 2), sin(t / 2).
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("half precision keeps too few bits to see the series coefficients")
         ref = torch.tensor(
             [
                 (1e-3, 0.9999998750000026, 0.0004999999791666669),
@@ -288,13 +290,44 @@ class TestSo3(BaseTester):
             v = (theta * axis).requires_grad_(True)
             assert torch.autograd.gradgradcheck(lambda x: So3.exp(x).q.data, (v,))
 
+    @pytest.mark.parametrize("jacobian", [So3.right_jacobian, So3.left_jacobian, So3.Jr, So3.Jl])
+    def test_jacobian_hessian_at_identity(self, device, dtype, jacobian):
+        # J(w) = I +/- [w]/2 + (w w^T - (w.w) I)/6 + O(|w|^3).
+        # Thus d_k d_l J_ij(0) = (delta_ik delta_jl + delta_il delta_jk - 2 delta_ij delta_kl)/6.
+        zero = torch.zeros(3, device=device, dtype=dtype)
+        eye = torch.eye(3, device=device, dtype=dtype)
+        for i in range(3):
+            for j in range(3):
+                actual = torch.autograd.functional.hessian(lambda w, i=i, j=j: jacobian(w)[i, j], zero)
+                expected = (torch.outer(eye[i], eye[j]) + torch.outer(eye[j], eye[i]) - 2 * (i == j) * eye) / 6
+                self.assert_close(actual, expected)
+
+    @pytest.mark.parametrize("jacobian", [So3.right_jacobian, So3.left_jacobian])
+    @pytest.mark.parametrize("angle", [0.0, 1e-8, 0.1, 0.3, 1.0])
+    def test_jacobian_gradgradcheck(self, device, jacobian, angle):
+        # A mixed batch must not let an identity row poison the derivatives of other rotations.
+        vec = torch.tensor([[0.0, 0.0, 0.0], [0.48, 0.6, 0.64]], device=device, dtype=torch.float64) * angle
+        self.gradcheck(jacobian, (vec,))
+        assert torch.autograd.gradgradcheck(jacobian, (vec.requires_grad_(),), fast_mode=True)
+
+    @pytest.mark.parametrize("jacobian, expected", [(So3.right_jacobian, -0.25), (So3.left_jacobian, 0.25)])
+    def test_jacobian_third_derivative_at_identity(self, device, dtype, jacobian, expected):
+        # Along the z axis J_r[0,1] = (1-cos(z))/z = z/2 - z^3/24 + ...; J_l has the opposite sign.
+        # A constant angle substituted only at zero would repair the Hessian but lose this cubic term.
+        z = torch.zeros((), device=device, dtype=dtype, requires_grad=True)
+        zero = torch.zeros_like(z)
+        value = jacobian(torch.stack((zero, zero, z)))[0, 1]
+        for _ in range(3):
+            value = torch.autograd.grad(value, z, create_graph=True)[0]
+        self.assert_close(value, z.new_tensor(expected))
+
     def test_jit(self, device, dtype):
         # Scripting is not part of the contract, so the graph is traced. It is evaluated on another input, with an
         # identity row, so a branch taken while tracing would show up as a mismatch against eager.
         v = torch.tensor([[0.3, -0.4, 0.5], [0.1, 0.2, -0.3]], device=device, dtype=dtype)
         other = v * 0.5
         other[1] = 0.0
-        for fn in (lambda x: So3.exp(x).matrix(), lambda x: So3.exp(x).log()):
+        for fn in (lambda x: So3.exp(x).matrix(), lambda x: So3.exp(x).log(), So3.right_jacobian, So3.left_jacobian):
             traced = torch.jit.trace(fn, (v,))
             self.assert_close(traced(other), fn(other))
 
@@ -584,6 +617,16 @@ class TestSo3(BaseTester):
         Jl = So3.left_jacobian(vec)
         self.assert_close(Jl, Jr.transpose(-1, -2))
 
+    def test_deepcopy_with_autograd_history_4923(self, device, dtype):
+        # So3 copies its quaternion, which holds the history of v in a buffer; the copy holds it as a new
+        # leaf.
+        v = torch.tensor([[0.4, 0.2, -0.3]], device=device, dtype=dtype, requires_grad=True)
+        rotation = So3.exp(v)
+        copied = assert_deepcopy_copies_state_as_leaves(rotation)
+        self.assert_close(copied.matrix().detach(), rotation.matrix().detach(), rtol=0, atol=0)
+        rotation.matrix().sum().backward()
+        assert v.grad is not None
+
 
 class _RotationHolder(nn.Module):
     """A module that keeps a Quaternion and an So3 as attributes, as a pose-holding model would."""
@@ -802,10 +845,9 @@ class TestSo3Conventions(BaseTester):
         point = torch.tensor([[1.0, 2.0, 3.0]], device=device, dtype=dtype)
         self.assert_close(target.rot * point, torch.tensor([[-1.0, -2.0, 3.0]], device=device, dtype=dtype))
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="MPS does not support float64")
     @pytest.mark.parametrize("as_parameter", [False, True])
     def test_parent_casts_rotation_state_4923(self, device, dtype, as_parameter):
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64")
         data = torch.tensor([[0.5, 0.5, 0.5, 0.5]], device=device, dtype=dtype)
         parent = _RotationHolder(data, as_parameter)
         for method, expected_dtype in (("double", torch.float64), ("float", torch.float32)):
@@ -846,9 +888,11 @@ class TestSo3HalfPrecision(BaseTester):
     # in half precision, their ~10 roundings drifted 3-6 units of roundoff from the exact result, and chains of them
     # missed the 1-2 unit tolerances of test_ortho and Se3's test_mul* tests.
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"),
+        reason="float16 and bfloat16 are computed in float32 (test_half_precision_rounds_float32_once)",
+    )
     def test_float32_and_float64_are_evaluated_in_their_own_dtype(self, device, dtype):
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("float16 and bfloat16 are computed in float32 (test_half_precision_rounds_float32_once)")
         a, b = So3.random(5, device, dtype), So3.random(5, device, dtype)
         p = torch.rand(5, 3, device=device, dtype=dtype)
         # bit for bit the quaternion formulas in the input dtype, with no detour through another dtype
@@ -857,9 +901,10 @@ class TestSo3HalfPrecision(BaseTester):
         assert torch.equal(a * p, _quaternion_rotate(a.q, p))
         assert torch.equal((a * Vector3(p)).data, _quaternion_rotate(a.q, p))
 
+    @pytest.mark.applies_to(
+        dtypes=("float16", "bfloat16"), reason="only float16 and bfloat16 inputs are computed in float32"
+    )
     def test_half_precision_rounds_float32_once(self, device, dtype):
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("only float16 and bfloat16 inputs are computed in float32")
         a, b = So3.random(5, device, dtype), So3.random(5, device, dtype)
         p = torch.rand(5, 3, device=device, dtype=dtype)
         a32, b32 = So3(Quaternion(a.q.data.float())), So3(Quaternion(b.q.data.float()))
@@ -873,9 +918,10 @@ class TestSo3HalfPrecision(BaseTester):
             assert actual.dtype == dtype
             assert torch.equal(actual, wide.to(dtype))
 
+    @pytest.mark.applies_to(
+        dtypes=("float16", "bfloat16"), reason="float32 and float64 are evaluated in their own dtype"
+    )
     def test_half_precision_matches_float64_within_one_rounding(self, device, dtype):
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("float32 and float64 are evaluated in their own dtype")
         # The reference is float64 from the same rounded inputs. Every output is below 2 in magnitude, where one
         # rounding costs at most eps / 2 (plus a float32 error far below it); evaluated in half precision, matrix() and
         # s * p reached 3 eps.
@@ -889,9 +935,10 @@ class TestSo3HalfPrecision(BaseTester):
         self.assert_close((a * b).q.data.cpu().double(), (a64 * b64).q.data, rtol=0.0, atol=eps)
         self.assert_close((a * p).cpu().double(), a64 * p64, rtol=0.0, atol=eps)
 
+    @pytest.mark.applies_to(
+        dtypes=("float16", "bfloat16"), reason="float32 and float64 gradients are covered by test_gradcheck"
+    )
     def test_half_precision_backward(self, device, dtype):
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("float32 and float64 gradients are covered by test_gradcheck")
         data = So3.random(4, device, dtype).q.data.detach().requires_grad_(True)
         p = torch.rand(4, 3, device=device, dtype=dtype, requires_grad=True)
         data32 = data.detach().float().requires_grad_(True)

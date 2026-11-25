@@ -75,6 +75,7 @@ from kornia.contrib import super_resolution
 from kornia.feature import affine_shape, defmo, hardnet, hynet, keynet, mkd, orientation, sosnet, tfeat, xfeat
 from kornia.feature import lightglue as lightglue_mod
 from kornia.feature.aliked import aliked
+from kornia.feature.clidd import clidd
 from kornia.feature.dedode import dedode
 from kornia.feature.dedode import encoder as dedode_encoder
 from kornia.feature.disk import disk
@@ -158,6 +159,8 @@ WEIGHT_REGISTRIES: dict[str, tuple[ModuleType, dict[str, Any]]] = {
     "sam": (sam, {variant.name: url for variant, url in sam.urls.items()}),
     # ALIKED formats one template pair per backbone configuration.
     "aliked": (aliked, {name: [t.format(name) for t in aliked._CHECKPOINT_URLS] for name in aliked._ALIKED_CFGS}),
+    # CLIDD caches each variant under a prefixed name, not the URL basename: a (cache name, URL) pair.
+    "clidd": (clidd, {variant: clidd._weights_source(variant) for variant in clidd._CLIDD_CONFIGS}),
     # ViT and EfficientViT compute their URL from the variant.
     "vit": (vit, {variant: vit._get_weight_url(variant) for variant in vit._AVAILABLE_WEIGHTS}),
     "efficient_vit": (
@@ -210,7 +213,7 @@ _DOWNLOAD_CALL_ALLOWLIST = {
 #
 # "What CI runs" is wider than the pytest matrix. The docs job restores the same
 # cache and then builds the API reference, and ``docs/generate_examples.py``
-# constructs KeyNet, DISK, ALIKED and XFeat pretrained with no download guard --
+# constructs KeyNet, DISK, ALIKED, XFeat and CLIDD pretrained with no download guard --
 # so a reason phrased only in terms of tests and doctests can be true and still
 # leave a checkpoint being fetched live on every documentation build.
 NOT_PREFETCHED: dict[str, str] = {
@@ -237,10 +240,9 @@ NOT_PREFETCHED: dict[str, str] = {
     "rtdetr_r50vd_6x_coco_from_paddle.pth": "only the r18vd variant is tested",
     "rtdetr_r50vd_m_6x_coco_from_paddle.pth": "only the r18vd variant is tested",
     "rtdetr_r101vd_6x_coco_from_paddle.pth": "only the r18vd variant is tested",
-    # DeDoDe: ``TestDeDoDe`` is class-level ``@pytest.mark.skip`` ("DeDoDe is
-    # ummaintained"), so the scheduled slow run does not reach it either. The only
-    # DeDoDe construction CI performs is the ``DeDoDe.from_pretrained`` doctest,
-    # which selects the ``L-C4-v2`` detector and the ``B-upright`` descriptor --
+    # DeDoDe: ``TestDeDoDe`` builds only the L detector and B descriptor, with random
+    # weights. The only pretrained DeDoDe CI builds is the ``DeDoDe.from_pretrained``
+    # doctest, which selects the ``L-C4-v2`` detector and the ``B-upright`` descriptor --
     # those two are prefetched and every other variant is dead weight in the
     # cache. ``dedode_descriptor_G`` and the DINOv2 backbone it pulls are 2.2 GB
     # of it.
@@ -251,7 +253,7 @@ NOT_PREFETCHED: dict[str, str] = {
     "B_SO2_Spread_descriptor_setting_C.pth": "steerer variant nothing in CI selects",
     "G_C4_Perm_descriptor_setting_C.pth": "steerer variant nothing in CI selects",
     "G_SO2_Spread_descriptor_setting_C.pth": "steerer variant nothing in CI selects",
-    "dedode_descriptor_G.pth": "only TestDeDoDe builds the G descriptor, and it is skipped",
+    "dedode_descriptor_G.pth": "no test or doctest builds the G descriptor",
     "dinov2_vitl14_pretrain.pth": "reachable only through the G descriptor, which nothing in CI builds",
     # Whole-model checkpoints whose only pretrained test carries
     # ``@pytest.mark.slow``, and which nothing in the docs build constructs. The
@@ -293,6 +295,13 @@ NOT_PREFETCHED: dict[str, str] = {
     "RealESRNet_x4plus.pth": "no test, doctest or docs build loads pretrained Real-ESRGAN weights",
     "RealESRGAN_x4plus_anime_6B.pth": "no test, doctest or docs build loads pretrained Real-ESRGAN weights",
     "RealESRGAN_x2plus.pth": "no test, doctest or docs build loads pretrained Real-ESRGAN weights",
+    "clidd_N64.pth": "no test, doctest or docs build loads this CLIDD variant",
+    "clidd_T64.pth": "no test, doctest or docs build loads this CLIDD variant",
+    "clidd_S64.pth": "no test, doctest or docs build loads this CLIDD variant",
+    "clidd_M64.pth": "no test, doctest or docs build loads this CLIDD variant",
+    "clidd_G128.pth": "no test, doctest or docs build loads this CLIDD variant",
+    "clidd_E128.pth": "no test, doctest or docs build loads this CLIDD variant",
+    "clidd_U128.pth": "no test, doctest or docs build loads this CLIDD variant",
 }
 
 
@@ -390,6 +399,8 @@ def _iter_checkpoints():
             if isinstance(url, dict):  # dedode nests detector/descriptor tables
                 for sub, sub_url in url.items():
                     yield f"{registry}.{variant}.{sub}", _pinned_cache_name(sub_url), _as_list(sub_url)
+            elif isinstance(url, tuple):  # an explicit ``file_name``: (cache filename, url)
+                yield f"{registry}.{variant}", url[0], _as_list(url[1])
             else:
                 yield f"{registry}.{variant}", _pinned_cache_name(url), _as_list(url)
 

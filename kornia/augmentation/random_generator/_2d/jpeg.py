@@ -21,7 +21,7 @@ import torch
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _joint_range_check, _range_bound
-from kornia.core.utils import _extract_device_dtype
+from kornia.core.utils import _extract_device_dtype, _to_device_nonblocking
 
 __all__ = ["JPEGGenerator"]
 
@@ -67,4 +67,4 @@ class JPEGGenerator(RandomGeneratorBase):
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([self.jpeg_quality])
         jpeg_quality_value = _adapted_rsampling((batch_size,), self.jpeg_quality_sampler, same_on_batch)
-        return {"jpeg_quality": jpeg_quality_value.to(device=_device, dtype=_dtype)}
+        return {"jpeg_quality": _to_device_nonblocking(jpeg_quality_value, _device, _dtype)}

@@ -142,6 +142,10 @@ Every benchmark here must follow the same rules (utilities in [`common.py`](comm
   commits, so a snapshot can carry the current version and a recent timestamp and still measure an
   implementation that no longer exists. Quote `kornia` and `git_commit` together whenever a number
   is cited; the performance page and the llms digest both print the commit for this reason.
+- **A release re-measures what its changes reach:** a release's `<kornia-version>` directory may hold
+  only the suites whose code paths changed since the previous snapshot. The performance page and the
+  llms digest publish each `<suite>--<machine>--<device>` file from its newest version directory,
+  for the machines that the newest directory measures.
 - **Supersede stale snapshots:** when a merged change alters the speed of ops a committed snapshot
   measures, re-measure that machine. When the hardware is not available, move the run to
   `benchmarks/results/superseded/<version>/` and add a row to that directory's README naming the

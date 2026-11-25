@@ -32,25 +32,6 @@ from testing.casts import dict_to
 
 
 class TestDisk(BaseTester):
-    def test_smoke(self, dtype, device):
-        disk = DISK().to(device, dtype)
-        inp = torch.ones(1, 3, 64, 64, device=device, dtype=dtype)
-        output = disk(inp)
-        assert isinstance(output, list)
-        assert len(output) == 1
-        assert all(isinstance(e, DISKFeatures) for e in output)
-
-    def test_smoke_n_detections(self, dtype, device):
-        """Unless we give it an actual image and use pretrained weights, we can't expect the number of detections
-        to really match the limit.
-        """
-        disk = DISK().to(device, dtype)
-        inp = torch.ones(1, 3, 64, 64, device=device, dtype=dtype)
-        output = disk(inp, n=100)
-        assert isinstance(output, list)
-        assert len(output) == 1
-        assert all(isinstance(e, DISKFeatures) for e in output)
-
     @pytest.mark.slow
     def test_smoke_pretrained(self, device):
         disk = DISK.from_pretrained(checkpoint="depth", device=device)
@@ -84,11 +65,10 @@ class TestDisk(BaseTester):
         assert heatmaps.dtype == dtype
         assert descriptors.dtype == dtype
 
+    @pytest.mark.applies_to(dtypes=("float16", "bfloat16"), reason="half-precision rule")
     def test_half_model_returns_float32_keypoints(self, device, dtype):
         # R4: keypoints are integer pixels, and bfloat16 holds no odd integer above 256, so a bfloat16 DISK put every
         # keypoint past x = 256 on an even pixel. They are float32 now; scores and descriptors keep the model dtype.
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("half-precision rule")
         torch.manual_seed(0)
         disk = DISK().to(device, dtype)
         image = torch.rand(1, 3, 112, 400, generator=torch.Generator().manual_seed(0)).to(device, dtype)

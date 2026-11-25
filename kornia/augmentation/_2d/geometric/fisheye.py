@@ -113,7 +113,9 @@ class RandomFisheye(AugmentationBase2D):
             input = input.float()
         # create the initial sampling fields
         B, _, H, W = input.shape
-        grid = create_meshgrid(H, W, normalized_coordinates=True)
+        # A float64 image gets a float64 grid; every other dtype keeps the default-dtype grid it had before.
+        grid_dtype = torch.float64 if input.dtype == torch.float64 else None
+        grid = create_meshgrid(H, W, normalized_coordinates=True, dtype=grid_dtype)
         field_x = _to_device_nonblocking(grid[..., 0], input.device, input.dtype)  # 1xHxW
         field_y = _to_device_nonblocking(grid[..., 1], input.device, input.dtype)  # 1xHxW
         # vectorize the random parameters

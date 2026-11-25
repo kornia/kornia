@@ -110,20 +110,24 @@ class TestBlurConventions(BaseTester):
         torch.manual_seed(_FORWARD_SEED)
         assert _lit_extent(make((1, 5))(transposed)[0, 0]) == ([3], [0, 1, 2, 3, 4])
 
+    # On a ramp ``arange(n * n)`` every padding mode gives the border windows a different median: the top row of
+    # the 3x3 median on 4x4 is [4, 4, 5, 6] with reflect, [1, 2, 3, 3] with replicate, [5, 5, 6, 6] with circular
+    # and [0, 1, 2, 0] with zeros. A constant image tells only zero padding apart.
+    # Snippet used to generate expected:
+    #   x = torch.arange(n * n, dtype=torch.float64).reshape(1, 1, n, n); r = k // 2
+    #   u = F.pad(x, (r, r, r, r), mode="reflect").unfold(2, k, 1).unfold(3, k, 1).reshape(n, n, k * k)
+    #   print(u.median(-1).values[0], u.median(-1).values[1, 1])  # (n, k) = (4, 3) and (6, 5)
     def test_convention_median_blur_border_median_uses_reflect_padding(self, device, dtype):
-        # A constant-ones image: reflect padding reflects the boundary ones into the padding window,
-        # so corner, edge, and center windows all hold only ones and their medians evaluate to 1.
-        ones = torch.ones(1, 1, 4, 4, device=device, dtype=dtype)
+        image = torch.arange(16, device=device, dtype=dtype).reshape(1, 1, 4, 4)
         torch.manual_seed(_FORWARD_SEED)
-        out = K.RandomMedianBlur((3, 3), p=1.0)(ones)
-        assert float(out[0, 0, 0, 0]) == 1.0
-        assert float(out[0, 0, 0, 1]) == 1.0
-        assert float(out[0, 0, 1, 1]) == 1.0
-        # 5x5 on a 6x6 image: reflect padding preserves the constant value across the border,
-        # so the top row consists entirely of ones.
+        out = K.RandomMedianBlur((3, 3), p=1.0)(image)
+        self.assert_close(out[0, 0, 0], image.new_tensor([4.0, 4.0, 5.0, 6.0]), rtol=0, atol=0)
+        assert float(out[0, 0, 1, 1]) == 5.0  # an interior window needs no padding
+        # 5x5 on a 6x6 image: the padding reaches two pixels in, past the first interior row.
         torch.manual_seed(_FORWARD_SEED)
-        wide = K.RandomMedianBlur((5, 5), p=1.0)(torch.ones(1, 1, 6, 6, device=device, dtype=dtype))
-        self.assert_close(wide[0, 0, 0], ones.new_tensor([1.0, 1.0, 1.0, 1.0, 1.0, 1.0]))
+        wide = K.RandomMedianBlur((5, 5), p=1.0)(torch.arange(36, device=device, dtype=dtype).reshape(1, 1, 6, 6))
+        self.assert_close(wide[0, 0, 0], image.new_tensor([8.0, 8.0, 9.0, 10.0, 10.0, 10.0]), rtol=0, atol=0)
+        assert float(wide[0, 0, 1, 1]) == 8.0
 
     def test_convention_box_blur_even_kernel_is_accepted_and_off_centre(self, device, dtype):
         # Snippet used to generate expected:
@@ -337,8 +341,8 @@ class TestBlurConventions(BaseTester):
     @pytest.mark.parametrize(
         ("kernel_size", "drawn"),
         [
+            # Odd bounds from the smallest size and from above it, an even upper and lower bound, and one size.
             ((3, 5), [3, 5]),
-            ((3, 7), [3, 5, 7]),
             ((5, 11), [5, 7, 9, 11]),
             ((3, 20), [3, 5, 7, 9, 11, 13, 15, 17, 19]),
             ((4, 7), [5, 7]),
@@ -963,19 +967,16 @@ class TestNoiseAndWeatherConventions(BaseTester):
     # painted, for a single pixel and for drops slanting either way (#4604).
     @pytest.mark.parametrize("drop_height, drop_width", [(1, 0), (2, 2), (2, -2)])
     def test_convention_random_rain_paints_every_row_and_column_4604(self, device, dtype, drop_height, drop_width):
-        image = torch.zeros(1, 3, 6, 10, device=device, dtype=dtype)
+        # 300 images in one call: every sample draws its own drops, as 300 calls of one image did.
+        image = torch.zeros(300, 3, 6, 10, device=device, dtype=dtype)
         # `.to` so the coordinate sampler runs in the test's dtype, where a half `rand` can return 1.0 (#4553).
         aug = K.RandomRain(
             number_of_drops=(20, 20), drop_height=(drop_height, drop_height), drop_width=(drop_width, drop_width), p=1.0
         ).to(device=device, dtype=dtype)
-        rows, cols = set(), set()
-        for seed in range(300):
-            torch.manual_seed(seed)
-            lit = (aug(image)[0, 0] != 0).nonzero()
-            rows |= set(lit[:, 0].tolist())
-            cols |= set(lit[:, 1].tolist())
-        assert sorted(rows) == list(range(6))
-        assert sorted(cols) == list(range(10))
+        torch.manual_seed(0)
+        lit = (aug(image)[:, 0] != 0).nonzero()
+        assert sorted(set(lit[:, 1].tolist())) == list(range(6))
+        assert sorted(set(lit[:, 2].tolist())) == list(range(10))
 
     # A single drop paints a bounding box of exactly ``(h, max(|w|, 1))`` inside the image for every legal start
     # (#4604); a drop wrapped across opposite edges by a negative index would still satisfy the union pin.

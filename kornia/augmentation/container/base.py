@@ -36,6 +36,7 @@ from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.utils.helpers import (
     _IMAGE_SHAPES,
     _VOLUME_SHAPES,
+    _detach_graph_tensors,
     _detach_recorded_graph_tensors,
     _raise_input_rank_error,
 )
@@ -528,6 +529,42 @@ class ImageSequentialBase(SequentialBase):
         return input
 
 
+class _DeferredMatrix:
+    """The matrix of one call of a child whose matrix is built lazily, built when the container's matrix is read.
+
+    Holds the child and the ``_lazy_matrix_args`` of that call, so a later call of the same child, e.g. a child that
+    appears twice in the sequence, cannot change it. Reading ``.transform_matrix`` on every child call made the
+    container build the matrices that the children defer, on every forward, even when nothing reads them.
+    """
+
+    __slots__ = ("args", "grad_enabled", "module")
+
+    def __init__(self, module: Any, args: Any, grad_enabled: Optional[bool] = None) -> None:
+        self.module = module
+        self.args = args
+        # The gradient mode of the call, which the matrix would have been built in before deferral.
+        self.grad_enabled = torch.is_grad_enabled() if grad_enabled is None else grad_enabled
+
+    def __reduce__(self) -> Tuple[Any, Tuple[Any, Any, bool]]:
+        # With a learnable range the recorded params are part of the call's graph; a copy or pickle keeps their
+        # values, detached, as the containers' ``__getstate__`` does for the rest of the recorded state.
+        return _DeferredMatrix, (self.module, _detach_graph_tensors(self.args, {}), self.grad_enabled)
+
+    def materialize(self) -> torch.Tensor:
+        module = self.module
+        with torch.set_grad_enabled(self.grad_enabled):
+            if module._transform_matrix is None and module._lazy_matrix_args is self.args:
+                # Still the child's latest call: build it through the child, which keeps it for its own reads.
+                return module.transform_matrix
+            matrix_input, params, flags = self.args
+            in_tensor = matrix_input.materialize() if hasattr(matrix_input, "materialize") else matrix_input
+            return module.generate_transformation_matrix(in_tensor, params, flags)
+
+
+def _materialize_matrix(matrix: Any) -> Optional[torch.Tensor]:
+    return matrix.materialize() if isinstance(matrix, _DeferredMatrix) else matrix
+
+
 class TransformMatrixMinIn:
     """Enables computation matrix computation."""
 
@@ -553,8 +590,9 @@ class TransformMatrixMinIn:
         # In AugmentationSequential, the parent class is accessed first.
         # So that it was None in the beginning. We hereby use lazy computation here.
         if self._transform_matrix is None and len(self._transform_matrices) != 0:
-            self._transform_matrix = self._transform_matrices[0]
-            for mat in self._transform_matrices[1:]:
+            matrices = [_materialize_matrix(mat) for mat in self._transform_matrices]
+            self._transform_matrix = matrices[0]
+            for mat in matrices[1:]:
                 self._update_transform_matrix(mat)
         return self._transform_matrix
 

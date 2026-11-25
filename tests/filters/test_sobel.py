@@ -21,7 +21,6 @@ import pytest
 import torch
 import torch.nn.functional as F
 
-from kornia.core._compat import torch_version
 from kornia.filters import Sobel, SpatialGradient, SpatialGradient3d, sobel, spatial_gradient, spatial_gradient3d
 from kornia.filters.kernels import get_spatial_gradient_kernel2d, normalize_kernel2d
 
@@ -31,20 +30,6 @@ sobel_module = importlib.import_module("kornia.filters.sobel")
 
 
 class TestSpatialGradient(BaseTester):
-    @pytest.mark.parametrize("batch_size", [1, 2])
-    @pytest.mark.parametrize("mode", ["sobel", "diff"])
-    @pytest.mark.parametrize("order", [1, 2])
-    @pytest.mark.parametrize("normalized", [True, False])
-    def test_smoke(self, batch_size, mode, order, normalized, device, dtype):
-        data = torch.zeros(batch_size, 3, 4, 4, device=device, dtype=dtype)
-        actual = SpatialGradient(mode, order, normalized)(data)
-        assert isinstance(actual, torch.Tensor)
-
-    @pytest.mark.parametrize("batch_size", [1, 2])
-    def test_cardinality(self, batch_size, device, dtype):
-        inp = torch.zeros(batch_size, 3, 4, 4, device=device, dtype=dtype)
-        assert SpatialGradient()(inp).shape == (batch_size, 3, 2, 4, 4)
-
     def test_exception(self):
         from kornia.core.exceptions import ShapeError, TypeCheckError
 
@@ -325,23 +310,18 @@ class TestSpatialGradient(BaseTester):
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(spatial_gradient, (img,))
 
-    def test_module(self, device, dtype):
+    @pytest.mark.parametrize("mode", ["sobel", "diff"])
+    @pytest.mark.parametrize("order", [1, 2])
+    @pytest.mark.parametrize("normalized", [True, False])
+    def test_module(self, mode, order, normalized, device, dtype):
         img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
-        op = spatial_gradient
-        op_module = SpatialGradient()
-        expected = op(img)
-        actual = op_module(img)
-        self.assert_close(actual, expected)
+        self.assert_close(SpatialGradient(mode, order, normalized)(img), spatial_gradient(img, mode, order, normalized))
 
     @pytest.mark.parametrize("mode", ["sobel", "diff"])
     @pytest.mark.parametrize("order", [1, 2])
     @pytest.mark.parametrize("batch_size", [1, 2])
-    @pytest.mark.xfail(torch_version() in {"2.0.1"}, reason="random failing")
     def test_dynamo(self, batch_size, order, mode, device, dtype, torch_optimizer):
-        data = torch.ones(batch_size, 3, 10, 10, device=device, dtype=dtype)
-        if order == 1 and dtype == torch.float64:
-            # TODO: FIX order 1 spatial gradient with fp64 on dynamo
-            pytest.xfail(reason="Order 1 on spatial gradient may be wrong computed for float64 on dynamo")
+        data = torch.rand(batch_size, 3, 10, 10, device=device, dtype=dtype)
         op = SpatialGradient(mode, order)
         op_optimized = torch_optimizer(op)
 
@@ -349,19 +329,35 @@ class TestSpatialGradient(BaseTester):
 
 
 class TestSpatialGradient3d(BaseTester):
-    @pytest.mark.parametrize("batch_size", [1, 2])
-    @pytest.mark.parametrize("mode", ["diff"])  # TODO: add support to 'sobel'
-    @pytest.mark.parametrize("order", [1, 2])
-    def test_smoke(self, batch_size, mode, order, device, dtype):
-        data = torch.ones(batch_size, 3, 2, 7, 4, device=device, dtype=dtype)
-        actual = SpatialGradient3d(mode, order)(data)
-        assert isinstance(actual, torch.Tensor)
+    def test_input_and_gradient_with_shared_volume(self, device, dtype):
+        if not supports_replicate_padding_3d(device, dtype):
+            pytest.skip("spatial_gradient3d pads with mode='replicate', which this device lacks for this dtype")
 
-    @pytest.mark.parametrize("batch_size", [1, 2])
-    def test_cardinality(self, batch_size, device, dtype):
-        inp = torch.zeros(batch_size, 2, 4, 5, 6, device=device, dtype=dtype)
-        sobel = SpatialGradient3d()
-        assert sobel(inp).shape == (batch_size, 2, 3, 4, 5, 6)
+        # A linear volume gives the slope inside and half the slope on the replicated border.
+        x = torch.tensor([0.0, 0.125, 0.25, 0.375], device=device, dtype=dtype)
+        y = torch.tensor([0.0, 0.0625, 0.125], device=device, dtype=dtype)
+        z = torch.tensor([0.0, 0.03125], device=device, dtype=dtype)
+        volume = (x[None, None, :] + y[None, :, None] + z[:, None, None]).requires_grad_()
+        before = volume.detach().clone()
+        version = volume._version
+        # Expanded batches and channels share storage with the leaf volume.
+        image = volume[None, None].expand(2, 3, -1, -1, -1)
+        actual = spatial_gradient3d(image)
+        expected_x = torch.tensor([0.0625, 0.125, 0.125, 0.0625], device=device, dtype=dtype)
+        expected_y = torch.tensor([0.03125, 0.0625, 0.03125], device=device, dtype=dtype)
+        self.assert_close(actual[:, :, 0], expected_x.expand(2, 3, 2, 3, 4))
+        self.assert_close(actual[:, :, 1], expected_y[None, :, None].expand(2, 3, 2, 3, 4))
+        self.assert_close(actual[:, :, 2], torch.full_like(actual[:, :, 2], 0.015625))
+        weights = torch.tensor([1.0, 2.0, 3.0], device=device, dtype=dtype).view(1, 1, 3, 1, 1, 1)
+        (actual * weights).sum().backward()
+        # Summing each centered difference cancels interior coefficients; only the two borders remain.
+        gx = torch.tensor([-1.0, 0.0, 0.0, 1.0], device=device, dtype=dtype)
+        gy = torch.tensor([-2.0, 0.0, 2.0], device=device, dtype=dtype)
+        gz = torch.tensor([-3.0, 3.0], device=device, dtype=dtype)
+        expected_grad = 6 * (gx[None, None, :] + gy[None, :, None] + gz[:, None, None])
+        self.assert_close(volume.grad, expected_grad)
+        self.assert_close(volume, before, rtol=0, atol=0)
+        assert volume._version == version
 
     def test_exception(self):
         from kornia.core.exceptions import ShapeError, TypeCheckError
@@ -518,18 +514,15 @@ class TestSpatialGradient3d(BaseTester):
         fast_mode = "cpu" in str(device)  # disable fast mode on gpu
         self.gradcheck(spatial_gradient3d, (img,), fast_mode=fast_mode)
 
-    def test_module(self, device, dtype):
-        img = torch.rand(2, 3, 1, 4, 5, device=device, dtype=dtype)
-        op = spatial_gradient3d
-        op_module = SpatialGradient3d()
-        expected = op(img)
-        actual = op_module(img)
-        self.assert_close(actual, expected)
+    @pytest.mark.parametrize("order", [1, 2])
+    def test_module(self, order, device, dtype):
+        img = torch.rand(2, 3, 3, 4, 5, device=device, dtype=dtype)
+        self.assert_close(SpatialGradient3d("diff", order)(img), spatial_gradient3d(img, "diff", order))
 
     @pytest.mark.parametrize("mode", ["diff"])
     @pytest.mark.parametrize("order", [1, 2])
     def test_dynamo(self, mode, order, device, dtype, torch_optimizer):
-        data = torch.ones(1, 3, 1, 10, 10, device=device, dtype=dtype)
+        data = torch.rand(1, 3, 1, 10, 10, device=device, dtype=dtype)
         op = SpatialGradient3d(mode, order)
         op_optimized = torch_optimizer(op)
 
@@ -537,20 +530,6 @@ class TestSpatialGradient3d(BaseTester):
 
 
 class TestSobel(BaseTester):
-    @pytest.mark.parametrize("batch_size", [1, 2])
-    @pytest.mark.parametrize("normalized", [True, False])
-    def test_smoke(self, batch_size, normalized, device, dtype):
-        inp = torch.zeros(batch_size, 3, 4, 7, device=device, dtype=dtype)
-        actual = Sobel()(inp)
-
-        assert isinstance(actual, torch.Tensor)
-        assert actual.shape == (batch_size, 3, 4, 7)
-
-    @pytest.mark.parametrize("batch_size", [1, 2])
-    def test_cardinality(self, batch_size, device, dtype):
-        inp = torch.zeros(batch_size, 3, 4, 7, device=device, dtype=dtype)
-        assert Sobel()(inp).shape == (batch_size, 3, 4, 7)
-
     def test_exception(self):
         from kornia.core.exceptions import ShapeError, TypeCheckError
 
@@ -615,20 +594,14 @@ class TestSobel(BaseTester):
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(sobel, (img, normalized))
 
-    def test_module(self, device, dtype):
+    @pytest.mark.parametrize("normalized", [True, False])
+    def test_module(self, normalized, device, dtype):
         img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
-        op = sobel
-        op_module = Sobel()
-        expected = op(img)
-        actual = op_module(img)
-        self.assert_close(actual, expected)
+        self.assert_close(Sobel(normalized)(img), sobel(img, normalized))
 
     @pytest.mark.parametrize("batch_size", [1, 2])
     def test_dynamo(self, batch_size, device, dtype, torch_optimizer):
-        if dtype == torch.float64:
-            # TODO: investigate sobel for float64 with dynamo
-            pytest.xfail(reason="The sobel results can be different after dynamo on fp64")
-        data = torch.ones(batch_size, 3, 10, 10, device=device, dtype=dtype)
+        data = torch.rand(batch_size, 3, 10, 10, device=device, dtype=dtype)
         op = Sobel()
         op_optimized = torch_optimizer(op)
 

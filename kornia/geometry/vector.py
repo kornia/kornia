@@ -116,7 +116,9 @@ class Vector3(TensorWrapper):
 
     def __init__(self, vector: torch.Tensor) -> None:
         super().__init__(vector)
-        KORNIA_CHECK(vector.shape[-1] == 3)
+        KORNIA_CHECK(
+            vector.shape[-1] == 3, lambda: f"Vector3 needs a last dimension of 3, got shape {list(vector.shape)}."
+        )
 
     def __repr__(self) -> str:
         return f"x: {self.x}\ny: {self.y}\nz: {self.z}"
@@ -194,26 +196,6 @@ class Vector3(TensorWrapper):
             shape = ()
         return cls(torch.rand((*shape, 3), device=device, dtype=dtype))
 
-    # TODO: polish overload
-    # @overload
-    # @classmethod
-    # def from_coords(
-    #     cls, x: Tensor, y: Tensor, z: Tensor, device=None, dtype=None
-    # ) -> "Vector3":
-    #     KORNIA_CHECK(isinstance(x, Tensor))
-    #     KORNIA_CHECK(type(x) == type(y) == type(z))
-    #     return wrap(as_tensor((x, y, z), device=device, dtype=dtype), Vector3)
-
-    # TODO: polish overload
-    # @overload
-    # @classmethod
-    # def from_coords(
-    #     cls, x: float, y: float, z: float, device=None, dtype=None
-    # ) -> "Vector3":
-    #     KORNIA_CHECK(isinstance(x, float))
-    #     KORNIA_CHECK(type(x) == type(y) == type(z))
-    #     return wrap(as_tensor((x, y, z), device=device, dtype=dtype), Vector3)
-
     @classmethod
     def from_coords(
         cls,
@@ -239,8 +221,17 @@ class Vector3(TensorWrapper):
         Returns:
             :class:`Vector3` containing the assembled coordinates.
         """
-        KORNIA_CHECK(type(x) is type(y) is type(z))
-        KORNIA_CHECK(isinstance(x, (torch.Tensor, float)))
+        KORNIA_CHECK(
+            type(x) is type(y) is type(z),
+            lambda: (
+                f"x, y and z must have the same type, got {type(x).__name__}, {type(y).__name__} and "
+                f"{type(z).__name__}."
+            ),
+        )
+        KORNIA_CHECK(
+            isinstance(x, (torch.Tensor, float)),
+            lambda: f"x, y and z must be floats or tensors, got {type(x).__name__}.",
+        )
         if isinstance(x, float):
             return _wrap(torch.as_tensor((x, y, z), device=device, dtype=dtype), Vector3)
         # TODO: this is totally insane ...
@@ -268,7 +259,9 @@ class Vector2(TensorWrapper):
 
     def __init__(self, vector: torch.Tensor) -> None:
         super().__init__(vector)
-        KORNIA_CHECK(vector.shape[-1] == 2)
+        KORNIA_CHECK(
+            vector.shape[-1] == 2, lambda: f"Vector2 needs a last dimension of 2, got shape {list(vector.shape)}."
+        )
 
     def __repr__(self) -> str:
         return f"x: {self.x}\ny: {self.y}"
@@ -361,8 +354,13 @@ class Vector2(TensorWrapper):
         Returns:
             :class:`Vector2` containing the assembled coordinates.
         """
-        KORNIA_CHECK(type(x) is type(y))
-        KORNIA_CHECK(isinstance(x, (torch.Tensor, float)))
+        KORNIA_CHECK(
+            type(x) is type(y),
+            lambda: f"x and y must have the same type, got {type(x).__name__} and {type(y).__name__}.",
+        )
+        KORNIA_CHECK(
+            isinstance(x, (torch.Tensor, float)), lambda: f"x and y must be floats or tensors, got {type(x).__name__}."
+        )
         if isinstance(x, float):
             return _wrap(torch.as_tensor((x, y), device=device, dtype=dtype), Vector2)
         # TODO: this is totally insane ...
@@ -372,26 +370,3 @@ class Vector2(TensorWrapper):
 
 Vec3 = Vector3
 Vec2 = Vector2
-
-# TODO: adapt to TensorWrapper
-
-# class UnitVector(Module):
-#     def __init__(self, vector: torch.Tensor) -> None:
-#         super().__init__()
-#         KORNIA_CHECK_SHAPE(vector, ["B", "N"])
-#         self._vector = Parameter(vector)
-#
-#     @property
-#     def vector(self) -> Tensor:
-#         return self._vector
-#
-#     @classmethod
-#     def from_unit_vector(cls, v: Tensor) -> "UnitVector":
-#         # TODO: add checks https://github.com/strasdat/Sophus/blob/23.04-beta/cpp/sophus/geometry/ray.h#L59
-#         return UnitVector(_VectorType(v))
-#
-#     @classmethod
-#     def from_vector(cls, v: Tensor) -> "UnitVector":
-#         """From a vector and normalize."""
-#         return UnitVector(_VectorType(v).normalized())
-#

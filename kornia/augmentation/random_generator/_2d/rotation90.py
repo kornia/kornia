@@ -24,7 +24,7 @@ import torch
 from kornia.augmentation.random_generator._2d.plain_uniform import PlainUniformGenerator
 from kornia.augmentation.random_generator.base import UniformDistribution
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check
-from kornia.core.utils import _extract_device_dtype
+from kornia.core.utils import _extract_device_dtype, _to_device_nonblocking
 
 __all__ = ["Rotation90Generator"]
 
@@ -95,4 +95,4 @@ class Rotation90Generator(PlainUniformGenerator):
             # ``lo + u * (hi + 1 - lo)`` rounds up onto ``hi + 1`` for a range such as ``(1, 1)``, which ``floor``
             # would keep, so a rare draw would turn a quarter turn into a half turn.
             drawn = drawn.floor().clamp(max=sampler.high - 1)
-        return {"times": drawn.to(device=_device, dtype=_dtype)}
+        return {"times": _to_device_nonblocking(drawn, _device, _dtype)}

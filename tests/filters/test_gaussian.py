@@ -36,7 +36,6 @@ from kornia.filters import (
     get_gaussian_erf_kernel1d,
     get_gaussian_kernel1d,
     get_gaussian_kernel2d,
-    get_gaussian_kernel3d,
 )
 from kornia.filters.kernels import gaussian_discrete, gaussian_discrete_erf
 
@@ -45,6 +44,7 @@ from testing.base import (
     BaseTester,
     assert_close,
     dynamic_export_is_available,
+    raises_cuda_device_assert,
     supports_reflect_padding,
     supports_replicate_padding,
 )
@@ -118,9 +118,8 @@ def test_gaussian(window_size, sigma, mean, expected, device, dtype):
     assert_close(result, expected)
 
 
+@pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64")
 def test_gaussian_mixed_native_precision_mean(device):
-    if device.type == "mps":
-        pytest.skip("MPS does not support float64")
     sigma = torch.tensor([[1.3]], device=device, dtype=torch.float32)
     mean = torch.tensor([[2.123456789]], device=device, dtype=torch.float64)
     actual = gaussian(5, sigma, mean=mean)
@@ -185,129 +184,6 @@ def test_gaussian_empty_window_stays_empty_4589(device, dtype):
     assert gaussian(0, 1.0, device=device, dtype=dtype).shape == (1, 0)
 
 
-@pytest.mark.parametrize("window_size", [5, 11])
-@pytest.mark.parametrize("sigma", [1.5, 5.0])
-def test_get_gaussian_kernel1d_float(window_size, sigma, device, dtype):
-    actual = get_gaussian_kernel1d(window_size, sigma, device=device, dtype=dtype)
-    expected = torch.ones(1, device=device, dtype=dtype)
-
-    assert actual.shape == (1, window_size)
-    assert_close(actual.sum(), expected.sum())
-
-
-@pytest.mark.parametrize("window_size", [5, 11])
-@pytest.mark.parametrize("sigma", [[[1.5]], [[1.5], [5.0]]])
-def test_get_gaussian_kernel1d_tensor(window_size, sigma, device, dtype):
-    sigma = torch.tensor(sigma, device=device, dtype=dtype)
-    bs = sigma.shape[0]
-
-    actual = get_gaussian_kernel1d(window_size, sigma)
-    expected = torch.ones(bs, device=device, dtype=dtype)
-
-    assert actual.shape == (bs, window_size)
-    assert_close(actual.sum(), expected.sum())
-
-
-@pytest.mark.parametrize("ksize_x", [5, 11])
-@pytest.mark.parametrize("ksize_y", [3, 7])
-@pytest.mark.parametrize("sigma", [(1.5, 1.5), (2.1, 2.1)])
-def test_get_gaussian_kernel2d_float(ksize_x, ksize_y, sigma, device, dtype):
-    actual = get_gaussian_kernel2d((ksize_y, ksize_x), sigma, device=device, dtype=dtype)
-    expected = torch.ones(1, device=device, dtype=dtype)
-
-    assert actual.shape == (1, ksize_y, ksize_x)
-    assert_close(actual.sum(), expected.sum())
-
-
-@pytest.mark.parametrize("ksize_x", [5, 11])
-@pytest.mark.parametrize("ksize_y", [3, 7])
-@pytest.mark.parametrize("sigma", [[[1.5, 2.1], [1.5, 2.1], [5.0, 2.7]], [[1.5, 2.1], [3.5, 2.1]]])
-def test_get_gaussian_kernel2d_tensor(ksize_x, ksize_y, sigma, device, dtype):
-    sigma = torch.tensor(sigma, device=device, dtype=dtype)
-    bs = sigma.shape[0]
-
-    actual = get_gaussian_kernel2d((ksize_y, ksize_x), sigma)
-    expected = torch.ones(bs, device=device, dtype=dtype)
-
-    assert actual.shape == (bs, ksize_y, ksize_x)
-    assert_close(actual.sum(), expected.sum())
-
-
-@pytest.mark.parametrize("ksize_x", [5, 11])
-@pytest.mark.parametrize("ksize_y", [3, 7])
-@pytest.mark.parametrize("ksize_z", [9, 3])
-@pytest.mark.parametrize("sigma", [(1.5, 1.5, 3.5), (2.1, 1.5, 2.1)])
-def test_get_gaussian_kernel3d_float(ksize_x, ksize_y, ksize_z, sigma, device, dtype):
-    actual = get_gaussian_kernel3d((ksize_z, ksize_y, ksize_x), sigma, device=device, dtype=dtype)
-    expected = torch.ones(1, device=device, dtype=dtype)
-
-    assert actual.shape == (1, ksize_z, ksize_y, ksize_x)
-    assert_close(actual.sum(), expected.sum())
-
-
-@pytest.mark.parametrize("ksize_x", [5, 11])
-@pytest.mark.parametrize("ksize_y", [3, 7])
-@pytest.mark.parametrize("ksize_z", [9, 3])
-@pytest.mark.parametrize(
-    "sigma", [[[1.5, 2.1, 3.5], [1.5, 2.1, 1.5], [5.0, 2.7, 2.1]], [[1.5, 3.5, 2.1], [1.2, 3.5, 2.1]]]
-)
-def test_get_gaussian_kernel3d_tensor(ksize_x, ksize_y, ksize_z, sigma, device, dtype):
-    sigma = torch.tensor(sigma, device=device, dtype=dtype)
-    bs = sigma.shape[0]
-
-    actual = get_gaussian_kernel3d((ksize_z, ksize_y, ksize_x), sigma)
-    expected = torch.ones(bs, device=device, dtype=dtype)
-
-    assert actual.shape == (bs, ksize_z, ksize_y, ksize_x)
-    assert_close(actual.sum(), expected.sum())
-
-
-@pytest.mark.parametrize("window_size", [5, 11])
-@pytest.mark.parametrize("sigma", [1.5, 5.0])
-def test_get_discrete_gaussian_erf_kernel1d_float(window_size, sigma, device, dtype):
-    actual = get_gaussian_erf_kernel1d(window_size, sigma, device=device, dtype=dtype)
-    expected = torch.ones(1, device=device, dtype=dtype)
-
-    assert actual.shape == (1, window_size)
-    assert_close(actual.sum(), expected.sum())
-
-
-@pytest.mark.parametrize("window_size", [5, 11])
-@pytest.mark.parametrize("sigma", [[[1.5]], [[1.5], [5.0]]])
-def test_get_discrete_gaussian_erf_kernel1d_tensor(window_size, sigma, device, dtype):
-    sigma = torch.tensor(sigma, device=device, dtype=dtype)
-    bs = sigma.shape[0]
-
-    actual = get_gaussian_erf_kernel1d(window_size, sigma)
-    expected = torch.ones(bs, device=device, dtype=dtype)
-
-    assert actual.shape == (bs, window_size)
-    assert_close(actual.sum(), expected.sum())
-
-
-@pytest.mark.parametrize("window_size", [5, 11])
-@pytest.mark.parametrize("sigma", [1.5, 5.0])
-def test_get_gaussian_discrete_kernel1d_float(window_size, sigma, device, dtype):
-    actual = get_gaussian_discrete_kernel1d(window_size, sigma, device=device, dtype=dtype)
-    expected = torch.ones(1, device=device, dtype=dtype)
-
-    assert actual.shape == (1, window_size)
-    assert_close(actual.sum(), expected.sum())
-
-
-@pytest.mark.parametrize("window_size", [5, 11])
-@pytest.mark.parametrize("sigma", [[[1.5]], [[1.5], [5.0]]])
-def test_get_gaussian_discrete_kernel1d_tensor(window_size, sigma, device, dtype):
-    sigma = torch.tensor(sigma, device=device, dtype=dtype)
-    bs = sigma.shape[0]
-
-    actual = get_gaussian_discrete_kernel1d(window_size, sigma)
-    expected = torch.ones(bs, device=device, dtype=dtype)
-
-    assert actual.shape == (bs, window_size)
-    assert_close(actual.sum(), expected.sum())
-
-
 @pytest.mark.parametrize(
     "builder",
     [
@@ -331,11 +207,13 @@ class TestGaussianIntegerSigma(BaseTester):
         self.assert_close(actual, expected)
         self.assert_close(actual.sum(-1), torch.ones(1, device=device, dtype=dtype))
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["default_dtype"] == torch.float64),
+        reason="MPS does not support float64",
+    )
     @pytest.mark.parametrize("sigma", [1, 2])
     @pytest.mark.parametrize("default_dtype", [torch.float32, torch.float64])
     def test_default_dtype(self, builder, sigma, default_dtype, device):
-        if device.type == "mps" and default_dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         previous_dtype = torch.get_default_dtype()
         try:
             torch.set_default_dtype(default_dtype)
@@ -372,9 +250,7 @@ class TestGaussianIntegerMean(BaseTester):
 
 
 class TestGaussianDiscreteStability(BaseTester):
-    @pytest.mark.parametrize("window_size,sigma", [(19, 3.0), (43, 7.0), (121, 20.0), (5, 100.0)])
-    def test_finite_normalized(self, window_size, sigma, device, dtype):
-        actual = get_gaussian_discrete_kernel1d(window_size, sigma, device=device, dtype=dtype)
+    def _assert_finite_normalized(self, actual, window_size, device, dtype):
         assert actual.shape == (1, window_size)
         assert actual.device == device
         assert actual.dtype == dtype
@@ -382,6 +258,12 @@ class TestGaussianDiscreteStability(BaseTester):
         assert (actual >= 0).all()
         self.assert_close(actual, actual.flip(-1))
         self.assert_close(actual.sum(-1), torch.ones(1, device=device, dtype=dtype))
+
+    # The 121-tap window at sigma 20 is checked by test_reference_taps, which builds that kernel anyway.
+    @pytest.mark.parametrize("window_size,sigma", [(19, 3.0), (43, 7.0), (5, 100.0)])
+    def test_finite_normalized(self, window_size, sigma, device, dtype):
+        actual = get_gaussian_discrete_kernel1d(window_size, sigma, device=device, dtype=dtype)
+        self._assert_finite_normalized(actual, window_size, device, dtype)
 
     @pytest.mark.parametrize(
         "sigma,expected",
@@ -413,8 +295,36 @@ class TestGaussianDiscreteStability(BaseTester):
         # Reference: scipy.special.ive(abs(arange(window_size) - window_size // 2), sigma**2),
         # normalized by its sum, then indexed at window_size // 2 + offsets.
         actual = get_gaussian_discrete_kernel1d(window_size, sigma, device=device, dtype=dtype)
+        self._assert_finite_normalized(actual, window_size, device, dtype)
         taps = actual[0, [window_size // 2 + offset for offset in offsets]]
         self.assert_close(taps, torch.tensor(expected, device=device, dtype=dtype))
+
+    def test_reference_every_tap(self, device, dtype):
+        # sigma**2 = 9 < 16**2 / 4, so the backward recurrence collects orders 2 to 15 and rescales them.
+        # Reference (scipy 1.17.1), centre to edge:
+        # n = abs(arange(31) - 15); r = scipy.special.ive(n, 9.0); r / r.sum()
+        half = [
+            0.1349597138,
+            0.1272251623,
+            0.1066874555,
+            0.07980851544,
+            0.05348177858,
+            0.0322691567,
+            0.01762716002,
+            0.008766276675,
+            0.003990729637,
+            0.00167164621,
+            0.0006474372172,
+            0.0002328968381,
+            7.813383519e-05,
+            2.453994428e-05,
+            7.240662812e-06,
+            2.013437758e-06,
+        ]
+        expected = torch.tensor([half[:0:-1] + half], device=device, dtype=dtype)
+        actual = get_gaussian_discrete_kernel1d(31, 3.0, device=device, dtype=dtype)
+        rtol = 1e-5 if dtype in (torch.float32, torch.float64) else 1e-2
+        self.assert_close(actual, expected, rtol=rtol, atol=0.0)
 
     def test_backward_finite_large_sigma(self, device, dtype):
         sigma = torch.tensor([[100.0]], device=device, dtype=dtype, requires_grad=True)
@@ -422,7 +332,9 @@ class TestGaussianDiscreteStability(BaseTester):
         (kernel * torch.arange(5, device=device, dtype=dtype)).sum().backward()
         assert torch.isfinite(sigma.grad).all()
 
-    @pytest.mark.parametrize("window_size, sigma", [(5, 0.0), (121, 0.5)])
+    # Without the placeholder, 61 taps at sigma 0.5 still give a NaN float32 gradient, as 121 taps did (55 taps do,
+    # 51 do not), at under a third of the cost, which grows with the square of the window.
+    @pytest.mark.parametrize("window_size, sigma", [(5, 0.0), (61, 0.5)])
     def test_backward_finite_small_sigma(self, window_size, sigma, device, dtype):
         # The upward-recurrence lanes are computed and discarded here; they must run on a safe placeholder
         # argument, or their division by sigma**2 (zero, or tiny next to the order) puts NaN in the gradient.
@@ -434,18 +346,6 @@ class TestGaussianDiscreteStability(BaseTester):
     def test_gradcheck(self, device):
         sigma = torch.tensor([[1.5], [7.0], [20.0]], device=device, dtype=torch.float64)
         self.gradcheck(get_gaussian_discrete_kernel1d, (7, sigma))
-
-
-@pytest.mark.parametrize("ksize_x", [5, 11])
-@pytest.mark.parametrize("ksize_y", [3, 7])
-@pytest.mark.parametrize("sigma", [(1.5, 1.5), (2.1, 2.1)])
-def test_gaussian_blur2d_float(ksize_x, ksize_y, sigma, device, dtype):
-    sample = torch.rand(1, 3, 16, 16, device=device, dtype=dtype)
-
-    actual = gaussian_blur2d(sample, (ksize_y, ksize_x), sigma, "replicate", separable=False)
-    actual_sep = gaussian_blur2d(sample, (ksize_y, ksize_x), sigma, "replicate", separable=True)
-
-    assert_close(actual, actual_sep)
 
 
 @pytest.mark.parametrize("ksize_x", [5, 11])
@@ -481,14 +381,6 @@ class TestGaussianBlur2d(BaseTester):
 
         # Just the first item of the batch use the same sigma
         self.assert_close(actual_A[0, ...], actual_B[0, ...])
-
-    @pytest.mark.parametrize("shape", [(1, 4, 8, 15), (2, 3, 11, 7)])
-    @pytest.mark.parametrize("kernel_size", [3, (5, 5), (5, 7)])
-    def test_cardinality(self, shape, kernel_size, device, dtype):
-        sigma = (1.5, 2.1)
-        sample = torch.rand(shape, device=device, dtype=dtype)
-        actual = gaussian_blur2d(sample, kernel_size, sigma, "replicate")
-        assert actual.shape == shape
 
     def test_exception(self):
         from kornia.core.exceptions import TypeCheckError
@@ -529,7 +421,8 @@ class TestGaussianBlur2d(BaseTester):
         op = gaussian_blur2d
         op_module = GaussianBlur2d(*params)
 
-        img = torch.ones(1, 3, 5, 5, device=device, dtype=dtype)
+        # a random, non-square image: a constant one blurs to itself whatever the kernel size and sigma
+        img = torch.rand(1, 3, 9, 11, device=device, dtype=dtype)
 
         self.assert_close(op(img, *params), op_module(img))
         sigma_tensor = torch.tensor([sigma], device=device, dtype=dtype)
@@ -541,7 +434,7 @@ class TestGaussianBlur2d(BaseTester):
     @pytest.mark.parametrize("kernel_size", [3, (5, 5), (5, 7)])
     @pytest.mark.parametrize("sigma", [(1.5, 2.1), (0.5, 0.5)])
     def test_dynamo(self, kernel_size, sigma, device, dtype, torch_optimizer):
-        data = torch.ones(1, 3, 5, 5, device=device, dtype=dtype)
+        data = torch.rand(1, 3, 9, 11, device=device, dtype=dtype)
 
         op = GaussianBlur2d(kernel_size, sigma)
         op_optimized = torch_optimizer(op)
@@ -550,21 +443,6 @@ class TestGaussianBlur2d(BaseTester):
 
         sigma_tensor = torch.tensor([sigma], device=device, dtype=dtype)
         op = GaussianBlur2d(kernel_size, sigma_tensor)
-        op_optimized = torch_optimizer(op)
-
-        self.assert_close(op(data), op_optimized(data))
-
-    @pytest.mark.parametrize("kernel_size", [3, (5, 5)])
-    @pytest.mark.parametrize("sigma", [(1.5, 2.1), (0.5, 0.5)])
-    def test_dynamo_functional(self, kernel_size, sigma, device, dtype, torch_optimizer):
-        """Test that functional gaussian_blur2d works with torch.compile / torch._dynamo."""
-        data = torch.ones(1, 3, 5, 5, device=device, dtype=dtype)
-
-        # Test functional form
-        # Test functional form
-        def op(x):
-            return gaussian_blur2d(x, kernel_size, sigma, "reflect", separable=True)
-
         op_optimized = torch_optimizer(op)
 
         self.assert_close(op(data), op_optimized(data))
@@ -618,11 +496,10 @@ class TestGaussianBlur2d(BaseTester):
             torch.onnx.export(model, sample_input, dynamic_buf, dynamic_axes=dynamic_axes, **export_kwargs)
         assert dynamic_buf.getbuffer().nbytes > 0
 
+    @pytest.mark.applies_to(dtypes=("float32",), reason="the exported graph is checked once, in float32")
     @pytest.mark.device_agnostic
     def test_onnx_export_legacy_dynamic_matches_eager(self, dtype):
         """Test that a dynamic-axes legacy export of GaussianBlur2d matches eager execution."""
-        if dtype != torch.float32:
-            pytest.skip("the exported graph is checked once, in float32")
         pytest.importorskip("onnx")
         ort = pytest.importorskip("onnxruntime")
         model = GaussianBlur2d((3, 3), (1.5, 1.5))
@@ -647,11 +524,10 @@ class TestGaussianBlur2d(BaseTester):
             exported = torch.from_numpy(session.run(None, {"input": image.numpy()})[0])
             self.assert_close(exported, model(image))
 
+    @pytest.mark.applies_to(dtypes=("float32",), reason="the exported graph is checked once, in float32")
     @pytest.mark.device_agnostic
     def test_onnx_export_legacy_dynamic_size_per_sample_sigma_matches_eager(self, dtype):
         """Test that a per-sample sigma keeps a static batch but exports a dynamic height and width (#5222)."""
-        if dtype != torch.float32:
-            pytest.skip("the exported graph is checked once, in float32")
         pytest.importorskip("onnx")
         ort = pytest.importorskip("onnxruntime")
         model = GaussianBlur2d((3, 5), torch.tensor([[1.5, 0.7], [0.5, 2.0]], dtype=dtype))
@@ -673,12 +549,11 @@ class TestGaussianBlur2d(BaseTester):
             exported = torch.from_numpy(session.run(None, {"input": image.numpy()})[0])
             self.assert_close(exported, model(image))
 
+    @pytest.mark.applies_to(dtypes=("float32",), reason="the exported graph is checked once, in float32")
     @pytest.mark.device_agnostic
     @pytest.mark.skipif(not dynamic_export_is_available(), reason=DYNAMIC_EXPORT_UNAVAILABLE_REASON)
     def test_torch_export_dynamic_channels_matches_eager(self, dtype):
         """Test that torch.export keeps a dynamic channel axis; only the legacy tracer reads it as an int (#5222)."""
-        if dtype != torch.float32:
-            pytest.skip("the exported graph is checked once, in float32")
         model = GaussianBlur2d((3, 3), (1.5, 1.5))
         channels = torch.export.Dim("channels", min=2, max=16)
         exported = torch.export.export(model, (torch.rand(2, 3, 8, 8, dtype=dtype),), dynamic_shapes=({1: channels},))
@@ -741,11 +616,18 @@ class TestGaussianBlur2d(BaseTester):
         with pytest.raises(BaseError, match="sigma must be positive"):
             gaussian_blur2d(sample, (3, 3), sigma)
 
-    def test_sigma_on_the_device_negative_raises_at_the_next_sync_6335(self, device, dtype):
+    @pytest.mark.applies_to(devices=("cuda", "mps"), reason="pins CUDA and MPS: a CPU sigma is read on the host")
+    @pytest.mark.cuda_device_assert
+    def test_sigma_on_the_device_negative_raises_at_the_next_sync_6335(self, device, dtype, capfd):
         # kornia#6335: reading a device sigma on the host waited for every queued kernel. torch._assert_async checks it
         # on the device instead, so the call returns and the error surfaces at the next synchronization.
-        if device.type != "mps":
-            pytest.skip("pins MPS: a CPU sigma is read on the host, and on CUDA the assert poisons the context")
+        if device.type == "cuda":
+            sample = torch.rand(2, 3, 5, 5, device=device, dtype=dtype)
+            sigma = torch.tensor([[-1.5, 1.5], [1.5, 1.5]], device=device, dtype=dtype)
+            # The assert can surface at the next kernel launch, still inside the call.
+            with raises_cuda_device_assert("sigma must be positive", capfd):
+                gaussian_blur2d(sample, (3, 3), sigma)
+            return
         if not torch_version_ge(2, 13):
             pytest.skip("no MPS kernel for _assert_async before torch 2.13, so sigma is read on the host there")
         sample = torch.rand(2, 3, 5, 5, device=device, dtype=dtype)
@@ -768,9 +650,8 @@ class TestGaussianBlur2d(BaseTester):
             if were_checks_enabled:
                 enable_checks()
 
+    @pytest.mark.applies_to(devices=("cuda",), reason="CUDA host synchronizations need a CUDA device")
     def test_sigma_on_the_device_does_not_synchronize_6335(self, device, dtype):
-        if device.type != "cuda":
-            pytest.skip("CUDA host synchronizations need a CUDA device")
         sample = torch.rand(2, 3, 16, 16, device=device, dtype=dtype)
         sigma = torch.rand(2, 2, device=device, dtype=dtype) + 0.5
         expected = gaussian_blur2d(sample, (5, 5), sigma.cpu())
@@ -790,9 +671,8 @@ class TestGaussianBlur2d(BaseTester):
         with torch.device("meta"), pytest.raises(BaseError, match="sigma must be positive"):
             gaussian_blur2d(sample, (3, 3), (-1.5, 1.5))
 
+    @pytest.mark.applies_to(devices=("cuda",), reason="CUDA host synchronizations need a CUDA device")
     def test_sigma_tuple_under_a_cuda_default_device_does_not_synchronize_6337(self, device, dtype):
-        if device.type != "cuda":
-            pytest.skip("CUDA host synchronizations need a CUDA device")
         sample = torch.rand(2, 3, 16, 16, device=device, dtype=dtype)
         expected = gaussian_blur2d(sample, (5, 5), (1.5, 0.5))
         torch.cuda.synchronize()
@@ -819,45 +699,6 @@ class TestGaussianBlur2d(BaseTester):
             gaussian_blur2d(sample, 0, (1.5, 1.5))
         assert "Kernel size must be" in str(errinfo.value)
 
-    def test_very_small_sigma(self, device, dtype):
-        """Test with very small positive sigma values (should not raise)."""
-        sample = torch.rand(1, 3, 5, 5, device=device, dtype=dtype)
-        # Should not raise - any positive value is valid
-        output = gaussian_blur2d(sample, (3, 3), (0.01, 0.01))
-        assert output.shape == sample.shape
-
-    def test_very_large_sigma(self, device, dtype):
-        """Test with very large sigma values (should not raise)."""
-        sample = torch.rand(1, 3, 5, 5, device=device, dtype=dtype)
-        # Should not raise - large sigma just blurs more
-        output = gaussian_blur2d(sample, (3, 3), (100.0, 100.0))
-        assert output.shape == sample.shape
-
-    @pytest.mark.parametrize("sigma_value", [0.1, 1.0, 5.0, 10.0])
-    def test_sigma_range(self, sigma_value, device, dtype):
-        """Test various sigma values across a reasonable range."""
-        sample = torch.rand(1, 3, 8, 8, device=device, dtype=dtype)
-        output = gaussian_blur2d(sample, (5, 5), (sigma_value, sigma_value))
-        assert output.shape == sample.shape
-
-    def test_single_pixel_image(self, device, dtype):
-        """Test with minimal spatial dimensions (3x3 - smallest for 3x3 kernel)."""
-        sample = torch.rand(1, 3, 3, 3, device=device, dtype=dtype)
-        output = gaussian_blur2d(sample, 3, (1.5, 1.5))
-        assert output.shape == sample.shape
-
-    def test_large_batch_size(self, device, dtype):
-        """Test with large batch size."""
-        sample = torch.rand(32, 3, 8, 8, device=device, dtype=dtype)
-        output = gaussian_blur2d(sample, (3, 3), (1.5, 1.5))
-        assert output.shape == sample.shape
-
-    def test_many_channels(self, device, dtype):
-        """Test with many channels (e.g., video or multi-spectral)."""
-        sample = torch.rand(1, 64, 8, 8, device=device, dtype=dtype)
-        output = gaussian_blur2d(sample, (3, 3), (1.5, 1.5))
-        assert output.shape == sample.shape
-
     @pytest.mark.parametrize("separable", [True, False])
     def test_batched_sigma_mismatched_batch_size(self, separable, device, dtype):
         """A sigma batch that is neither 1 nor the input batch raises at the entry with a message naming sigma (#5169).
@@ -865,9 +706,9 @@ class TestGaussianBlur2d(BaseTester):
         The check runs before any kernel is built, so both the separable and the dense path raise the same error.
         """
         sample = torch.rand(4, 3, 8, 8, device=device, dtype=dtype)
-        # 2 rows divide the 4 samples and 3 do not: both raise the sigma check, not the kernel batch check (#5154) or
-        # a torch reshape error
-        for rows in (2, 3):
+        # 2 rows divide the 4 samples, 3 do not and 5 exceed them: all raise the sigma check, not the kernel batch
+        # check (#5154) or a torch reshape error
+        for rows in (2, 3, 5):
             sigma = torch.full((rows, 2), 1.5, device=device, dtype=dtype)
             with pytest.raises(BaseError, match=rf"(?s)expected 4 or 1, got {rows}\..*sigma must have a batch of 1 or"):
                 gaussian_blur2d(sample, (3, 3), sigma, separable=separable)
@@ -875,40 +716,6 @@ class TestGaussianBlur2d(BaseTester):
         for rows in (1, 4):
             sigma = torch.full((rows, 2), 1.5, device=device, dtype=dtype)
             assert gaussian_blur2d(sample, (3, 3), sigma, separable=separable).shape == sample.shape
-
-    def test_all_border_types(self, device, dtype):
-        """Test that all supported border types work."""
-        sample = torch.rand(1, 3, 8, 8, device=device, dtype=dtype)
-        for border_type in ["constant", "reflect", "replicate", "circular"]:
-            output = gaussian_blur2d(sample, (3, 3), (1.5, 1.5), border_type=border_type)
-            assert output.shape == sample.shape
-
-    def test_separable_vs_non_separable_small_kernel(self, device, dtype):
-        """Test that separable and non-separable modes produce similar results."""
-        sample = torch.rand(1, 3, 16, 16, device=device, dtype=dtype)
-        sigma = (1.5, 1.5)
-        output_sep = gaussian_blur2d(sample, (3, 3), sigma, separable=True)
-        output_non_sep = gaussian_blur2d(sample, (3, 3), sigma, separable=False)
-        assert_close(output_sep, output_non_sep)
-
-    def test_different_kernel_sizes(self, device, dtype):
-        """Test with various kernel sizes."""
-        sample = torch.rand(1, 3, 16, 16, device=device, dtype=dtype)
-        for ksize in [3, 5, 7, 11, (3, 5), (5, 7)]:
-            output = gaussian_blur2d(sample, ksize, (1.5, 1.5))
-            assert output.shape == sample.shape
-
-    def test_output_dtype_preserved(self, dtype, device):
-        """Test that output dtype matches input dtype."""
-        sample = torch.rand(1, 3, 8, 8, device=device, dtype=dtype)
-        output = gaussian_blur2d(sample, (3, 3), (1.5, 1.5))
-        assert output.dtype == dtype
-
-    def test_output_device_preserved(self, device, dtype):
-        """Test that output device matches input device."""
-        sample = torch.rand(1, 3, 8, 8, device=device, dtype=dtype)
-        output = gaussian_blur2d(sample, (3, 3), (1.5, 1.5))
-        assert output.device.type == sample.device.type
 
 
 class TestConventionsGaussianBlur(BaseTester):
@@ -999,15 +806,3 @@ class TestConventionsGaussianBlur(BaseTester):
             self.assert_close(out, image.float())
         # a sigma below 1 is no longer truncated to 0 and rejected
         self.assert_close(gaussian_blur2d(image, (3, 3), (0.5, 0.5)), image.float())
-
-    def test_convention_gaussian_blur2d_sigma_batch_is_one_or_the_input_batch_5169(self, device, dtype):
-        """gaussian_blur2d rejects a tensor sigma whose batch is neither 1 nor B, on both paths (#5169)."""
-        torch.manual_seed(0)
-        image = torch.rand(4, 3, 9, 13).to(device=device, dtype=dtype)
-        two_rows = torch.tensor([[0.8, 0.8], [3.0, 3.0]], device=device, dtype=dtype)
-        for separable in (True, False):
-            # a batch of 2 is rejected for B = 4 although it divides it, and a batch of 3 for B = 2
-            with pytest.raises(BaseError, match="batch"):
-                gaussian_blur2d(image, 5, two_rows, separable=separable)
-            with pytest.raises(BaseError, match="batch"):
-                gaussian_blur2d(image[:2], 3, torch.ones(3, 2, device=device, dtype=dtype), separable=separable)

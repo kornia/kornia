@@ -30,6 +30,37 @@ from kornia.geometry.boxes import Boxes, VideoBoxes
 from kornia.geometry.keypoints import Keypoints, VideoKeypoints
 
 
+def _float_numbers(value: Any) -> Optional[List[float]]:
+    """Return a Python number or a sequence of numbers as a list of floats, or ``None`` for anything else."""
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return [float(value)]
+    if isinstance(value, (tuple, list)) and all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in value):
+        return [float(v) for v in value]
+    return None
+
+
+def _exact_in_float64(stored: Any, numbers: Optional[List[float]], device: torch.device) -> Any:
+    """Return ``stored`` in float64 on ``device``, with the numbers it was built from wherever it still holds them.
+
+    A Python number kept in a float32 tensor is rounded to float32; a float64 input uses the number itself. A value
+    changed after construction, by assignment or in place, is used as it is, and anything but a floating tensor is
+    returned unchanged. A gradient still reaches ``stored``.
+    """
+    if numbers is None or not isinstance(stored, torch.Tensor) or not stored.is_floating_point():
+        return stored
+    if stored.numel() != len(numbers):
+        return stored
+    stored = stored.to(device)  # the input's device: MPS, where a module may live, has no float64
+    built = torch.tensor(numbers).to(device=device, dtype=stored.dtype).reshape(stored.shape)
+    exact = torch.tensor(numbers, dtype=torch.float64, device=device).reshape(stored.shape)
+    stored64 = stored.to(torch.float64)
+    # ``stored64 - stored64.detach()`` is zero, so the value stays exact while the gradient reaches ``stored``. It is
+    # NaN for an infinite entry (``inf - inf``), so an infinite statistic, or a number beyond the float32 range
+    # that the float32 tensor rounds to infinity, takes no gradient term.
+    residual = torch.where(torch.isfinite(stored64), stored64 - stored64.detach(), 0.0)
+    return torch.where(stored == built, exact + residual, stored64)
+
+
 def _pad_with_fill(
     input: torch.Tensor, padding: List[int], fill: Union[float, Sequence[float]], mode: str
 ) -> torch.Tensor:
@@ -64,9 +95,10 @@ def _boxes_to_padded_tensor(boxes: Boxes, mode: str) -> torch.Tensor:
     """Export ``boxes`` as one dense tensor whose trailing padding rows are exactly zero.
 
     :class:`~kornia.geometry.boxes.Boxes` records which rows are list padding in ``_padding`` and its default export
-    returns a ragged list for such an object. The padding rows are zeroed after the export rather than stored as
-    zeros, because a zero stored box exports as ``[0, 0, 1, 1]`` in the exclusive ``'xyxy'``, ``'xywh'`` and
-    ``'vertices'`` modes, which reads as a real one-pixel box.
+    returns a ragged list for such an object. The padding rows are zeroed after the export rather than relying on
+    zero storage: a transform moves stored padding, and a zero row stored inclusive, as the bare tensor keys store
+    their boxes, exports as ``[0, 0, 1, 1]`` in the exclusive ``'xyxy'``, ``'xywh'`` and ``'vertices'`` modes, which
+    reads as a real one-pixel box.
     """
     out = boxes.to_tensor(mode, as_padded_sequence=True)
     if not isinstance(out, torch.Tensor):
@@ -84,7 +116,7 @@ def _frame_boxes(boxes: VideoBoxes) -> Boxes:
     ``permutation``, a gate) index frames. ``VideoBoxes`` indexes whole videos, so a child given one would select
     videos with frame indices (#6173). The view shares the storage and the validity mask.
     """
-    frames = Boxes(boxes._data, False, mode=boxes._mode)
+    frames = Boxes._wrap(boxes._data, boxes._mode, boxes._inclusive)
     frames._valid = boxes._valid
     if frames._data is not boxes._data:  # the constructor cast integer coordinates, into a copy
         frames._detach_masks()
@@ -99,7 +131,7 @@ def _video_boxes(frames: Boxes, temporal_channel_size: int) -> VideoBoxes:
     ``RandomMosaic`` gate pads a skipped frame with, is marked invalid instead; every export zeroes invalid rows and
     every indexed read or write carries them.
     """
-    boxes = VideoBoxes(frames._data, False, mode=frames._mode)
+    boxes = VideoBoxes._wrap(frames._data, frames._mode, frames._inclusive)
     boxes._valid = frames._valid
     boxes._set_padding(frames._padding)
     boxes._is_batched = frames._is_batched
@@ -426,7 +458,7 @@ def _truncate_to_start(draw: torch.Tensor, extent: torch.Tensor) -> torch.Tensor
     puts the start one past the last valid position (#5052).
     """
     dtype = torch.promote_types(draw.dtype, extent.dtype)
-    return (draw.to(device=extent.device, dtype=dtype) * extent.to(dtype)).floor().to(extent.dtype)
+    return (_to_device_nonblocking(draw, extent.device, dtype) * extent.to(dtype)).floor().to(extent.dtype)
 
 
 def _adapted_sampling(

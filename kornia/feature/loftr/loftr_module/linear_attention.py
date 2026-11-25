@@ -28,6 +28,8 @@ import torch.nn.functional as F
 from torch import nn
 from torch.nn import Dropout
 
+from kornia.core.utils import _at_least_float32, _autocast_disabled
+
 
 def elu_feature_map(x: torch.Tensor) -> torch.Tensor:
     """Apply elu activation."""
@@ -77,9 +79,28 @@ class LinearAttention(nn.Module):
         Returns:
             queried_values: (N, L, H, D)
 
+        Half-precision inputs are evaluated in float32 and rounded back to the query dtype: at ordinary coarse-grid
+        sizes the unnormalized sums exceed float16's range even when the normalized output and its gradients are
+        representable. Autocast does not lower this arithmetic, except under TorchScript and in Inductor-compiled code
+        on MPS, which ignores the nested autocast region (pytorch/pytorch#201630).
+
         """
-        Q = self.feature_map(queries)
-        K = self.feature_map(keys)
+        if torch.jit.is_scripting():
+            return self._attention(queries, keys, values, q_mask, kv_mask)
+        with _autocast_disabled(queries.device.type):
+            return self._attention(queries, keys, values, q_mask, kv_mask)
+
+    def _attention(
+        self,
+        queries: torch.Tensor,
+        keys: torch.Tensor,
+        values: torch.Tensor,
+        q_mask: Optional[torch.Tensor],
+        kv_mask: Optional[torch.Tensor],
+    ) -> torch.Tensor:
+        Q = self.feature_map(_at_least_float32(queries))
+        K = self.feature_map(_at_least_float32(keys))
+        values = _at_least_float32(values)
 
         # set padded position to zero
         if q_mask is not None:
@@ -89,7 +110,7 @@ class LinearAttention(nn.Module):
             values = values * kv_mask[:, :, None, None]
 
         v_length = values.size(1)
-        values = values / v_length  # prevent fp16 overflow
+        values = values / v_length
         n, length, heads, dim = Q.shape
         dim_v = values.size(3)
         if v_length > heads * dim:
@@ -107,19 +128,15 @@ class LinearAttention(nn.Module):
             KV = torch.einsum("nshd,nshv->nhdv", K, values)  # (S,D)' @ S,V
             denominator = torch.einsum("nlhd,nhd->nlh", Q, K.sum(dim=1)) + self.eps
         if q_mask is not None:
-            # A padded query has Q = 0, so it gives 0 whatever its normaliser. Its 1 / eps overflows float16, and
-            # 0 * inf would be nan in the output and in the gradient, so it divides by 1 instead.
+            # A padded query has Q = 0, so it gives 0 whatever its normaliser.
             denominator = torch.where(q_mask[:, :, None] > 0, denominator, torch.ones_like(denominator))
         Z = 1 / denominator
-        # Normalize before restoring the sequence length: for a padded query Z=1, so Z * v_length alone can
-        # overflow float16 even though the attention output is exactly zero.
         if v_length > heads * dim:
             queried_values = (Q @ KV).view(n, length, heads, dim_v) * Z[..., None] * v_length
         else:
             # two operands: a three-operand einsum searches for a contraction path on every call
             queried_values = torch.einsum("nlhd,nhdv->nlhv", Q, KV) * Z[..., None] * v_length
-
-        return queried_values.contiguous()
+        return queried_values.to(queries.dtype).contiguous()
 
 
 class FullAttention(nn.Module):

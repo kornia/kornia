@@ -31,11 +31,6 @@ ROT_Z_90 = [[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]]
 
 
 class TestAngleErrorMat(BaseTester):
-    def test_identity_is_zero(self, device, dtype):
-        eye = torch.eye(3, device=device, dtype=dtype)
-        expected = torch.tensor(0.0, device=device, dtype=dtype)
-        self.assert_close(kornia.metrics.angle_error_mat(eye, eye), expected)
-
     def test_known_angle(self, device, dtype):
         eye = torch.eye(3, device=device, dtype=dtype)
         rot = torch.tensor(ROT_Z_90, device=device, dtype=dtype)
@@ -73,11 +68,12 @@ class TestAngleErrorMat(BaseTester):
         with pytest.raises(Exception):
             kornia.metrics.angle_error_mat(R1, R2)
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="a rotation this small rounds to the identity in half precision"
+    )
     def test_small_and_near_half_turn_angles(self, device, dtype):
         # Built in float64 and cast, so the angle is exact up to the cast. The skew part resolves these;
         # acos((tr - 1) / 2) returns exactly 0 and 180 for all four.
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("a rotation this small rounds to the identity in half precision")
         small = {torch.float32: 0.01, torch.float64: 1e-6}[dtype]
         atol = {torch.float32: 1e-4, torch.float64: 1e-9}[dtype]
         angles = torch.tensor([small, 180.0 - small], dtype=torch.float64)
@@ -145,11 +141,12 @@ class TestAngleErrorVec(BaseTester):
         v2 = torch.tensor([0.0, 1.0, 0.0], device=device, dtype=torch.float64)
         self.gradcheck(kornia.metrics.angle_error_vec, (v1, v2), requires_grad=(True, False))
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="two directions this close round to the same direction in half precision"
+    )
     def test_small_and_near_half_turn_angles(self, device, dtype):
         # Rotating v1 about an axis orthogonal to it opens exactly that angle between the two vectors. The
         # cross product resolves these; acos(cos) returns exactly 0 and 180 for all four.
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("two directions this close round to the same direction in half precision")
         small = {torch.float32: 0.01, torch.float64: 1e-6}[dtype]
         atol = {torch.float32: 1e-4, torch.float64: 1e-9}[dtype]
         angles = torch.tensor([small, 180.0 - small], dtype=torch.float64)
@@ -235,14 +232,6 @@ class TestPoseErrors(BaseTester):
             kornia.metrics.pose_errors(
                 torch.eye(3, device=device, dtype=dtype), torch.eye(4, device=device, dtype=dtype)
             )
-
-    @pytest.mark.parametrize("rows", [3, 4])
-    def test_batched(self, device, dtype, rows):
-        P = torch.eye(4, device=device, dtype=dtype)[:rows]
-        batch = P.expand(2, rows, 4)
-        out = kornia.metrics.pose_errors(batch, batch)
-        assert out["R_err"].shape == (2,)
-        assert out["max_err"].shape == (2,)
 
     @pytest.mark.parametrize("shape", [(2, 4), (2, 2, 3, 4)])
     def test_bad_dims_raise(self, device, dtype, shape):

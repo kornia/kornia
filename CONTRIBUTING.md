@@ -4,7 +4,7 @@
 
 We (maintainers) develop kornia for ourselves and the computer vision community.
 If kornia is useful to you in any way — to import, to prototype, to use as a reference for your agent — that makes us happy.
-You are welcome to help us improve kornia: report a bug, implement a feature, propose an idea, answer a question, or simply tell others about the project.
+You are welcome to help us improve kornia: report a bug, implement a feature you personally need and use, propose an idea, answer a question, or simply tell others about the project.
 We try to do our best to accept your help — by reviewing PRs, fixing bugs, and so on — but we do not promise to review every PR, let alone quickly.
 We have jobs, families, health problems, and holidays, just like everyone else.
 
@@ -17,12 +17,12 @@ Coding agents should also follow the [execution checklist in AGENTS.md](AGENTS.m
 
 ## Practical guidelines
 
-- Search existing issues and pull requests before starting. Focused fixes and documentation improvements are welcome as pull requests. For a new public API, a behavior change, or a large piece of work, an early issue or discussion can save everyone time. A conversation helps us align; it is not a promise that somebody will review or merge the result.
-- You do not need to ask before working on an issue that is not reserved. Say on the issue that you are taking it, then open a pull request, as a draft if you still have questions. If a claim has no pull request after two weeks, anyone may take the issue; say so on the issue when you do.
-- Some issues say they are reserved for a maintainer implementation, and some already have an open pull request. Please comment on the issue or on that pull request instead of opening another one.
-- Follow [Correctness and backend support](ROADMAP.md#correctness-and-backend-support) before implementing a numerical fix or backend workaround. Repairs within the supported contract are welcome directly as pull requests, subject to existing issue reservations. Do not add special paths solely for synthetic extremes: half-precision overflow far beyond image/coordinate ranges, `1e20` float32 image values or pixel coordinates, or a matrix scaled by `1e15`. These are examples, not universal magnitude cutoffs. Supporting each feature does not imply supporting every combination; float64 ONNX export is outside Kornia’s supported scope. First obtain an explicit maintainer scope decision on an issue with a concrete application and reproducer. A failing synthetic test alone does not justify expanding support.
+- Search existing issues and pull requests before starting. Focused fixes and documentation improvements are welcome as pull requests. For a behavior change or a large piece of work, an early issue or discussion can save everyone time. If you find nothing that changes a caller's result, that is a fine outcome; please do not send a synthetic edge case just to have something to send.
+- Kornia is concentrating on a small, dependable reference core and is not looking for new features in general. Propose a new public API (a function, class, or argument), model mode, or separately maintained execution path only for a concrete workflow: who tried to do what with the current API, and where it fell short. Before opening even a draft pull request, wait for a maintainer to approve that scope on an open issue, either explicitly in a comment or by applying the `help wanted` label. No reply means no agreement. A PR opened before scope agreement may be closed unreviewed. Closed issues and the comments in them are history, not invitations or decisions.
+- Before taking an issue, including one labeled `help wanted`, check its assignees, recent claims, reservations, and open PRs. If someone is already working on it, coordinate on the issue or existing PR. Otherwise, once any required scope agreement is in place, say you are taking it and proceed. If a claim has no PR after two weeks, anyone may take it by saying so on the issue. An issue that says it is reserved for a maintainer implementation is not available. If a maintainer requested evidence before a PR, post it on the issue before opening even a draft.
+- Follow [Correctness and backend support](ROADMAP.md#correctness-and-backend-support) before implementing a numerical fix or backend workaround. A fix is welcome directly as a pull request, subject to existing issue reservations, when a small example shows that the current behavior breaks a Kornia guarantee or changes a caller's result in a consequential way. For a precision report on a function that has a PyTorch equivalent, compare with it in the same dtype. In half precision a result that PyTorch also returns is normally left as it is; in float32 and float64 it may still be worth fixing. The input has to be one a real workflow produces, not a pattern built to defeat the dtype. When the only gain is a more accurate value, even a primitive's public output such as a kernel or a window, first describe on an issue the workflow that needs it. Do not add special paths solely for synthetic extremes: half-precision overflow far beyond image/coordinate ranges, `1e20` float32 image values or pixel coordinates, or a matrix scaled by `1e15`. These are examples, not universal magnitude cutoffs. Supporting each feature does not imply supporting every combination; float64 ONNX export is outside Kornia’s supported scope. Expanding support needs an explicit maintainer scope decision on an issue with a concrete application and reproducer; a failing synthetic test alone does not justify it.
 - Kornia functions take floating-point tensors, and images are floats in `[0, 1]` (see [Conventions & Pitfalls](https://kornia.readthedocs.io/en/latest/get-started/conventions.html)). Integer input is not a goal: a few cheap, scale-free image filters accept it, and we do not accept pull requests that add integer-input support anywhere else, especially for `int8` and other narrow integer types. If a function misbehaves on an integer tensor, convert the input to float first.
-- Check the part you changed and tell us what you ran. A bug fix is easier to trust when it includes a test that fails without the fix. Numerical work is easier to review when expected values come from a reference implementation, a paper, or a mathematical invariant.
+- Before opening a pull request, check that it matters. For a bug fix, show the smallest example where a caller gets a result that breaks the documented behavior or a mathematical invariant; a loss of accuracy in the requested dtype follows the precision rule above. For a precision fix or an improvement, compare what the caller gets on main, with your change, and with the simplest existing way to do the job, on a realistic input; if the existing way serves as well, a short note on an issue is more useful than a pull request. Tell us what you ran. A bug fix is easier to trust when it includes a test that fails without the fix, with expected values from a reference implementation, a paper, or a mathematical invariant.
 - Look for an existing `kornia` utility before adding another implementation. Keep changes focused, follow nearby code, and update the documentation when public behavior changes.
 - Read your own contribution and stay part of the conversation about it. You do not need perfect English or an immediate answer; we care that questions and technical concerns are treated seriously.
 - If you are contributing as part of an application, remember that we read the work and review conversation, not pull request counts.
@@ -37,8 +37,9 @@ Coding agents should also follow the [execution checklist in AGENTS.md](AGENTS.m
 - Report bugs through the [issue templates](https://github.com/kornia/kornia/issues/new/choose),
   with a minimal reproduction and the requested environment details. Follow the
   [privacy-conscious diagnostic guidance](TESTING.md#diagnosing-reported-problems).
-- Find work in the [roadmap](ROADMAP.md#areas-seeking-contributors) and
-  [help wanted issues](https://github.com/kornia/kornia/labels/help%20wanted); check reservations first.
+- Find work in the [roadmap's open-ended areas](ROADMAP.md#areas-seeking-contributors), where you choose
+  the question yourself, and in [help wanted issues](https://github.com/kornia/kornia/labels/help%20wanted);
+  check reservations first.
 - Support the project through [Open Collective](https://opencollective.com/kornia),
   [GitHub Sponsors](https://github.com/sponsors/kornia), or CUDA testing resources.
 
@@ -87,8 +88,9 @@ pixi run typecheck
 
 Run full pre-commit checks before presenting a code change as finished; `pixi run lint`
 checks only Ruff. [TESTING.md](TESTING.md) owns test selection, device/dtype profiles,
-compile/ONNX coverage, doctests, and revision comparisons. Performance changes use the
-same benchmark on base and branch under [the benchmark methodology](benchmarks/README.md).
+compile/ONNX coverage, doctests, and revision comparisons. Performance changes must meet the
+[roadmap's bar](ROADMAP.md#areas-seeking-contributors) and use the same benchmark on base and
+branch under [the benchmark methodology](benchmarks/README.md).
 
 ## Contributing to Documentation
 
@@ -114,7 +116,7 @@ A docstring is how a reader, human or agent, decides which function to call, so 
 - **Module docstrings** open with a title line, then the conventions the module's functions share, then "Which function to use" (or "Which class to use" for a catalog of classes), grouped by task, one line each, naming every entry of the `__all__` of the namespace users import from as a role (`` :func:`name` ``) or a literal (``` ``name`` ```). A namespace without `__all__` (`kornia.geometry`, `kornia.geometry.transform`) catalogs its subpackages and main entry points instead; a defining file without `__all__` gets no catalog.
 - **Shapes** are literals such as ``` ``(B, 1, H, W)`` ```. Keep `:math:` for formulas, and for a tuple that is a value, such as a point's `` :math:`(X, Y, Z)` ``; write a value range as an interval, `` :math:`[0, 1]` ``.
 
-Enforcement, rollout tables, and reference-resolution rules are in [Docstring checks](TESTING.md#docstring-checks).
+Enforcement, scope, and reference-resolution rules are in [Docstring checks](TESTING.md#docstring-checks).
 
 ## Coding Standards
 

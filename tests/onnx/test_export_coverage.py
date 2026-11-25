@@ -121,7 +121,9 @@ def _cases():
             id="distance_transform_3d_fractional",
         ),
         pytest.param(
-            kornia.losses.HausdorffERLoss(),
+            # Each erosion step exports the same nodes again, per class: three steps instead of the default ten keep
+            # the repetition at a quarter of the export time, and give these inputs the loss of ten steps.
+            kornia.losses.HausdorffERLoss(k=3),
             (torch.rand(2, 3, 12, 12), torch.randint(0, 3, (2, 1, 12, 12))),
             id="hausdorff",
         ),

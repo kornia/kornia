@@ -193,14 +193,13 @@ def _pad_one_pixel_axes(src: torch.Tensor, padding_mode: str) -> torch.Tensor:
 def _unit_projective_scale(matrix: torch.Tensor) -> torch.Tensor:
     """Return the detached projective scale of ``matrix``: the value closest to 1 in its nonzero-magnitude range.
 
-    A homography and any nonzero multiple of it describe the same map, yet
-    :func:`kornia.geometry.convert_points_from_homogeneous` leaves a point with ``|w| <= eps``
-    undivided using an *absolute* ``eps``. Feeding that routine a grid built from an arbitrarily
-    scaled matrix therefore changes the sampled pixels instead of the warp. Dividing by this scale
-    first puts every equivalent matrix in the same numeric range. Choosing between the largest and
-    smallest nonzero magnitude, rather than just dividing by the largest, keeps a unit diagonal from
-    being shrunk toward zero by large translations. The scale is a projective gauge, so detaching it
-    leaves the warp's derivative unchanged.
+    A homography and any nonzero multiple of it describe the same map. Dividing by this scale places
+    or keeps unit magnitude in the matrix's nonzero-magnitude range before coordinate changes,
+    inversion, matrix products and homogeneous division, limiting scale-driven overflow and
+    underflow. Choosing between the largest and smallest nonzero magnitude, rather than just
+    dividing by the largest, keeps a unit diagonal from being shrunk toward zero by large
+    translations. The scale is a projective gauge, so detaching it leaves the warp's derivative
+    unchanged.
     """
     magnitude = matrix.detach().abs()
     largest = magnitude.amax(dim=(-2, -1), keepdim=True)
@@ -738,7 +737,9 @@ def _fill_and_warp(
         # The stand-ins' result is discarded: a constant-size fill, still connected to autograd, keeps a spatial fill
         # from broadcasting the 1x1 stand-ins up to its own size.
         fill_value = fill_value.sum().reshape(1)
-    ones_mask = torch.ones_like(src)
+    # The sampling coverage is identical for every channel. Warp one channel and broadcast it over the fill,
+    # keeping the mask and its sampled result independent of the image's channel count.
+    ones_mask = torch.ones_like(src[:, :1])
     fill_value = fill_value.to(ones_mask)
     if align_corners and not stand_in:
         # The grid addresses src with its one-pixel axes padded, and the padded pixel is out of bounds for the fill too.
@@ -801,11 +802,11 @@ def warp_grid(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
         - only the ``(1, H, W, 2)`` grid broadcasts over homography batches; a batched grid
           requires a matching batch of ``N`` homographies
         - ``src_homo_dst`` is divided by a detached scale toward unit magnitude before the
-          homogeneous division, as in :func:`warp_perspective`, so a nonzero scalar multiple of it
-          returns the same grid, except at grid points whose homogeneous coordinate is within
-          ``1e-8`` of zero after that rescaling: those are left undivided, as
-          :func:`~kornia.geometry.conversions.convert_points_from_homogeneous` does for points at
-          infinity
+          homogeneous division, as in :func:`warp_perspective`, so a nonzero scalar multiple of it returns the same
+          coordinates up to rounding for grid points whose homogeneous coordinate is nonzero. A grid point whose
+          homogeneous coordinate is exactly zero is left undivided, as in
+          :func:`~kornia.geometry.linalg.transform_points`; because this fallback returns the numerator, such points
+          are not scale-invariant
         - a caller's autocast region does not change the grid, outside TorchScript
 
     Args:
@@ -838,8 +839,8 @@ def warp_grid(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
     grid = grid.expand(batch_size, -1, -1, -1)  # NxHxWx2
     if len(src_homo_dst.shape) == 3:  # local homography case
         src_homo_dst = src_homo_dst.view(batch_size, 1, 3, 3)  # Nx1x3x3
-    # H and s*H are the same warp, but the absolute eps inside convert_points_from_homogeneous
-    # would otherwise make the sampled grid depend on the matrix's arbitrary scale.
+    # Normalize the arbitrary projective gauge toward unit magnitude before the matrix product,
+    # limiting scale-driven overflow and underflow without changing the represented warp.
     if src_homo_dst.is_floating_point():
         src_homo_dst = src_homo_dst / _unit_projective_scale(src_homo_dst)
     # perform the actual grid transformation,
@@ -916,11 +917,11 @@ def warp_grid3d(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
         - only the ``(1, D, H, W, 3)`` grid broadcasts over homography batches; a batched
           grid requires a matching batch of ``N`` homographies
         - ``src_homo_dst`` is divided by a detached scale toward unit magnitude before the
-          homogeneous division, as in :func:`warp_perspective`, so a nonzero scalar multiple of it
-          returns the same grid, except at grid points whose homogeneous coordinate is within
-          ``1e-8`` of zero after that rescaling: those are left undivided, as
-          :func:`~kornia.geometry.conversions.convert_points_from_homogeneous` does for points at
-          infinity
+          homogeneous division, as in :func:`warp_perspective`, so a nonzero scalar multiple of it returns the same
+          coordinates up to rounding for grid points whose homogeneous coordinate is nonzero. A grid point whose
+          homogeneous coordinate is exactly zero is left undivided, as in
+          :func:`~kornia.geometry.linalg.transform_points`; because this fallback returns the numerator, such points
+          are not scale-invariant
         - a caller's autocast region does not change the grid, outside TorchScript
 
     Args:
@@ -952,7 +953,8 @@ def warp_grid3d(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
     grid = grid.expand(batch_size, -1, -1, -1, -1)  # NxDxHxWx3
     if len(src_homo_dst.shape) == 3:  # local homography case
         src_homo_dst = src_homo_dst.view(batch_size, 1, 4, 4)  # Nx1x3x3
-    # Same projective gauge as in warp_grid: a scaled 4x4 matrix must not move the grid.
+    # Same projective gauge as in warp_grid: a scaled 4x4 matrix represents the same points when
+    # their homogeneous weight is nonzero; the exact-zero fallback returns the numerator.
     if src_homo_dst.is_floating_point():
         src_homo_dst = src_homo_dst / _unit_projective_scale(src_homo_dst)
     # perform the actual grid transformation,
@@ -1004,13 +1006,6 @@ def _normalize_warped_pixel_grid3d(
     scale = torch.stack((norm[0, 0], norm[1, 1], norm[2, 2]))
     offset = torch.stack((norm[0, 3], norm[1, 3], norm[2, 3]))
     return grid * scale + offset
-
-
-# TODO: move to kornia.geometry.projective
-# TODO: create the nn.Module -- TBD what inputs/outputs etc
-# class PerspectiveTransform(nn.Module):
-#     def __init__(self) -> None:
-#         super().__init__()
 
 
 def _unit_square_to_quad(points: torch.Tensor) -> torch.Tensor:
@@ -2031,6 +2026,8 @@ def get_projective_transform(center: torch.Tensor, angles: torch.Tensor, scales:
           about +z is **clockwise on screen** (y-down image axes) — opposite of :func:`get_rotation_matrix2d`
         - returns the projection matrix ``(B, 3, 4)`` in pixel coordinates
         - a caller's autocast region does not change the result
+        - ``float16`` and ``bfloat16`` angles are converted and rotated in ``float32``, and the rotation is rounded
+          once to the input dtype
 
     Args:
         center: center of the rotation (x,y,z) in the source with shape ``(B, 3)``.
@@ -2068,9 +2065,13 @@ def get_projective_transform(center: torch.Tensor, angles: torch.Tensor, scales:
 
     # Outside a caller's autocast region, as in get_rotation_matrix2d.
     with _autocast_disabled(center.device.type):
-        # create rotation matrix
-        axis_angle_rad: torch.Tensor = torch.torch.deg2rad(angles)
+        # create rotation matrix; half-precision angles are converted and rotated in float32, as in
+        # angle_to_rotation_matrix: in float16 a 90 degree turn left 4.8e-4 where the matrix has 0
+        half = angles.dtype in (torch.float16, torch.bfloat16)
+        axis_angle_rad: torch.Tensor = torch.deg2rad(angles.float() if half else angles)
         rmat: torch.Tensor = axis_angle_to_rotation_matrix(axis_angle_rad)  # Bx3x3
+        if half:
+            rmat = rmat.to(angles.dtype)
         scaling_matrix: torch.Tensor = eye_like(3, rmat)
         scaling_matrix = scaling_matrix * scales.unsqueeze(dim=1)
         rmat = rmat @ scaling_matrix.to(rmat)
@@ -2190,9 +2191,6 @@ def get_perspective_transform3d(src: torch.Tensor, dst: torch.Tensor) -> torch.T
 
     if not src.shape == dst.shape:
         raise ValueError(f"Inputs must have the same shape. Got {dst.shape}")
-
-    if not (src.shape[0] == dst.shape[0]):
-        raise ValueError(f"Inputs must have same batch size dimension. Expect {src.shape} but got {dst.shape}")
 
     if not (src.device == dst.device and src.dtype == dst.dtype):
         raise AssertionError(

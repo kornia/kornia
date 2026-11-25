@@ -22,6 +22,7 @@ import torch
 import torch.nn.functional as F
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_LAF, KORNIA_CHECK_SHAPE
+from kornia.core.ops import _copied_literal
 from kornia.core.utils import _autocast_disabled, _convolution_outside_autocast
 from kornia.geometry.conversions import angle_to_rotation_matrix
 from kornia.geometry.linalg import transform_points
@@ -599,7 +600,7 @@ def laf_to_boundary_points(LAF: torch.Tensor, n_pts: int = 50) -> torch.Tensor:
     return torch.bmm(LAF.view(-1, 2, 3), pts).permute(0, 2, 1).reshape(B, N, n_pts, 2)
 
 
-def get_laf_pts_to_draw(LAF: torch.Tensor, img_idx: int = 0) -> Tuple[List[int], List[int]]:
+def get_laf_pts_to_draw(LAF: torch.Tensor, img_idx: int = 0) -> Tuple[List[List[float]], List[List[float]]]:
     """Return list for drawing LAFs (local features).
 
     Args:
@@ -876,8 +877,14 @@ def _pyramid_grid_frame(nlaf: torch.Tensor, h: int, w: int) -> Tuple[torch.Tenso
     # `denormalize_laf`'s extents: a singleton axis counts as one pixel.
     wf, hf = float(max(w - 1, 1)), float(max(h - 1, 1))
     min_size = min(wf, hf)
-    k = nlaf.new_tensor([2.0 * min_size / float(w), 2.0 * min_size / float(h)])
-    t = (2.0 * nlaf[..., :, 2] * nlaf.new_tensor([wf, hf]) + 1.0) / nlaf.new_tensor([float(w), float(h)]) - 1.0
+    # Copies of the constants that do not wait for queued work (new_tensor's blocking copies each waited); compiled,
+    # they stay graph constants on the device (see _copied_literal). Three separate literals, not one packed (3, 2)
+    # tensor indexed per row: compiled on MPS (M1 Pro, torch 2.14) the packed form made extract_patches_from_pyramid
+    # about 1.3x slower than 0.9.1; separate literals match 0.9.1 with bit-identical output.
+    k = _copied_literal([2.0 * min_size / float(w), 2.0 * min_size / float(h)], device=nlaf.device, dtype=nlaf.dtype)
+    scale = _copied_literal([wf, hf], device=nlaf.device, dtype=nlaf.dtype)
+    extent = _copied_literal([float(w), float(h)], device=nlaf.device, dtype=nlaf.dtype)
+    t = (2.0 * nlaf[..., :, 2] * scale + 1.0) / extent - 1.0
     return k, t
 
 
@@ -1171,7 +1178,7 @@ def extract_patches_from_pyramid(
             )
         )
         xoff += w_l + 2
-    level_constants = torch.tensor(constants, dtype=grid_dtype, device=nlaf.device).view(-1, 4, 2)
+    level_constants = _copied_literal(constants, device=nlaf.device, dtype=grid_dtype).view(-1, 4, 2)
 
     # The folded grid and its remap intermediates scale with B*N*PS^2, so sampling is chunked
     # along N to bound peak memory; each chunk repeats exactly the single-call arithmetic, and

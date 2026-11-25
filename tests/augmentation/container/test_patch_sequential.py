@@ -26,7 +26,7 @@ from kornia.color import RgbToBgr
 from kornia.core.exceptions import InputRankError
 
 from testing.augmentation.utils import reproducibility_test
-from testing.base import BaseTester
+from testing.base import BaseTester, autocast_for
 
 
 @pytest.fixture(autouse=True)
@@ -34,6 +34,42 @@ def _restore_global_rng():
     # The restored legacy test now draws parameters; keep it from shifting unrelated tests' RNG state.
     with torch.random.fork_rng(devices=[]):
         yield
+
+
+# Every pair of values of any two arguments of ``test_forward`` appears in at least one case: 27 of the 324 valid
+# combinations (``patchwise_apply=True`` takes only a boolean ``random_apply``). The other combinations reach no
+# further line or branch of ``kornia.augmentation`` and catch no further mutant of the containers. Generated greedily:
+# repeatedly add the valid combination that covers the most uncovered pairs, preferring the earliest values on a tie.
+_EVEN, _ODD = (2, 3, 24, 24), (2, 3, 23, 25)
+_FORWARD_CASES = [
+    (_EVEN, "same", True, True, True, True),
+    (_ODD, "valid", True, False, False, True),
+    (_EVEN, "valid", True, None, None, False),
+    (_ODD, "same", False, True, None, 1),
+    (_EVEN, "same", False, False, False, (2, 2)),
+    (_ODD, "valid", False, None, True, (2, 2)),
+    (_EVEN, "valid", False, True, False, (1, 2)),
+    (_EVEN, "same", False, None, False, (2,)),
+    (_ODD, "same", True, False, True, False),
+    (_ODD, "same", False, False, None, (1, 2)),
+    (_EVEN, "valid", False, False, True, 1),
+    (_EVEN, "same", False, True, True, 10),
+    (_ODD, "valid", False, True, True, (2,)),
+    (_EVEN, "same", False, True, True, True),
+    (_EVEN, "same", False, True, True, False),
+    (_ODD, "valid", False, False, False, 10),
+    (_ODD, "valid", False, False, False, True),
+    (_ODD, "valid", False, False, False, False),
+    (_EVEN, "same", True, True, False, False),
+    (_EVEN, "same", True, None, None, True),
+    (_EVEN, "same", False, None, False, 1),
+    (_EVEN, "same", False, True, None, (2, 2)),
+    (_EVEN, "same", False, None, True, (1, 2)),
+    (_EVEN, "same", False, False, None, (2,)),
+    (_EVEN, "same", False, None, None, 10),
+    (_EVEN, "same", False, None, None, True),
+    (_EVEN, "same", False, None, None, False),
+]
 
 
 class TestPatchSequential:
@@ -63,15 +99,10 @@ class TestPatchSequential:
                 **error_param,
             )
 
-    @pytest.mark.parametrize("shape", [(2, 3, 24, 24), (2, 3, 23, 25)])
-    @pytest.mark.parametrize("padding", ["same", "valid"])
-    @pytest.mark.parametrize("patchwise_apply", [True, False])
-    @pytest.mark.parametrize("same_on_batch", [True, False, None])
-    @pytest.mark.parametrize("keepdim", [True, False, None])
-    @pytest.mark.parametrize("random_apply", [1, (2, 2), (1, 2), (2,), 10, True, False])
+    @pytest.mark.parametrize(
+        ("shape", "padding", "patchwise_apply", "same_on_batch", "keepdim", "random_apply"), _FORWARD_CASES
+    )
     def test_forward(self, shape, padding, patchwise_apply, same_on_batch, keepdim, random_apply, device, dtype):
-        if patchwise_apply and not isinstance(random_apply, bool):
-            pytest.skip("patchwise_apply=True only supports boolean random_apply")
         torch.manual_seed(11)
         # Exercise nested colour/geometric/mix operations without the unrelated HSV float16
         # zero-pixel path: perspective padding can introduce black pixels before another colour draw.
@@ -128,14 +159,12 @@ class TestPatchSequential:
         assert seq.is_intensity_only()
 
     def test_autocast(self, device, dtype):
-        if not hasattr(torch, "autocast"):
-            pytest.skip("PyTorch version without autocast support")
 
         tfs = (K.RandomAffine(0.5, (0.1, 0.5), (0.5, 1.5), 1.2, p=1.0), K.RandomGaussianBlur((3, 3), (0.1, 3), p=1))
         aug = K.PatchSequential(*tfs, grid_size=(2, 2), random_apply=True)
         imgs = torch.rand(2, 3, 7, 4, dtype=dtype, device=device)
 
-        with torch.autocast(device.type):
+        with autocast_for(device, dtype):
             output = aug(imgs)
 
         assert output.dtype == dtype, "Output image dtype should match the input dtype"
@@ -300,8 +329,19 @@ class TestPatchSequentialRegression(BaseTester):
         # A mix member is allowed from the start, and not after one has been added.
         assert seen == [True, True, False, False]
 
-    @pytest.mark.parametrize("patchwise_apply,random_apply", [(True, True), (False, True), (False, 1), (False, (1, 3))])
-    @pytest.mark.parametrize("same_on_batch", [True, False, None])
+    # same_on_batch picks how forward_parameters groups the draws only with patchwise_apply (True draws one sequence per
+    # patch location, False and None one per patch); without it there is one sequence, whatever same_on_batch says.
+    @pytest.mark.parametrize(
+        "patchwise_apply,random_apply,same_on_batch",
+        [
+            (True, True, True),
+            (True, True, False),
+            (False, True, True),
+            (False, True, None),
+            (False, 1, None),
+            (False, (1, 3), None),
+        ],
+    )
     def test_random_apply_mix_is_applied_at_most_once(
         self, patchwise_apply, random_apply, same_on_batch, device, dtype
     ):
@@ -364,7 +404,8 @@ class TestPatchSequentialRegression(BaseTester):
             same_on_batch=same_on_batch,
             padding=padding,
         )
-        x = torch.full((2, 3, 5, 7), 0.5, device=device, dtype=dtype)
+        # A constant image would hide whether the replay applies the saved flips.
+        x = torch.rand(2, 3, 5, 7, generator=torch.Generator().manual_seed(0)).to(device, dtype)
         out = seq(x)
         params = seq._params
         monkeypatch.setattr(seq, "forward_parameters", lambda _: pytest.fail("Replay must not draw parameters"))
@@ -435,7 +476,8 @@ class TestPatchSequentialRegression(BaseTester):
 
     @pytest.mark.parametrize("padding,patch_size", [("same", 3), ("valid", 2)])
     @pytest.mark.parametrize("patchwise_apply", [True, False])
-    @pytest.mark.parametrize("same_on_batch", [True, False, None])
+    # None leaves the children's own same_on_batch, False here, and groups the draws as False does.
+    @pytest.mark.parametrize("same_on_batch", [True, False])
     @pytest.mark.parametrize("random_apply", [True, False])
     def test_image_shape_parameter_replay(
         self, padding, patch_size, patchwise_apply, same_on_batch, random_apply, device, dtype, monkeypatch
