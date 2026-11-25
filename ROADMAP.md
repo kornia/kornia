@@ -198,9 +198,9 @@ description, and matching, and the image operators in `kornia.filters`, `kornia.
 `kornia.enhance`, and `kornia.morphology`.
 
 - **Break a property the core should keep.** Shifting the world origin should not change a
-  recovered camera pose once expressed in the original frame; rescaling an equivalent
-  homography should not change a tracker's result; unprojecting a projected point with its
-  depth should return the point. Composition round-trips, frame/origin/scale invariance, autocast and dtype
+  recovered camera pose once expressed in the original frame; multiplying a homography by
+  a nonzero constant should not change where it maps a point; unprojecting a projected point
+  with its depth should return the point. Composition round-trips, frame/origin/scale invariance, autocast and dtype
   contracts, and differences from OpenCV, COLMAP, SciPy, or scikit-image with conventions
   aligned all count. Check existing `test_convention_*` and `test_wart_*` pins and open
   issues first. Give the smallest supported example, state the convention, and justify the
@@ -242,7 +242,7 @@ description, and matching, and the image operators in `kornia.filters`, `kornia.
 
 **Performance outside the core:** models outside it, such as SAM, RT-DETR, and the VLMs in
 `kornia.models`, take correctness and regression fixes, not performance pull requests. Other
-non-core code, such as IO and losses, is not a performance target; a simple change to the
+non-core code, such as IO, losses, and `kornia.tracking`, is not a performance target; a simple change to the
 existing path qualifies only when it makes the representative public call roughly ten times
 faster, or lets a workload from a linked user report run, reported with absolute times or
 memory and without a new path.
