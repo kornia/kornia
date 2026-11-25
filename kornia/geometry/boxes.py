@@ -544,8 +544,7 @@ class Boxes:
         `#4009 <https://github.com/kornia/kornia/issues/4009>`_. :meth:`to_mask` and
         :func:`~kornia.geometry.bbox.bbox_to_mask` agree on ``(height, width)`` once that function is called with
         ``size``; its deprecated ``width, height`` form takes the opposite order:
-        `#4014 <https://github.com/kornia/kornia/issues/4014>`_. The integer-input split is
-        `#4012 <https://github.com/kornia/kornia/issues/4012>`_. ``trim`` was never implemented and is deprecated:
+        `#4014 <https://github.com/kornia/kornia/issues/4014>`_. ``trim`` was never implemented and is deprecated:
         `#4017 <https://github.com/kornia/kornia/issues/4017>`_.
 
     See Also:
@@ -1784,8 +1783,7 @@ class Boxes3D:
 
     .. warning::
         The ``'vertices'`` export read by the inclusive bbox helpers is
-        `#4009 <https://github.com/kornia/kornia/issues/4009>`_. The integer-input split is
-        `#4012 <https://github.com/kornia/kornia/issues/4012>`_ and the validator split with
+        `#4009 <https://github.com/kornia/kornia/issues/4009>`_. The validator split with
         :func:`~kornia.geometry.bbox.validate_bbox` is `#4013 <https://github.com/kornia/kornia/issues/4013>`_.
         The :meth:`to_tensor` default differs from :meth:`Boxes.to_tensor`, which defaults to the stored mode:
         `#4251 <https://github.com/kornia/kornia/issues/4251>`_.

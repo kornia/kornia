@@ -710,9 +710,9 @@ class TestBoxes2D(BaseTester):
         expected_export = torch.tensor([[[2.5, 2.0], [6.5, 2.0], [6.5, 3.0], [2.5, 3.0]]], device=device, dtype=dtype)
         self.assert_close(sheared.to_tensor("vertices"), expected_export, atol=0.0, rtol=0.0)
 
-    def test_wart_constructor_and_from_tensor_have_different_integer_policies_4012(self, device):
-        # Wart pin for kornia#4012: the constructor rejects integer coordinates,
-        # while from_tensor silently casts them to the default dtype.
+    def test_convention_constructor_rejects_integers_from_tensor_casts_4012(self, device):
+        # Convention (kornia#4012): the constructor rejects integer coordinates unless
+        # raise_if_not_floating_point=False, while from_tensor casts them to the default dtype.
         vertices = torch.tensor([[[1, 2], [4, 2], [4, 3], [1, 3]]], device=device)
         with pytest.raises(ValueError, match="floating point"):
             Boxes(vertices)
@@ -3239,9 +3239,9 @@ class TestBbox3D(BaseTester):
         assert build([1.0, 2.0, 3.0, 0.5, 4.0, 5.0], "xyzwhd").data.shape == (1, 8, 3)
         assert build([1.0, 2.0, 3.0, 1.0, 6.0, 8.0], "xyzxyz", validate_boxes=False).data.shape == (1, 8, 3)
 
-    def test_wart_constructor_and_from_tensor_have_different_integer_policies_4012(self, device):
-        # Wart pin for kornia#4012 (its 3D form): the constructor rejects integer coordinates
-        # unless told to cast, while from_tensor silently casts them to the default dtype.
+    def test_convention_constructor_rejects_integers_from_tensor_casts_4012(self, device):
+        # Convention (kornia#4012), 3D form: the constructor rejects integer coordinates unless
+        # raise_if_not_floating_point=False, while from_tensor casts them to the default dtype.
         vertices = torch.tensor([[[1, 2, 3]] * 8], device=device)
         with pytest.raises(ValueError, match="floating point"):
             Boxes3D(vertices)
