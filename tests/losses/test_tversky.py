@@ -134,6 +134,26 @@ class TestTverskyLoss(BaseTester):
         self.assert_close(logits.grad[0, :, :, 1], torch.zeros_like(logits.grad[0, :, :, 1]), rtol=0, atol=0)
         assert torch.count_nonzero(logits.grad[0, :, :, 0]) > 0
 
+    @pytest.mark.parametrize("invalid_logit", [float("nan"), float("inf"), -float("inf")])
+    def test_ignore_index_nonfinite_logits(self, device, dtype, invalid_logit):
+        logits = torch.tensor(
+            [[[[2.0, invalid_logit]], [[1.0, invalid_logit]]]],
+            device=device,
+            dtype=dtype,
+            requires_grad=True,
+        )
+        labels = torch.tensor([[[0, -100]]], device=device)
+
+        # Reference loss excluding the ignored pixel.
+        expected = kornia.losses.tversky_loss(logits[..., :1], labels[..., :1], 0.5, 0.5)
+        actual = kornia.losses.tversky_loss(logits, labels, 0.5, 0.5)
+
+        self.assert_close(actual, expected)
+
+        actual.backward()
+        assert torch.isfinite(logits.grad).all()
+        assert torch.count_nonzero(logits.grad[..., 1:]) == 0
+
     def test_absent_and_ignored_gradcheck(self, device):
         logits = torch.arange(12, device=device, dtype=torch.float64).reshape(2, 3, 1, 2) / 4
         labels = torch.tensor([[[1, -100]], [[-100, -100]]], device=device)
