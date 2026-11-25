@@ -1969,6 +1969,38 @@ class TestConventionsMatching(BaseTester):
             self.assert_close(dists, torch.tensor([[0.5]], device=device, dtype=dtype))
             assert run(dm, 0.49)[1].shape[0] == 0
 
+    @pytest.mark.parametrize("matcher", ["snn", "smnn", "smnn-reverse", "smnn-blocked", "fginn"])
+    def test_ambiguous_ratio_does_not_poison_distance_gradients(self, device, dtype, matcher):
+        # The first and last queries each have two exact matches. Only (1, 2) is kept.
+        dm = torch.tensor([[0.0, 0.0, 3.0], [2.0, 4.0, 1.0], [0.0, 0.0, 5.0]], device=device, dtype=dtype)
+        reverse = matcher in ("smnn-reverse", "smnn-blocked")
+        if reverse:
+            # Make the reverse ratio 1/2 dominate the forward ratio 1/3.
+            dm[0, 2] = 2.0
+            dm[1, 0] = 3.0
+        if matcher == "smnn-blocked":
+            # More than two blocks of 512 rows exercise the CPU column reduction.
+            dm = torch.cat([dm, dm[2:].expand(1022, -1)])
+        dm.requires_grad_()
+        desc1 = dm.new_zeros((dm.shape[0], 2))
+        desc2 = dm.new_zeros((dm.shape[1], 2))
+        if matcher == "snn":
+            ratios, indices = match_snn(desc1, desc2, dm=dm)
+        elif matcher == "fginn":
+            lafs = self._lafs([[0.0, 0.0], [20.0, 0.0], [40.0, 0.0]], device, dtype)
+            ratios, indices = match_fginn(desc1, desc2, lafs, lafs, dm=dm)
+        else:
+            ratios, indices = match_smnn(desc1, desc2, dm=dm)
+
+        assert indices.tolist() == [[1, 2]]
+        self.assert_close(ratios, dm.new_tensor([[0.5]]))
+        (gradient,) = torch.autograd.grad(ratios.sum(), dm)
+        # The only output is a 1/2 quotient with derivatives 1/2 and -1/4.
+        expected = torch.zeros_like(dm)
+        expected[1, 2] = 0.5
+        expected[0 if reverse else 1, 2 if reverse else 0] = -0.25
+        self.assert_close(gradient, expected, rtol=0, atol=0)
+
     def test_convention_match_mnn_keeps_mutual_nearest_neighbours_only(self, device, dtype):
         d1, d2 = self._descriptors(device, dtype)
         assert match_nn(d1, d2)[1].tolist() == [[0, 3], [1, 0], [2, 0]]
