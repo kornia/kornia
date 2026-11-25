@@ -123,8 +123,10 @@ def tversky_loss(
 
     # Keep the ratio's backward pass in float32 through softmax for half inputs.
     reduction_dtype = torch.float32 if pred.dtype in (torch.float16, torch.bfloat16) else pred.dtype
-    pred_soft = F.softmax(pred, dim=1, dtype=reduction_dtype)
     target, target_mask = mask_ignore_pixels(target, ignore_index)
+    if target_mask is not None:
+        pred = pred.masked_fill(~target_mask.unsqueeze(1), 0.0)
+    pred_soft = F.softmax(pred, dim=1, dtype=reduction_dtype)
 
     target_one_hot = one_hot(target, pred.shape[1], device=pred.device, dtype=reduction_dtype, eps=0.0)
 
