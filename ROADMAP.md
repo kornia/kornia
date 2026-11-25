@@ -195,7 +195,9 @@ execution path; that needs a maintainer's agreement on an open issue
 ([scope agreement](CONTRIBUTING.md#practical-guidelines)). The core, below, is
 `kornia.geometry`, `kornia.augmentation`, local-feature detection, description, and
 matching, and the image operators in `kornia.filters`, `kornia.color`, `kornia.enhance`,
-and `kornia.morphology`.
+and `kornia.morphology`. `kornia.sensors` and `kornia.metrics` are core candidates, not
+hardened yet: property and convention reports on them are welcome, and performance follows
+the rule for non-core code until they are promoted.
 
 - **Break a property the core should keep.** Shifting the world origin should not change a
   recovered camera pose once expressed in the original frame; multiplying a homography by
@@ -215,7 +217,8 @@ and `kornia.morphology`.
   when a CUDA device is available for reproduction and validation.
 - **Reference evidence and code health:** convention tests, independent expected vectors,
   corrective error messages, and compile/export coverage for existing operators.
-- **Faster core workflows:** measure the public call end to end on a common workload.
+- **Faster core workflows:** measure the public call end to end on a common workload; a
+  shared helper in `kornia.core` or `kornia.image` counts with the public call it serves.
   A speed-up qualifies at 20% or more. A memory improvement qualifies when it reduces peak
   memory by at least 20% or lets a workload from a linked user report fit. In either case,
   check that measured workloads do not slow down beyond run-to-run noise.
@@ -242,8 +245,8 @@ and `kornia.morphology`.
 
 **Performance outside the core:** models outside it, such as SAM, RT-DETR, and the VLMs in
 `kornia.models`, take correctness and regression fixes, not performance pull requests. Other
-non-core code, such as IO, losses, `kornia.tracking`, `kornia.contrib`, and `kornia.onnx`,
-is not a performance target; a simple change to the existing path qualifies only when it
+non-core code, such as IO, losses, `kornia.image`, `kornia.tracking`, `kornia.contrib`, and
+`kornia.onnx`, is not a performance target; a simple change to the existing path qualifies only when it
 makes the representative public call roughly ten times
 faster, or lets a workload from a linked user report run, reported with absolute times or
 memory and without a new path.
