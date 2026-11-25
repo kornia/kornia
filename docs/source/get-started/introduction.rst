@@ -80,7 +80,7 @@ Accessible AI models
 
 Beyond the classic operators, Kornia ships a curated selection of lightweight AI models, including YuNet, LoFTR,
 and SAM, optimized for performance and efficiency. These models offer efficient computations that do not require
-expensive GPUs, making cutting-edge AI accessible to everyone. They are documented under **Kornia Models** in the
-sidebar and on the :doc:`/models` page. The model collection is frozen for expansion while the maintainers
+expensive GPUs, making cutting-edge AI accessible to everyone. They are documented in the
+:doc:`Kornia Models </models/index>` section. The model collection is frozen for expansion while the maintainers
 concentrate on the core; the `roadmap <https://github.com/kornia/kornia/blob/main/ROADMAP.md#guiding-themes>`_
 states the condition for reopening it.

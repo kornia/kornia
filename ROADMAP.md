@@ -94,7 +94,8 @@ mathematical defects, numerical instability, and upstream workarounds.
    and pin conventions with `test_convention_*` tests. For a wrong formula or convention, an
    unchanged or worse downstream benchmark does not disprove the correction; a precision
    change needs a broken accuracy guarantee or a consequential effect on a caller's result.
-   Report results with uncertainty where applicable, investigate regressions, and leave acceptance to a maintainer; release
+   Report results with uncertainty where
+   applicable, investigate regressions, and leave acceptance to a maintainer; release
    notes state accepted tradeoffs. Prefer a shared stable formulation; extra device,
    version, size, or grad-mode branches need a measured reason stated beside the branch.
 6. **Choose the outcome explicitly.** Repair the implementation, document a limitation, propose
@@ -202,12 +203,12 @@ the rule for non-core code until they are promoted.
 - **Break a property the core should keep.** Shifting the world origin should not change a
   recovered camera pose once expressed in the original frame; multiplying a homography by
   a nonzero constant should not change where it maps a point; unprojecting a projected point
-  with its depth should return the point. Composition round-trips, frame/origin/scale invariance, autocast and dtype
-  contracts, and differences from OpenCV, COLMAP, SciPy, or scikit-image with conventions
-  aligned all count. Check existing `test_convention_*` and `test_wart_*` pins and open
-  issues first. Give the smallest supported example, state the convention, and justify the
-  expected result independently. A reproducible discrepancy reported as an issue is a
-  complete contribution; a patch is optional and follows the
+  with its depth should return the point. Composition round-trips, frame/origin/scale
+  invariance, autocast and dtype contracts, and differences from OpenCV, COLMAP, SciPy, or
+  scikit-image with conventions aligned all count. Check existing `test_convention_*` and
+  `test_wart_*` pins and open issues first. Give the smallest supported example, state the
+  convention, and justify the expected result independently. A reproducible discrepancy
+  reported as an issue is a complete contribution; a patch is optional and follows the
   [correctness policy](#correctness-and-backend-support).
 - **Hardware and backend evidence:** fix open half-precision issues and CUDA-only failures
   you can reproduce; the
@@ -245,10 +246,10 @@ the rule for non-core code until they are promoted.
 **Performance outside the core:** models outside it, such as SAM, RT-DETR, and the VLMs in
 `kornia.models`, take correctness and regression fixes, not performance pull requests. Other
 non-core code, such as IO, losses, `kornia.image`, `kornia.tracking`, `kornia.contrib`, and
-`kornia.onnx`, is not a performance target; a simple change to the existing path qualifies only when it
-makes the representative public call roughly ten times
-faster, or lets a workload from a linked user report run, reported with absolute times or
-memory and without a new path.
+`kornia.onnx`, is not a performance target; a simple change to the existing path qualifies
+only when it makes the representative public call roughly ten times faster, or lets a
+workload from a linked user report run, reported with absolute times or memory and without
+a new path.
 
 **Grandfathered model work:** Efficient LoFTR
 ([#3282](https://github.com/kornia/kornia/issues/3282),

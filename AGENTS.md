@@ -74,8 +74,8 @@ Apply [Correctness and backend support](ROADMAP.md#correctness-and-backend-suppo
    improvement, run the comparison a maintainer would use to decline it: the caller's result
    on main, with the change, and with the simplest existing way. A discrepancy report or
    reference test instead gives the input, the observed result, and the independently
-   justified expectation. A more accurate value that no caller depends on supports an issue,
-   not a pull request; do not invent user frequency.
+   justified expectation. A more accurate value alone needs a workflow that depends on it,
+   described on an issue first; do not invent user frequency.
 5. Pin independent expected results in focused tests (`test_convention_*` for conventions).
    Use `self.assert_close()`'s dtype tolerances or justify an override. Report worse
    downstream results and unresolved convention choices for maintainer judgment.
