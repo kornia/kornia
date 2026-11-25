@@ -48,6 +48,8 @@ class HomographyTracker(nn.Module):
         - Every homography the tracker returns or stores as ``previous_homography``, :meth:`no_match`'s included, is
           float32 for a ``float16`` or ``bfloat16`` target and has the target's dtype otherwise, whatever the dtype of
           the frame, of the matcher's keypoints or of a ``previous_homography`` assigned from outside.
+        - The search window depends on the geometry of the previous homography. Equivalent nonzero rescalings of
+          that matrix give the same prewarp up to numerical roundoff.
         - Keypoints narrower than that dtype are widened to it before ``ransac`` fits them. The caller's autocast
           reaches the matchers, but not the tracker's own warp, keypoint mapping and ``ransac`` fit.
 
@@ -290,10 +292,17 @@ class HomographyTracker(nn.Module):
             "track_next_frame needs a previous homography; call forward() or match_initial() first.",
         )
         homography_dtype = self._homography_dtype
-        Hwarp = cast(torch.Tensor, self.previous_homography).to(homography_dtype, copy=True)[None]
-        # make a bit of border for safety
+        prior = cast(torch.Tensor, self.previous_homography).to(homography_dtype)[None]
+        # Use the DLT gauge when it is well conditioned. A near-zero last entry instead uses the signed largest
+        # coefficient, so equivalent priors reach the inverse and sampler at the same magnitude and sign.
+        coefficients = prior.flatten(-2)
+        largest = coefficients.gather(-1, coefficients.abs().argmax(dim=-1, keepdim=True)).unsqueeze(-1)
+        last = prior[:, 2:3, 2:3]
+        scale = torch.where(last.abs() > largest.abs() * torch.finfo(homography_dtype).eps, last, largest)
+        Hwarp = prior / torch.where(scale == 0, torch.ones_like(scale), scale)
+        # In the fallback gauge the offset must still be homogeneous.
         Hwarp[:, 0:2, 0:2] = Hwarp[:, 0:2, 0:2] / 0.8
-        Hwarp[:, 0:2, 2] -= 10.0
+        Hwarp[:, 0:2, 2] -= 10.0 * Hwarp[:, 2:3, 2]
         h, w = self.target.shape[2:]
         # grid_sample takes the image and the sampling grid in one dtype, and a half grid is coarser than a pixel on a
         # large frame (bfloat16 keeps 8 mantissa bits): a half frame is warped in float32 and cast back for the matcher.
