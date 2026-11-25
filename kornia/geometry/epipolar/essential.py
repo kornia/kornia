@@ -889,13 +889,11 @@ def essential_from_Rt(R1: torch.Tensor, t1: torch.Tensor, R2: torch.Tensor, t2: 
     # first compute the camera relative motion
     R, t = relative_camera_motion(R1, t1, R2, t2)
 
-    # get the cross product from relative translation vector
-    Tx = cross_product_matrix(t[..., 0])
-
     if torch.jit.is_scripting():
-        return Tx @ R
+        return cross_product_matrix(t[..., 0]) @ R
+    # The skew matrix uses stack, whose CPU autocast policy can reject a different half dtype.
     with _autocast_disabled(R.device.type):
-        return Tx @ R
+        return cross_product_matrix(t[..., 0]) @ R
 
 
 def motion_from_essential(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -1143,9 +1141,12 @@ def relative_camera_motion(
     # The baseline can be much smaller than the absolute translations: rounding R @ t1 before the
     # subtraction can change the translation direction by tens of degrees, even for float32 inputs.
     if _caller_autocast_on(R1.device.type):
-        args = _reconcile_under_autocast(R1, t1, R2, t2)
+        # Include t2 when choosing precision for a mixed float32/half pose. Other dtypes follow
+        # the subtraction's normal promotion rules and must not prevent reconciling the products.
+        pose_t2 = t2 if t2.dtype in (torch.float16, torch.bfloat16, torch.float32) else None
+        R1, t1, R2, _ = _reconcile_under_autocast(R1, t1, R2, pose_t2)
         with _autocast_disabled(R1.device.type):
-            return _relative_camera_motion(*args)
+            return _relative_camera_motion(R1, t1, R2, t2)
     return _relative_camera_motion(R1, t1, R2, t2)
 
 

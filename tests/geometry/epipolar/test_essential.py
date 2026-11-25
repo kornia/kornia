@@ -632,6 +632,35 @@ class TestRelativeCameraMotion(BaseTester):
         for actual, expected in ((R, expected_R), (t, expected_t), (E, expected_E)):
             self.assert_close(actual, expected, rtol=0.0, atol=0.0)
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="CPU and CUDA autocast")
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_mixed_rotations_with_float64_second_translation_under_autocast(self, device, autocast_dtype):
+        skip_unsupported_autocast(device, autocast_dtype)
+        R1 = torch.eye(3, device=device, dtype=getattr(torch, autocast_dtype))[None]
+        R2 = torch.eye(3, device=device, dtype=torch.float32)[None]
+        t1 = torch.tensor([[[399.125], [99.53125], [10.25390625]]], device=device, dtype=torch.float32)
+        # The extra bit checks that the translation keeps float64 precision after the pose products.
+        t2 = torch.tensor([[[399.25 + 2**-30], [100.0], [10.5]]], device=device, dtype=torch.float64)
+        expected_t = torch.tensor([[[0.125 + 2**-30], [0.46875], [0.24609375]]], device=device, dtype=torch.float64)
+
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            R, t = epi.relative_camera_motion(R1, t1, R2, t2)
+        self.assert_close(R, R2, rtol=0.0, atol=0.0)
+        self.assert_close(t, expected_t, rtol=0.0, atol=0.0)
+
+    @pytest.mark.applies_to(devices=("cpu",), reason="CPU autocast applies a dtype policy to torch.stack")
+    @pytest.mark.parametrize("autocast_dtype, pose_dtype", [("float16", "bfloat16"), ("bfloat16", "float16")])
+    def test_essential_with_pose_in_other_half_dtype_under_autocast(self, device, autocast_dtype, pose_dtype):
+        skip_unsupported_autocast(device, autocast_dtype)
+        dtype = getattr(torch, pose_dtype)
+        R = torch.eye(3, device=device, dtype=dtype)[None]
+        t1 = torch.zeros(1, 3, 1, device=device, dtype=dtype)
+        t2 = torch.tensor([[[1.0], [2.0], [3.0]]], device=device, dtype=dtype)
+        expected = torch.tensor([[[0.0, -3.0, 2.0], [3.0, 0.0, -1.0], [-2.0, 1.0, 0.0]]], device=device, dtype=dtype)
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            E = epi.essential_from_Rt(R, t1, R, t2)
+        self.assert_close(E, expected, rtol=0.0, atol=0.0)
+
     def test_smoke(self, device, dtype):
         R1 = torch.rand(1, 3, 3, device=device, dtype=dtype)
         t1 = torch.rand(1, 3, 1, device=device, dtype=dtype)
