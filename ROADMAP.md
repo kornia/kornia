@@ -240,8 +240,7 @@ the rule for non-core code until they are promoted.
     synchronization count with the timing. Sync removals are exempt from the 20% bar: an
     end-to-end gain above run-to-run noise on a common workload is enough, as long as no other
     measured workload, CPU included, gets slower beyond noise. Keep input validation as it is
-    ([#6335](https://github.com/kornia/kornia/issues/6335)). SOLD2's heatmap refinement
-    ([#6792](https://github.com/kornia/kornia/issues/6792)) is open to contributors with a CUDA device.
+    ([#6335](https://github.com/kornia/kornia/issues/6335)).
 
 **Performance outside the core:** models outside it, such as SAM, RT-DETR, and the VLMs in
 `kornia.models`, take correctness and regression fixes, not performance pull requests. Other
