@@ -9,19 +9,17 @@ body:
       value: |
         Thanks for the suggestion! Please search existing issues first.
 
-        Two notes that may help:
-
-        - If you want to implement the idea, sharing the shape of it here before doing a
-          large amount of work may reveal design or compatibility concerns early.
-        - Kornia currently focuses on hardening its differentiable geometry / CV core rather
-          than growing breadth — new model integrations are mostly frozen. Proposals in the
-          core areas are closest to the current project direction.
+        Kornia is concentrating on its differentiable geometry / CV core and is not looking
+        for new features; new model integrations are frozen. Describe a concrete workflow
+        below. Please do not open a pull request, even a draft, until a maintainer has agreed
+        to the scope on this issue; no reply means no agreement. See
+        [CONTRIBUTING.md](https://github.com/kornia/kornia/blob/main/CONTRIBUTING.md#practical-guidelines).
 
   - type: textarea
     id: what-and-why
     attributes:
-      label: What, and why?
-      description: What should kornia do, and what problem does it solve for you?
+      label: What did you try, and where did it fall short?
+      description: Who is trying to do what with the current kornia API, what did they try, and where does it fall short? A link to a user report is enough.
     validations:
       required: true
 

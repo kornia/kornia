@@ -61,7 +61,9 @@ mathematical defects, numerical instability, and upstream workarounds.
    accuracy requirements. Separate wrong mathematics or avoidable instability from
    rounding, dtype limits, and undefined behavior. Compare with plain PyTorch where
    applicable: a sum exceeding float16's range does not justify widening its output.
-   This does not excuse unstable computation of a representable result.
+   This does not excuse unstable computation that breaks a Kornia guarantee or changes a
+   caller's result in a consequential way, such as NaN, inf, or a flipped decision; a more
+   accurate intermediate alone needs a workflow that depends on it.
 2. **Do not expand support through bug fixes.** Do not add integer-input support or
    special paths solely for synthetic extremes: half-precision overflow far beyond
    image/coordinate ranges, `1e20` float32 image values or pixel coordinates, or a matrix
@@ -85,8 +87,9 @@ mathematical defects, numerical instability, and upstream workarounds.
    measured cost, and retirement/reassessment condition beside the code. This also
    applies to backend performance workarounds.
 5. **Prove the correction and report consequences.** Derive expected results independently
-   and pin conventions with `test_convention_*` tests. An unchanged or worse downstream
-   benchmark does not disprove a correction. Report results with uncertainty where
+   and pin conventions with `test_convention_*` tests. For a wrong formula or convention, an
+   unchanged or worse downstream benchmark does not disprove the correction; for a precision
+   change, an unchanged final result means there is nothing to fix. Report results with uncertainty where
    applicable, investigate regressions, and leave acceptance to a maintainer; release
    notes state accepted tradeoffs. Prefer a shared stable formulation; extra device,
    version, size, or grad-mode branches need a measured reason stated beside the branch.
@@ -163,7 +166,7 @@ issues own live status and acceptance decisions.
   bottlenecks, such as `median_blur` and `canny`, with registered ops, backward, and conformance
   evidence; experimental until validated. The [benchmark evidence](benchmarks/README.md#the-honest-reading-across-apple-silicon-l4-rtx-pro-6000-rtx-4090wsl2)
   requires remeasuring `rotate` with matched interpolation before treating it as an outlier.
-- **Batched RANSAC:** vectorize hypothesis sampling, solving, and scoring with chunked
+- **Batched RANSAC:** vectorize hypothesis sampling, solving, and scoring within one fit, with chunked
   execution and confidence-based stopping. Choose eager/scripted/compiled variants by
   correctness and benchmarks, without requiring a compiler for the basic batched path.
 
@@ -179,27 +182,38 @@ issues own live status and acceptance decisions.
 
 ## Areas seeking contributors
 
-Check [help wanted](https://github.com/kornia/kornia/labels/help%20wanted), existing issues,
-and [the contribution rules](CONTRIBUTING.md) before implementation. A roadmap area is
-not approval for a new API; establish the concrete need and check reservations first.
+These areas are open-ended: choose the question yourself; nobody needs to assign it. Check
+existing issues, open pull requests, and [the contribution rules](CONTRIBUTING.md) first.
+A roadmap area is not approval for a new API; that needs a maintainer's agreement on an
+open issue ([feature proposals](CONTRIBUTING.md#practical-guidelines)).
 
-- **Documented CUDA and half-precision failures:** fix existing CUDA reports, open
-  half-precision issues, and entries in the known-failure manifests for
-  [`float16`](testing/half_precision_xfails/cpu_float16.txt) and
-  [`bfloat16`](testing/half_precision_xfails/cpu_bfloat16.txt). Take CUDA work only when a CUDA device is available
-  for reproduction and validation. Apply the [correctness policy](#correctness-and-backend-support)
-  and [precision testing guidance](TESTING.md#7-half-precision-dtypes-float16--bfloat16);
-  remove the corresponding xfail or manifest entry after verifying the fix.
-- **Reference evidence:** convention tests, independent expected vectors, corrective
-  error messages, and hardware benchmark contributions, especially CUDA. Use the
-  benchmark suite's `--contribute` workflow.
-- **Code health:** compile/export coverage for existing operators.
-- **Faster existing operators:** speed-ups of at least 20% on a common workload,
-  achieved in the general code path rather than through a new special path for
-  particular shapes, dtypes, or devices. Behavior must not change: outputs and
-  gradients stay within the existing test tolerances, and dtype/device handling and
-  compile/ONNX support stay as they are. Measure base and branch on the same hardware
-  and workloads following [the benchmark methodology](benchmarks/README.md).
+- **Break a property the core should keep.** Shifting the world origin should not change a
+  recovered camera pose once expressed in the original frame; rescaling an equivalent
+  homography should not change a tracker's result; unprojecting a projected point with its
+  depth should return the point. Composition round-trips, frame/origin/scale invariance, autocast and dtype
+  contracts, and differences from OpenCV, COLMAP, SciPy, or scikit-image with conventions
+  aligned all count. Check existing `test_convention_*` and `test_wart_*` pins and open
+  issues first. Give the smallest supported example, state the convention, and justify the
+  expected result independently. A reproducible discrepancy reported as an issue is a
+  complete contribution; a patch is optional and follows the
+  [correctness policy](#correctness-and-backend-support). The core is warping and sampling,
+  homographies, cameras, epipolar geometry, rotations and Lie groups, geometry-consistent
+  augmentation, and local-feature detection, description, and matching.
+- **Hardware and backend evidence:** fix existing CUDA reports and open half-precision
+  issues, and send benchmark results from your hardware with the benchmark suite's
+  `--contribute` workflow, especially CUDA. Take CUDA work only when a CUDA device is
+  available for reproduction and validation.
+- **Reference evidence and code health:** convention tests, independent expected vectors,
+  corrective error messages, and compile/export coverage for existing operators.
+- **Faster core and local-feature workflows:** speed-ups or peak-memory reductions of at
+  least 20% on a common workload, measured end to end on the public call, with nothing
+  getting slower. They must come from the general code path, not from a new special path for
+  particular shapes, dtypes, devices, or grad modes, and the code must stay readable as a
+  reference. Behavior must not change: outputs and gradients stay within the existing test
+  tolerances, and dtype/device handling and compile/ONNX support stay as they are. Measure
+  base and branch on the same hardware and workloads following
+  [the benchmark methodology](benchmarks/README.md). Being in `kornia.feature` does not
+  exempt a new model mode or option from the feature rule.
   - **Fewer host synchronizations:** `.item()`, `bool()` or `if` on a tensor, `nonzero`,
     and boolean-mask indexing or assignment make the host wait for the device. On CUDA,
     `torch.cuda.set_sync_debug_mode("warn")` points at many of these waits but not all of them.
@@ -213,9 +227,11 @@ not approval for a new API; establish the concrete need and check reservations f
     measured workload, CPU included, gets slower beyond noise. Keep input validation as it is
     ([#6335](https://github.com/kornia/kornia/issues/6335)). SOLD2's heatmap refinement
     ([#6792](https://github.com/kornia/kornia/issues/6792)) is open to contributors with a CUDA device.
-- **Augmentation breadth:** low-priority, community-driven gaps such as dropout,
-  distortions, weather/noise, and compression effects; the differentiated core remains
-  differentiability, batching, and annotation consistency.
+- **Performance elsewhere:** other models take correctness and regression fixes, not performance pull
+  requests. Other non-core code, such as IO and losses, is not a performance target; a simple
+  change to the existing path qualifies only when it makes the representative public call
+  roughly ten times faster, or lets a workload from a linked user report run, reported with
+  absolute times or memory and without a new path.
 
 **Grandfathered model work:** Efficient LoFTR
 ([#3282](https://github.com/kornia/kornia/issues/3282),

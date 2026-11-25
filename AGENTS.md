@@ -8,6 +8,9 @@ coding rules; [ROADMAP.md](ROADMAP.md) owns priorities and correctness policy;
 
 - Read the relevant issue decision and nearby implementation/tests before editing.
   Preserve existing user changes and keep the task focused.
+- Choose work from [Areas seeking contributors](ROADMAP.md#areas-seeking-contributors). A new
+  public API, model mode, or execution path needs a maintainer's agreement on an open issue
+  before any PR; closed issues and old comments are not decisions.
 - Library code lives in `kornia/`; reusable test support lives in `testing/`, not `tests/`.
   Check import cycles when changing exports: `kornia/__init__.py` loads `filters` and
   `geometry` before modules that depend on them.
@@ -66,8 +69,10 @@ Apply [Correctness and backend support](ROADMAP.md#correctness-and-backend-suppo
    values are not by themselves evidence of an upstream defect. For suspected upstream
    failures, test latest stable and available next PyTorch on the affected backend;
    record gaps. Follow the roadmap's fixed-upstream rule before adding a workaround.
-4. Name the workflow, inputs, dtype/device, and grad/autocast mode. Separate synthetic
-   proof, real-data exposure, and downstream impact; do not invent user frequency.
+4. Name the workflow, inputs, dtype/device, and grad/autocast mode. Before posting, run the
+   comparison a maintainer would use to decline the change: the caller's result on main,
+   with the change, and with the simplest existing way. A proof that changes no
+   caller-visible result supports an issue, not a pull request; do not invent user frequency.
 5. Pin independent expected results in focused tests (`test_convention_*` for conventions).
    Use `self.assert_close()`'s dtype tolerances or justify an override. Report worse
    downstream results and unresolved convention choices for maintainer judgment.

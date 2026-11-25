@@ -13,7 +13,7 @@ For internal changes without a fragment, explain why and ask for the no-changelo
 
 ## What did you check?
 
-<!-- List the tests, examples, or manual checks you ran, and include useful results. -->
+<!-- List the tests, examples, or manual checks you ran, including what changes for a caller (final output, task metric, timing of the public call), and include useful results. -->
 
 ```text
 $ pixi run test-module tests/...
