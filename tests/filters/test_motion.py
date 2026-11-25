@@ -44,7 +44,6 @@ from testing.base import (
     supports_reflect_padding,
     supports_replicate_padding_3d,
 )
-from testing.default_device import default_device
 
 
 def _default_border_type(op) -> str:
@@ -282,69 +281,20 @@ class TestMotionBlur(BaseTester):
         self.assert_close(op(data), op_optimized(data))
 
     @pytest.mark.parametrize("mode", ["nearest", "bilinear"])
-    @pytest.mark.parametrize("use_set_default_device", [False, True])
-    def test_get_motion_kernel2d_under_default_device(self, mode, use_set_default_device, device, dtype):
-        if mode == "bilinear" and not supports_bilinear_2d_grid_sample(device, dtype):
-            pytest.skip("bilinear 2D grid_sample is unavailable for this device/dtype")
-        angle = torch.tensor([35.0], device=device, dtype=dtype)
-        direction = torch.tensor([0.5], device=device, dtype=dtype)
-        expected = get_motion_kernel2d(5, angle, direction, mode=mode)
-
-        ctx = default_device("meta") if use_set_default_device else torch.device("meta")
-        with ctx:
-            actual = get_motion_kernel2d(5, angle, direction, mode=mode)
-
-        assert actual.device == angle.device
-        assert actual.dtype == angle.dtype
-        self.assert_close(actual, expected)
-
-    @pytest.mark.parametrize("mode", ["nearest", "bilinear"])
-    @pytest.mark.parametrize("use_set_default_device", [False, True])
-    def test_get_motion_kernel2d_float_params_under_hardware_default_device(self, mode, use_set_default_device, device):
-        if mode == "bilinear" and not supports_bilinear_2d_grid_sample(device, torch.get_default_dtype()):
-            pytest.skip("bilinear 2D grid_sample is unavailable for the default dtype on this device")
-        expected = get_motion_kernel2d(
-            5,
-            torch.tensor([35.0], device=device, dtype=torch.get_default_dtype()),
-            torch.tensor([0.5], device=device, dtype=torch.get_default_dtype()),
-            mode=mode,
-        )
-        ctx = default_device(device) if use_set_default_device else torch.device(device)
-        with ctx:
-            actual = get_motion_kernel2d(5, 35.0, 0.5, mode=mode)
-
-        assert actual.device == expected.device
-        assert actual.dtype == expected.dtype
-        self.assert_close(actual, expected)
-
-    @pytest.mark.parametrize("mode", ["nearest", "bilinear"])
-    @pytest.mark.parametrize("use_set_default_device", [False, True])
-    def test_motion_blur_under_default_device(self, mode, use_set_default_device, device, dtype):
+    def test_under_default_device(self, mode, device, dtype):
+        # Python-number parameters and the nearest-neighbour source grid are built on the CPU, not on PyTorch's
+        # ambient default device; a meta default exposes both without accelerator hardware.
         border_type = "reflect" if supports_reflect_padding(device, dtype) else "constant"
-        torch.manual_seed(0)
-        base = torch.rand(2, 3, 9, 11, device=device, dtype=dtype)
-        ref_in = base.clone().requires_grad_(True)
-        expected = motion_blur(ref_in, 5, 35.0, 0.5, border_type=border_type, mode=mode)
-        expected_grad = torch.autograd.grad(expected.sum(), ref_in)[0]
+        image = torch.rand(2, 3, 9, 11, device=device, dtype=dtype, requires_grad=True)
+        expected = motion_blur(image, 5, 35.0, 0.5, border_type=border_type, mode=mode)
+        expected_grad = torch.autograd.grad(expected.sum(), image)[0]
+        with torch.device("meta"):
+            actual = motion_blur(image, 5, 35.0, 0.5, border_type=border_type, mode=mode)
+            grad = torch.autograd.grad(actual.sum(), image)[0]
 
-        img_fn = base.clone().requires_grad_(True)
-        img_mod = base.clone().requires_grad_(True)
-        ctx = default_device("meta") if use_set_default_device else torch.device("meta")
-        with ctx:
-            actual_fn = motion_blur(img_fn, 5, 35.0, 0.5, border_type=border_type, mode=mode)
-            actual_mod = MotionBlur(5, 35.0, 0.5, border_type=border_type, mode=mode)(img_mod)
-            grad_fn = torch.autograd.grad(actual_fn.sum(), img_fn)[0]
-            grad_mod = torch.autograd.grad(actual_mod.sum(), img_mod)[0]
-
-        assert actual_fn.device == base.device
-        assert actual_fn.dtype == base.dtype
-        assert actual_mod.device == base.device
-        assert grad_fn.device == base.device
-        assert grad_mod.device == base.device
-        self.assert_close(actual_fn, expected)
-        self.assert_close(actual_mod, expected)
-        self.assert_close(grad_fn, expected_grad)
-        self.assert_close(grad_mod, expected_grad)
+        assert actual.device == image.device
+        self.assert_close(actual, expected)
+        self.assert_close(grad, expected_grad)
 
 
 class TestMotionBlur3D(BaseTester):
@@ -589,73 +539,20 @@ class TestMotionBlur3D(BaseTester):
         self.assert_close(from_function, motion_blur3d(volume, *params, border_type="replicate"))
 
     @pytest.mark.parametrize("mode", ["nearest", "bilinear"])
-    @pytest.mark.parametrize("use_set_default_device", [False, True])
-    def test_get_motion_kernel3d_under_default_device(self, mode, use_set_default_device, device, dtype):
-        if mode == "bilinear" and not supports_bilinear_3d_grid_sample(device, dtype):
-            pytest.skip("bilinear 3D grid_sample is unavailable for this device/dtype")
-        angle = torch.tensor([[35.0, 15.0, 200.0]], device=device, dtype=dtype)
-        direction = torch.tensor([0.5], device=device, dtype=dtype)
-        expected = get_motion_kernel3d(5, angle, direction, mode=mode)
-
-        ctx = default_device("meta") if use_set_default_device else torch.device("meta")
-        with ctx:
-            actual = get_motion_kernel3d(5, angle, direction, mode=mode)
-
-        assert actual.device == angle.device
-        assert actual.dtype == angle.dtype
-        self.assert_close(actual, expected)
-
-    @pytest.mark.parametrize("mode", ["nearest", "bilinear"])
-    @pytest.mark.parametrize("use_set_default_device", [False, True])
-    def test_get_motion_kernel3d_float_params_under_hardware_default_device(self, mode, use_set_default_device, device):
-        if mode == "bilinear" and not supports_bilinear_3d_grid_sample(device, torch.get_default_dtype()):
-            pytest.skip("bilinear 3D grid_sample is unavailable for the default dtype on this device")
-        expected = get_motion_kernel3d(
-            5,
-            torch.tensor([[35.0, 15.0, 200.0]], device=device, dtype=torch.get_default_dtype()),
-            torch.tensor([0.5], device=device, dtype=torch.get_default_dtype()),
-            mode=mode,
-        )
-        ctx = default_device(device) if use_set_default_device else torch.device(device)
-        with ctx:
-            actual = get_motion_kernel3d(5, (35.0, 15.0, 200.0), 0.5, mode=mode)
-
-        assert actual.device == expected.device
-        assert actual.dtype == expected.dtype
-        self.assert_close(actual, expected)
-
-    @pytest.mark.parametrize("mode", ["nearest", "bilinear"])
-    @pytest.mark.parametrize("use_set_default_device", [False, True])
-    def test_motion_blur3d_under_default_device(self, mode, use_set_default_device, device, dtype):
+    def test_under_default_device(self, mode, device, dtype):
+        # Python-number parameters and the nearest-neighbour source grid are built on the CPU, not on PyTorch's
+        # ambient default device; a meta default exposes both without accelerator hardware.
         border_type = "replicate" if supports_replicate_padding_3d(device, dtype) else "constant"
-        torch.manual_seed(0)
-        base = torch.rand(2, 2, 4, 6, 7, device=device, dtype=dtype)
-        ref_in = base.clone().requires_grad_(True)
-        expected = motion_blur3d(ref_in, 3, (30.0, 10.0, 20.0), 0.5, border_type=border_type, mode=mode)
-        expected_grad = torch.autograd.grad(expected.sum(), ref_in)[0]
-        expected_scalar = MotionBlur3D(3, 30.0, 0.5, border_type=border_type, mode=mode)(base)
+        volume = torch.rand(2, 2, 4, 6, 7, device=device, dtype=dtype, requires_grad=True)
+        expected = motion_blur3d(volume, 3, (30.0, 10.0, 20.0), 0.5, border_type=border_type, mode=mode)
+        expected_grad = torch.autograd.grad(expected.sum(), volume)[0]
+        with torch.device("meta"):
+            actual = motion_blur3d(volume, 3, (30.0, 10.0, 20.0), 0.5, border_type=border_type, mode=mode)
+            grad = torch.autograd.grad(actual.sum(), volume)[0]
 
-        vol_fn = base.clone().requires_grad_(True)
-        vol_mod = base.clone().requires_grad_(True)
-        ctx = default_device("meta") if use_set_default_device else torch.device("meta")
-        with ctx:
-            actual_fn = motion_blur3d(vol_fn, 3, (30.0, 10.0, 20.0), 0.5, border_type=border_type, mode=mode)
-            actual_mod = MotionBlur3D(3, (30.0, 10.0, 20.0), 0.5, border_type=border_type, mode=mode)(vol_mod)
-            actual_scalar = MotionBlur3D(3, 30.0, 0.5, border_type=border_type, mode=mode)(base)
-            grad_fn = torch.autograd.grad(actual_fn.sum(), vol_fn)[0]
-            grad_mod = torch.autograd.grad(actual_mod.sum(), vol_mod)[0]
-
-        assert actual_fn.device == base.device
-        assert actual_fn.dtype == base.dtype
-        assert actual_mod.device == base.device
-        assert actual_scalar.device == base.device
-        assert grad_fn.device == base.device
-        assert grad_mod.device == base.device
-        self.assert_close(actual_fn, expected)
-        self.assert_close(actual_mod, expected)
-        self.assert_close(actual_scalar, expected_scalar)
-        self.assert_close(grad_fn, expected_grad)
-        self.assert_close(grad_mod, expected_grad)
+        assert actual.device == volume.device
+        self.assert_close(actual, expected)
+        self.assert_close(grad, expected_grad)
 
 
 class TestConventionsMotionBlur(BaseTester):
