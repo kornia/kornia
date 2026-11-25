@@ -254,6 +254,33 @@ def _validate_histogram_bandwidth(
     return bandwidth
 
 
+def _resolve_bandwidth(
+    min: float,
+    max: float,
+    n_bins: int,
+    bandwidth: Optional[float],
+    centers: Optional[torch.Tensor],
+    auto_centers: bool,
+    compute_dtype: torch.dtype,
+) -> Tuple[float, Optional[torch.Tensor]]:
+    """Resolve the bandwidth sentinel, deriving it from the centers when they have a spacing.
+
+    Two or more explicit centers set the kernel scale: their mean gap, which is their spacing when they are evenly
+    spaced. That gap is a tensor, so it is returned separately to keep the tensor operations traceable. A single
+    explicit center, or centers without a positive finite gap (all equal, NaN or inf), have no spacing and keep the
+    range-based default.
+    """
+    auto_bandwidth = bandwidth is None or bandwidth == -1.0
+    range_bandwidth = _validate_histogram_bandwidth(min, max, n_bins, bandwidth, auto_centers)
+    if centers is None or centers.numel() < 2 or not auto_bandwidth:
+        return range_bandwidth, None
+    # Measured in the dtype the kernel divides in, so float16 centers do not overflow.
+    wide = centers.to(compute_dtype)
+    spacing = (wide.max() - wide.min()) / (centers.numel() - 1)
+    has_spacing = torch.isfinite(spacing) & (spacing > 0)
+    return range_bandwidth, torch.where(has_spacing, spacing, torch.full_like(spacing, range_bandwidth))
+
+
 def image_histogram2d(
     image: torch.Tensor,
     min: float = 0.0,
@@ -282,17 +309,20 @@ def image_histogram2d(
 
     Args:
         image: image with shape ``(H, W)``, ``(C, H, W)`` or ``(B, C, H, W)``.
-        min: lower end of the range, a ``float``. It sets the automatic centers and bandwidth.
-        max: upper end of the range, a ``float``. It sets the automatic centers and bandwidth. The default ``255.0``
-            puts a :math:`[0, 1]` image in two bins; pass ``1.0`` for that range. It must exceed ``min`` while the
-            centers are automatic.
+        min: lower end of the range, a ``float``. It sets the automatic centers and the default bandwidth.
+        max: upper end of the range, a ``float``. It sets the automatic centers and the default bandwidth. The default
+            ``255.0`` puts a :math:`[0, 1]` image in two bins; pass ``1.0`` for that range. It must exceed ``min``
+            whenever the centers or the bandwidth are automatic.
         n_bins: number of automatic bins.
         bandwidth: kernel width, a positive finite ``float``; it does not move the automatic centers. The default,
-            also ``-1``, is ``(max - min) / n_bins``.
+            also ``-1``, is the spacing of the bin centers: ``(max - min) / n_bins`` for automatic centers, and the
+            mean gap between two or more explicit centers, ``(centers.max() - centers.min()) / (K - 1)``, which is
+            their spacing when they are evenly spaced. A single explicit center, or centers that are all equal, have no
+            spacing and use ``(max - min) / n_bins``. Pass an explicit ``bandwidth`` for unevenly spaced centers.
         centers: bin centers with shape ``(K,)``. The default, also an empty tensor, is the ``n_bins`` equal-width bin
-            centers over ``[min, max]``, ``min + (i + 0.5) * (max - min) / n_bins``. With explicit centers, also pass
-            ``bandwidth``: the default bandwidth still comes from ``min``, ``max`` and ``n_bins``
-            (`#6662 <https://github.com/kornia/kornia/issues/6662>`_).
+            centers over ``[min, max]``, ``min + (i + 0.5) * (max - min) / n_bins``. With explicit centers,
+            ``min``, ``max`` and ``n_bins`` only size the fallback for a single center or centers that are all equal;
+            they do not select the default bandwidth otherwise.
         return_pdf: whether to also return the normalized histogram.
         kernel: weight of a pixel at distance ``d`` from a center, with ``u = d / bandwidth``: ``'triangular'``
             (:math:`1 - u` for :math:`u \leq 1`), ``'gaussian'`` (:math:`e^{-u^2 / 2}`), ``'uniform'`` (1 for
@@ -346,11 +376,11 @@ def image_histogram2d(
     if centers is not None and centers.numel() == 0:
         centers = None
     auto_centers = centers is None
-    bandwidth = _validate_histogram_bandwidth(min, max, n_bins, bandwidth, auto_centers)
 
     # Preserve the supplied center precision while promoting half inputs enough to represent image-sized counts.
     center_dtype = centers.dtype if centers is not None else torch.float32
     compute_dtype = torch.promote_types(torch.float32, torch.promote_types(image.dtype, center_dtype))
+    bandwidth, center_spacing = _resolve_bandwidth(min, max, n_bins, bandwidth, centers, auto_centers, compute_dtype)
     if centers is None:
         # The bandwidth only sets the kernel width, so it must not stretch the bins: the automatic centers are the
         # n_bins equal-width bin centers over [min, max], whatever the bandwidth is.
@@ -358,7 +388,8 @@ def image_histogram2d(
         centers = min + bin_width * (torch.arange(n_bins, device=image.device, dtype=compute_dtype) + 0.5)
     centers = centers.to(compute_dtype).reshape(-1, 1, 1, 1, 1)
 
-    u = torch.abs(image.to(compute_dtype).unsqueeze(0) - centers) / bandwidth
+    u = torch.abs(image.to(compute_dtype).unsqueeze(0) - centers)
+    u = u / bandwidth if center_spacing is None else u / center_spacing
 
     if kernel == "gaussian":
         kernel_values = torch.exp(-0.5 * u**2)
