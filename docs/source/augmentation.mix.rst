@@ -17,3 +17,4 @@ image in the batch.
 .. autoclass:: RandomMixUpV2
 .. autoclass:: RandomMosaic
 .. autoclass:: RandomTransplantation
+.. autoclass:: TokenMix
