@@ -177,8 +177,8 @@ def undistort_points_kannala_brandt(distorted_points_in_camera: torch.Tensor, pa
           caller-visible step count, so the round trip through :func:`distort_points_kannala_brandt` closes only
           to the accuracy that iteration reaches.
         - a zero distorted radius maps to the origin.
-        - float16 and bfloat16 calibrations are evaluated in float32. Other floating calibrations use their own dtype.
-          The result takes the dtype of the points.
+        - points and calibration are promoted to a common working dtype, with float32 as the minimum
+          for half-precision inputs. The result takes the dtype of the points.
 
     Args:
         distorted_points_in_camera: torch.Tensor representing the points to undistort with shape ``(..., 2)``.
@@ -211,11 +211,12 @@ def undistort_points_kannala_brandt(distorted_points_in_camera: torch.Tensor, pa
     device = distorted_points_in_camera.device
     out_dtype = distorted_points_in_camera.dtype
 
-    # Round the result once rather than rounding every Newton step and the tangent.
-    p = params.to(device=device)
-    if p.dtype in (torch.float16, torch.bfloat16):
-        p = p.float()
-    pts = distorted_points_in_camera.to(dtype=p.dtype)
+    # Keep the precision of both inputs through the Newton steps and tangent.
+    compute_dtype = torch.promote_types(out_dtype, params.dtype)
+    if compute_dtype in (torch.float16, torch.bfloat16):
+        compute_dtype = torch.float32
+    p = params.to(device=device, dtype=compute_dtype)
+    pts = distorted_points_in_camera.to(dtype=compute_dtype)
 
     x = pts[..., 0]
     y = pts[..., 1]

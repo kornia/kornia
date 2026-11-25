@@ -497,6 +497,33 @@ class TestDistortionKannalaBrandt(BaseTester):
         self.assert_close(actual, points.new_tensor([ray]), atol=0, rtol=1e-5)
         self.assert_close(gradient, points.new_tensor([jacobian]), atol=0, rtol=1e-5)
 
+    @pytest.mark.applies_to(dtypes=("float64",), reason="float64 pixels with float32 calibration")
+    def test_undistort_kannala_brandt_preserves_float64_points(self, device, dtype):
+        # T265 cam0 calibration and the same independent bisection and derivative as above,
+        # using the float32-rounded calibration and the original float64 pixel.
+        params = torch.tensor(
+            [
+                282.01996326,
+                280.71451531,
+                415.95581378,
+                396.66137720,
+                -0.00326900323,
+                0.05405258144,
+                -0.05159409564,
+                0.01074918019,
+            ],
+            device=device,
+            dtype=torch.float32,
+        )
+        points = torch.tensor([[80.375123456789, 336.625987654321]], device=device, dtype=dtype, requires_grad=True)
+        actual = undistort_points_kannala_brandt(points, params)
+        (gradient,) = torch.autograd.grad(actual[0, 0], points)
+        expected = points.new_tensor([[-2.6152294024704084, -0.47004035779171177]])
+        expected_gradient = points.new_tensor([[0.03187238374544024, 0.0043479352931802915]])
+        # A float32-sized tolerance cannot detect rounding into the calibration dtype.
+        self.assert_close(actual, expected, atol=1e-12, rtol=0.0)
+        self.assert_close(gradient, expected_gradient, atol=1e-12, rtol=0.0)
+
     def test_convention_undistort_points_kannala_brandt_round_trip_closes_4308(self, device, dtype):
         # undistort_points_kannala_brandt is an iterative (Gauss-Newton) inverse, so the round trip closes to the
         # dtype tolerance, including at a normalized radius of 3 where the polynomial is far from linear (the
