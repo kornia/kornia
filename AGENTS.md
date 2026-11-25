@@ -8,6 +8,9 @@ coding rules; [ROADMAP.md](ROADMAP.md) owns priorities and correctness policy;
 
 - Read the relevant issue decision and nearby implementation/tests before editing.
   Preserve existing user changes and keep the task focused.
+- When choosing work yourself, start from [Areas seeking contributors](ROADMAP.md#areas-seeking-contributors)
+  and `help wanted` issues. A new public API, model mode, or separately maintained execution
+  path needs scope agreement first; follow the [rule in CONTRIBUTING](CONTRIBUTING.md#practical-guidelines).
 - Library code lives in `kornia/`; reusable test support lives in `testing/`, not `tests/`.
   Check import cycles when changing exports: `kornia/__init__.py` loads `filters` and
   `geometry` before modules that depend on them.
@@ -52,7 +55,7 @@ an external script can silently import the primary editable checkout. Follow the
 | Checks or dynamic shapes | Avoid specializing sizes in error strings; follow [Dynamic-shape check messages](TESTING.md#dynamic-shape-check-messages), including its TorchScript exception. |
 | Public exports | Follow [Public API inventory](TESTING.md#public-api-inventory); exact removal acknowledgements do not replace deprecation or release notes. |
 | Compile or ONNX | Run the [compile](TESTING.md#torchcompile-conformance-5819) and [ONNX](TESTING.md#onnx-conformance-5819) promised-package selections for touched packages and their importers. Inspect the ONNX subsystem/mixins before export changes and verify runtime as well as graph construction. |
-| Performance | Follow [benchmarks/README.md](benchmarks/README.md), use public APIs and shared helpers, and benchmark base and branch on the same workloads. |
+| Performance | Check [which speed-ups qualify](ROADMAP.md#areas-seeking-contributors) first. Follow [benchmarks/README.md](benchmarks/README.md), use public APIs and shared helpers, and benchmark base and branch on the same workloads. |
 
 ## Correctness triage and fixes
 
@@ -67,7 +70,12 @@ Apply [Correctness and backend support](ROADMAP.md#correctness-and-backend-suppo
    failures, test latest stable and available next PyTorch on the affected backend;
    record gaps. Follow the roadmap's fixed-upstream rule before adding a workaround.
 4. Name the workflow, inputs, dtype/device, and grad/autocast mode. Separate synthetic
-   proof, real-data exposure, and downstream impact; do not invent user frequency.
+   proof, real-data exposure, and downstream impact. Before posting a fix or
+   improvement, run the comparison a maintainer would use to decline it: the caller's result
+   on main, with the change, and with the simplest existing way. A discrepancy report or
+   reference test instead gives the input, the observed result, and the independently
+   justified expectation. A more accurate value alone needs a workflow that depends on it,
+   described on an issue first; do not invent user frequency.
 5. Pin independent expected results in focused tests (`test_convention_*` for conventions).
    Use `self.assert_close()`'s dtype tolerances or justify an override. Report worse
    downstream results and unresolved convention choices for maintainer judgment.

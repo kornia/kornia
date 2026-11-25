@@ -273,32 +273,7 @@ onnx_seq.export("chained_model.onnx")
 
 ## Call For Contributors
 
-If kornia is useful to you and you would like to help, contributions of many kinds are welcome: code, bug reports, benchmarks, documentation, questions, answers, and examples. The maintainers have limited time, so we cannot promise that every proposal or pull request will be reviewed or merged.
-
-### Strengthen the Core (Priority)
-
-Kornia's differentiated value is its geometry core: warping and sampling, homographies, cameras, epipolar geometry, rotations and Lie groups, and geometry-consistent augmentation. The highest-impact contributions make that core more trustworthy — see the [Roadmap](ROADMAP.md) for the full picture. Great entry points:
-
-- **Benchmark results from your hardware**: run the benchmark suite with `--contribute` and send the JSON — CUDA numbers from diverse GPUs are especially useful.
-- **Convention pinning tests and conformance vectors** for core geometry operations.
-- **Corrective error messages**: upgrade bare shape assertions into errors that state what was wrong, what was expected, and which convention applies.
-- **Documented CUDA and half-precision failures**: fix existing CUDA reports, open half-precision issues, and entries in the [`float16`](testing/half_precision_xfails/cpu_float16.txt)/[`bfloat16`](testing/half_precision_xfails/cpu_bfloat16.txt) known-failure manifests under the [correctness policy](ROADMAP.md#correctness-and-backend-support). Take CUDA work only with a CUDA device available for reproduction and validation; remove the corresponding xfail or manifest entry after verifying the fix.
-
-See the [Roadmap's contributor areas](ROADMAP.md#areas-seeking-contributors) for more project context.
-
-### Make Existing Operators Faster
-
-We take speed-ups of existing operators when they hold up under measurement: at least 20% on a common workload, in the general code path, with outputs, gradients, dtype/device handling and compile/ONNX support unchanged. Time base and branch on the same hardware following the [benchmark methodology](benchmarks/README.md#methodology-contract); the [Roadmap](ROADMAP.md#areas-seeking-contributors) has the full rules.
-
-- **Fewer host synchronizations on CUDA and MPS.** `.item()`, `if tensor:`, `nonzero` and boolean-mask indexing make the host wait for the GPU. Removing them made `match_smnn` 1.4–1.9× faster on CUDA ([#6501](https://github.com/kornia/kornia/pull/6501)). Sync removals can qualify below the 20% bar; the Roadmap has the conditions. [SOLD2's heatmap refinement](https://github.com/kornia/kornia/issues/6792) is open to contributors with a CUDA device.
-
-### AI Models
-
-The model zoo is currently **frozen for expansion** while maintainer bandwidth concentrates on the core. Shipped models (LoFTR, LightGlue, DISK, DeDoDe, SAM, and friends) stay available and maintained, and model work approved before the freeze (Efficient LoFTR, SANDesc) will be completed under its existing scope. New integrations — including VLM/VLA models — require a named maintainer sponsor who accepts ongoing ownership of the integration; a contributor implementation alone cannot reopen the surface. See the [Roadmap](ROADMAP.md#guiding-themes) for the reasoning and the reopen condition.
-
-### Documentation And Tutorial Optimization
-
-Kornia's foundation lies in its extensive collection of classic computer vision operators, providing robust tools for image processing, feature extraction, and geometric transformations. We continuously seek for contributors to help us improve our documentation and present nice tutorials to our users.
+Kornia is becoming a reference implementation for differentiable geometry and vision, so the most useful contributions make its core more trustworthy: a reproducible case where a core operation breaks a property it should keep, a fix for one, or benchmark results from your hardware. See the [Roadmap's areas seeking contributors](ROADMAP.md#areas-seeking-contributors) for what we are looking for, and [CONTRIBUTING.md](CONTRIBUTING.md) for how to propose it.
 
 ## Cite
 
