@@ -1,6 +1,6 @@
 ---
 name: kornia-developer
-description: Use when developing on kornia — making an op torch.compile / dynamo compatible, fixing a graph break, or optimizing for speed. Codifies the compile-first workflow — genuine fullgraph fixes (no is_compiling hacks), byte-to-byte eager preservation, cross-library benchmarking toward the 10x-vs-albumentations moonshot.
+description: Use when developing on kornia — making an op torch.compile / dynamo compatible, fixing a graph break, or optimizing for speed. Codifies the compile-first workflow — genuine fullgraph fixes (no is_compiling hacks), byte-to-byte eager preservation, and honest cross-library benchmarking.
 ---
 
 # kornia-developer: compile-first optimization
@@ -71,7 +71,7 @@ The fix must run the **same code path** in eager and compile.
 
    Durable, citable numbers live in benchmarks/results/ and render at docs get-started/performance — refresh the llms digest with python docs/generate_benchmarks.py --refresh-llms when adding results.
 
-   **The moonshot is 10× vs albumentations** for the augmentation package — frame every perf fix against that target. Today kornia trails on CPU; the levers that close then invert the gap: (a) `torch.compile` (the fix you just made — ~2–3×), (b) a **uint8 fast path** (albumentations' whole edge is uint8 + OpenCV; kornia upcasts to float32), (c) pushing the hot op into **`kornia-rs`** (the Rust backend albumentations can't match). A compile fix that only reaches parity is a step toward 10×, not the destination — say in the PR which lever is still on the table.
+   **Which speed-ups kornia takes is set in `ROADMAP.md` (Areas seeking contributors):** the core and local-feature workflows, at least 20% end to end on the public call, from the general code path; a compile fix is worth having for compile support even at parity with eager. Kornia operators take float tensors: do not add a uint8 fast path to an ordinary operator (`CONTRIBUTING.md`, Practical guidelines). A `kornia-rs` backend is a separate proposal with the bar `ROADMAP.md` states.
 
 5. **Lock it in.** Add/confirm a `test_dynamo` for the op that exercises the **real path** — compile the full forward (`torch.compile(op, fullgraph=True)(x)` with no pre-generated `params`), not just `apply_transform` with params fed in, so parameter generation is covered too. A PR-time `dynamo` CI job now runs the compile-clean core under `inductor` on the CI torch version (`.github/workflows/pr_test_cpu.yml`), so a fullgraph regression is caught at PR time on the *real* torch — but locally you must still run with `KORNIA_TEST_OPTIMIZER=inductor` (the default matrix sets it empty and deselects these tests). If you add an op to a scoped-core dir, the CI job will exercise it; confirm it passes there, not only on your local torch.
 

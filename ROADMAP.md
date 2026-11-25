@@ -63,7 +63,8 @@ mathematical defects, numerical instability, and upstream workarounds.
    applicable: a sum exceeding float16's range does not justify widening its output.
    This does not excuse unstable computation that breaks a Kornia guarantee or changes a
    caller's result in a consequential way, such as NaN, inf, or a flipped decision; a more
-   accurate intermediate alone needs a workflow that depends on it.
+   accurate value alone, even a primitive's public output such as a kernel or a window,
+   needs a workflow that depends on it.
 2. **Do not expand support through bug fixes.** Do not add integer-input support or
    special paths solely for synthetic extremes: half-precision overflow far beyond
    image/coordinate ranges, `1e20` float32 image values or pixel coordinates, or a matrix
@@ -88,9 +89,9 @@ mathematical defects, numerical instability, and upstream workarounds.
    applies to backend performance workarounds.
 5. **Prove the correction and report consequences.** Derive expected results independently
    and pin conventions with `test_convention_*` tests. For a wrong formula or convention, an
-   unchanged or worse downstream benchmark does not disprove the correction; for a precision
-   change, an unchanged final result means there is nothing to fix. Report results with uncertainty where
-   applicable, investigate regressions, and leave acceptance to a maintainer; release
+   unchanged or worse downstream benchmark does not disprove the correction; a precision
+   change needs a broken accuracy guarantee or a consequential effect on a caller's result.
+   Report results with uncertainty where applicable, investigate regressions, and leave acceptance to a maintainer; release
    notes state accepted tradeoffs. Prefer a shared stable formulation; extra device,
    version, size, or grad-mode branches need a measured reason stated beside the branch.
 6. **Choose the outcome explicitly.** Repair the implementation, document a limitation, propose
@@ -205,9 +206,10 @@ open issue ([feature proposals](CONTRIBUTING.md#practical-guidelines)).
   available for reproduction and validation.
 - **Reference evidence and code health:** convention tests, independent expected vectors,
   corrective error messages, and compile/export coverage for existing operators.
-- **Faster core and local-feature workflows:** speed-ups or peak-memory reductions of at
-  least 20% on a common workload, measured end to end on the public call, with nothing
-  getting slower. They must come from the general code path, not from a new special path for
+- **Faster core and local-feature workflows:** speed-ups of at least 20% on a common
+  workload, or peak-memory reductions of at least 20% of the end-to-end peak or that let a
+  workload from a linked user report fit, measured end to end on the public call, with
+  nothing getting slower. They must come from the general code path, not from a new special path for
   particular shapes, dtypes, devices, or grad modes, and the code must stay readable as a
   reference. Behavior must not change: outputs and gradients stay within the existing test
   tolerances, and dtype/device handling and compile/ONNX support stay as they are. Measure
@@ -227,11 +229,12 @@ open issue ([feature proposals](CONTRIBUTING.md#practical-guidelines)).
     measured workload, CPU included, gets slower beyond noise. Keep input validation as it is
     ([#6335](https://github.com/kornia/kornia/issues/6335)). SOLD2's heatmap refinement
     ([#6792](https://github.com/kornia/kornia/issues/6792)) is open to contributors with a CUDA device.
-- **Performance elsewhere:** other models take correctness and regression fixes, not performance pull
-  requests. Other non-core code, such as IO and losses, is not a performance target; a simple
-  change to the existing path qualifies only when it makes the representative public call
-  roughly ten times faster, or lets a workload from a linked user report run, reported with
-  absolute times or memory and without a new path.
+
+**Performance outside the core and local-feature workflows:** other models take correctness
+and regression fixes, not performance pull requests. Other non-core code, such as IO and
+losses, is not a performance target; a simple change to the existing path qualifies only when
+it makes the representative public call roughly ten times faster, or lets a workload from a
+linked user report run, reported with absolute times or memory and without a new path.
 
 **Grandfathered model work:** Efficient LoFTR
 ([#3282](https://github.com/kornia/kornia/issues/3282),
