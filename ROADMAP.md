@@ -59,8 +59,8 @@ mathematical defects, numerical instability, and upstream workarounds.
 
 1. **Check the contract.** Establish supported inputs, output dtype, conventions, and
    accuracy requirements. Separate wrong mathematics or avoidable instability from
-   rounding, dtype limits, and undefined behavior. Compare with the equivalent PyTorch
-   operation in the same dtype where one exists. In half precision a result PyTorch also
+   rounding, dtype limits, and undefined behavior. When the function has a PyTorch
+   equivalent, compare with it in the same dtype. In half precision a result PyTorch also
    returns, such as `inf` from a sum exceeding float16's range, is normally left as it is
    and does not justify widening the output; in float32 and float64 it may still be worth
    fixing. The input must be one a real workflow produces. Within those limits, a
@@ -191,14 +191,15 @@ issues own live status and acceptance decisions.
 
 These areas are open-ended: choose the question yourself; nobody needs to assign it. Check
 existing issues, open pull requests, and [the contribution rules](CONTRIBUTING.md) first.
-A roadmap area is not approval for a new public API, model mode, or separately maintained
-execution path; that needs a maintainer's agreement on an open issue
-([scope agreement](CONTRIBUTING.md#practical-guidelines)). The core, below, is
-`kornia.geometry`, `kornia.augmentation`, local-feature detection, description, and
-matching, and the image operators in `kornia.filters`, `kornia.color`, `kornia.enhance`,
-and `kornia.morphology`. `kornia.sensors` and `kornia.metrics` are core candidates, not
-hardened yet: property and convention reports on them are welcome, and performance follows
-the rule for non-core code until they are promoted.
+Apart from the grandfathered model work below, no item in this roadmap is approval for a new
+public API, model mode, or separately maintained execution path; that needs a maintainer's
+agreement on an open issue ([scope agreement](CONTRIBUTING.md#practical-guidelines)). The
+core, below, is `kornia.geometry`, `kornia.augmentation`, local-feature detection,
+description, and matching in `kornia.feature`, learned models included, and the image
+operators in `kornia.filters`, `kornia.color`, `kornia.enhance`, and `kornia.morphology`.
+`kornia.sensors` and `kornia.metrics` are core candidates, not hardened yet: correctness
+reports and fixes are welcome as in the core, and performance follows the rule for non-core
+code until they are promoted.
 
 - **Break a property the core should keep.** Shifting the world origin should not change a
   recovered camera pose once expressed in the original frame; multiplying a homography by
