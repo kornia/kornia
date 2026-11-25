@@ -1482,6 +1482,65 @@ class TestSquaredDistanceMatching(BaseTester):
 )
 class TestChunkedDistanceMatching(BaseTester):
     @pytest.mark.parametrize("match", [match_nn, match_snn])
+    @pytest.mark.parametrize("provided_matrix", [False, True])
+    @pytest.mark.parametrize("trace_rows", [0, 37, 513])
+    def test_trace_keeps_all_rows_across_block_counts(self, device, dtype, match, provided_matrix, trace_rows):
+        # Quarter-grid descriptors repeat sixteen unique targets. Each row has one exact match, so expected
+        # indices do not depend on another matcher or on the traced implementation.
+        def inputs(rows, columns):
+            first = (torch.arange(rows, device=device).remainder(16).to(dtype) / 4)[:, None]
+            second = (torch.arange(columns - 1, -1, -1, device=device, dtype=dtype) / 4)[:, None]
+            if provided_matrix:
+                return first, second, (first - second.T).abs()
+            return first, second
+
+        if provided_matrix:
+            captured = torch.jit.trace(
+                lambda first, second, matrix: match(first, second, dm=matrix), inputs(trace_rows, 37)
+            )
+        else:
+            captured = torch.jit.trace(match, inputs(trace_rows, 37))
+
+        for rows, columns in [(513, 33), (1025, 39), (1, 17), (37, 19), (0, 17), (37, 0)]:
+            distances, indices = captured(*inputs(rows, columns))
+            count = rows if columns else 0
+            expected_rows = torch.arange(count, device=device)
+            expected_indices = torch.stack([expected_rows, columns - 1 - expected_rows.remainder(16)], 1)
+            self.assert_close(indices, expected_indices)
+            self.assert_close(distances, torch.zeros(count, 1, device=device, dtype=dtype), rtol=0, atol=0)
+
+        if match is match_snn:
+            distances, indices = captured(*inputs(37, 1))
+            assert distances.shape == (0, 1)
+            assert indices.shape == (0, 2)
+
+    @pytest.mark.parametrize("provided_matrix", [False, True])
+    def test_trace_snn_changes_from_no_matches_to_matches(self, device, dtype, provided_matrix):
+        def inputs(rows, query):
+            first = torch.full((rows, 1), query, device=device, dtype=dtype)
+            second = torch.tensor([[0.0], [1.0]], device=device, dtype=dtype)
+            if provided_matrix:
+                return first, second, (first - second.T).abs()
+            return first, second
+
+        # Midpoint queries have ratio one and are rejected. Exact matches at runtime have ratio zero.
+        if provided_matrix:
+            captured = torch.jit.trace(
+                lambda first, second, matrix: match_snn(first, second, dm=matrix), inputs(37, 0.5)
+            )
+        else:
+            captured = torch.jit.trace(match_snn, inputs(37, 0.5))
+
+        for rows, query in [(513, 0.0), (37, 0.5)]:
+            distances, indices = captured(*inputs(rows, query))
+            count = rows if query == 0.0 else 0
+            expected_indices = torch.stack(
+                [torch.arange(count, device=device), torch.zeros(count, device=device, dtype=torch.long)], 1
+            )
+            self.assert_close(indices, expected_indices)
+            self.assert_close(distances, torch.zeros(count, 1, device=device, dtype=dtype), rtol=0, atol=0)
+
+    @pytest.mark.parametrize("match", [match_nn, match_snn])
     @pytest.mark.parametrize("rows,columns", [(33, 39), (513, 769), (2051, 4099)])
     def test_avoids_full_distance_matrix(self, device, dtype, match, rows, columns):
         # Quarter-grid positions have unique, exactly representable zero-distance matches in reverse order. 2,051

@@ -163,7 +163,9 @@ def _chunked_neighbours(
     Without gradients, an 8,192 x 8,192 float32 distance product takes at most 16 MiB instead of 256 MiB, plus
     linear padding and selection storage. Autograd can retain distances from every block for backward, so the
     total gradient-enabled peak need not have the same bound. Changing GEMM's row count can change its last bits.
-    Capture specializes the number of row blocks, while sizes within one block count can remain dynamic.
+    Dynamo and ONNX export specialize the number of row blocks; sizes within one block count can remain dynamic.
+    The public NN/SNN entry points are scripted during JIT tracing so their block loop and empty-result branches
+    stay dynamic when the traced graph is called with different descriptor counts.
     """
     if dm is not None:
         KORNIA_CHECK_DM_DESC(desc1, desc2, dm)
@@ -372,6 +374,14 @@ def _nearest_neighbour_ratio_over_rows(
     return best[0] / best[1], idxs.gather(0, pick[:1])[0]
 
 
+@torch.jit.script_if_tracing
+def _trace_match_nn(
+    desc1: torch.Tensor, desc2: torch.Tensor, dm: Optional[torch.Tensor]
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Script NN's loop and empty-result branches during ordinary JIT tracing."""
+    return match_nn(desc1, desc2, dm)
+
+
 def match_nn(
     desc1: torch.Tensor, desc2: torch.Tensor, dm: Optional[torch.Tensor] = None
 ) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -430,6 +440,10 @@ def match_nn(
         - :class:`DescriptorMatcher`: the module form, with ``match_mode="nn"``.
 
     """
+    # Keep legacy ONNX's tracer path: its exporter cannot lower the scripted autocast contexts.
+    if not torch.jit.is_scripting():  # noqa: SIM102
+        if torch.jit.is_tracing() and not torch.onnx.is_in_onnx_export():
+            return _trace_match_nn(desc1, desc2, dm)
     KORNIA_CHECK_SHAPE(desc1, ["B", "DIM"])
     KORNIA_CHECK_SHAPE(desc2, ["B", "DIM"])
     if (len(desc1) == 0) or (len(desc2) == 0):
@@ -549,6 +563,14 @@ def _nearest_neighbour_ratio(distance_matrix: torch.Tensor, squared: bool = Fals
     return vals[:, 0] / vals[:, 1], idxs[:, 0]
 
 
+@torch.jit.script_if_tracing
+def _trace_match_snn(
+    desc1: torch.Tensor, desc2: torch.Tensor, th: float, dm: Optional[torch.Tensor]
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Script SNN's loop and empty-result branches during ordinary JIT tracing."""
+    return match_snn(desc1, desc2, th, dm)
+
+
 def match_snn(
     desc1: torch.Tensor, desc2: torch.Tensor, th: float = 0.8, dm: Optional[torch.Tensor] = None
 ) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -589,6 +611,10 @@ def match_snn(
         - :class:`DescriptorMatcher`: the module form, with ``match_mode="snn"``.
 
     """
+    # Keep legacy ONNX's tracer path, as in match_nn.
+    if not torch.jit.is_scripting():  # noqa: SIM102
+        if torch.jit.is_tracing() and not torch.onnx.is_in_onnx_export():
+            return _trace_match_snn(desc1, desc2, th, dm)
     KORNIA_CHECK_SHAPE(desc1, ["B", "DIM"])
     KORNIA_CHECK_SHAPE(desc2, ["B", "DIM"])
 
