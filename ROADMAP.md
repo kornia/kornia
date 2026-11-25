@@ -192,10 +192,10 @@ These areas are open-ended: choose the question yourself; nobody needs to assign
 existing issues, open pull requests, and [the contribution rules](CONTRIBUTING.md) first.
 A roadmap area is not approval for a new public API, model mode, or separately maintained
 execution path; that needs a maintainer's agreement on an open issue
-([scope agreement](CONTRIBUTING.md#practical-guidelines)). The core, below, is the geometry
-named at the top of this roadmap, `kornia.augmentation`, local-feature detection,
-description, and matching, and the image operators in `kornia.filters`, `kornia.color`,
-`kornia.enhance`, and `kornia.morphology`.
+([scope agreement](CONTRIBUTING.md#practical-guidelines)). The core, below, is
+`kornia.geometry`, `kornia.augmentation`, local-feature detection, description, and
+matching, and the image operators in `kornia.filters`, `kornia.color`, `kornia.enhance`,
+and `kornia.morphology`.
 
 - **Break a property the core should keep.** Shifting the world origin should not change a
   recovered camera pose once expressed in the original frame; multiplying a homography by
@@ -242,8 +242,9 @@ description, and matching, and the image operators in `kornia.filters`, `kornia.
 
 **Performance outside the core:** models outside it, such as SAM, RT-DETR, and the VLMs in
 `kornia.models`, take correctness and regression fixes, not performance pull requests. Other
-non-core code, such as IO, losses, and `kornia.tracking`, is not a performance target; a simple change to the
-existing path qualifies only when it makes the representative public call roughly ten times
+non-core code, such as IO, losses, `kornia.tracking`, `kornia.contrib`, and `kornia.onnx`,
+is not a performance target; a simple change to the existing path qualifies only when it
+makes the representative public call roughly ten times
 faster, or lets a workload from a linked user report run, reported with absolute times or
 memory and without a new path.
 
