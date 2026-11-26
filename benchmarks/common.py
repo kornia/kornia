@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import argparse
 import importlib
+import importlib.metadata
 import json
 import math
 import os
@@ -121,10 +122,22 @@ def git_commit() -> str:
 
 
 def _optional_version(module: str) -> Optional[str]:
+    """Version of an importable baseline library, or ``None`` when it is not installed.
+
+    Reads ``__version__`` and falls back to the installed distribution's metadata for packages that do
+    not define it (torchmorph, built from source, is one).
+    """
     try:
-        return __import__(module).__version__
+        imported = __import__(module)
     except Exception:
         return None
+    version = getattr(imported, "__version__", None)
+    if version is None:
+        try:
+            version = importlib.metadata.version(module)
+        except Exception:
+            return None
+    return str(version)
 
 
 def _opencv_num_threads() -> Optional[int]:
@@ -159,6 +172,8 @@ def run_metadata(device: torch.device) -> dict[str, Any]:
         "kornia_rs": _optional_version("kornia_rs"),
         "pillow": _optional_version("PIL"),
         "skimage": _optional_version("skimage"),
+        "scipy": _optional_version("scipy"),
+        "torchmorph": _optional_version("torchmorph"),
     }
     if device.type == "cuda":
         meta["cuda_device"] = torch.cuda.get_device_name(device)

@@ -115,8 +115,29 @@ def test_save_json_round_trip_sanitizes_non_finite(tmp_path):
 
 def test_run_metadata_records_optional_baseline_versions():
     meta = run_metadata(torch.device("cpu"))
-    for key in ("opencv", "torchvision", "albumentations", "kornia_rs", "pillow"):
+    for key in ("opencv", "torchvision", "albumentations", "kornia_rs", "pillow", "skimage", "scipy", "torchmorph"):
         assert key in meta  # None when not installed — key must still be present
+
+
+def test_optional_version_falls_back_to_distribution_metadata(monkeypatch):
+    import types
+
+    # torchmorph, built from source, defines no __version__; its installed distribution still has one.
+    monkeypatch.setitem(sys.modules, "fake_baseline", types.ModuleType("fake_baseline"))
+    monkeypatch.setattr(common.importlib.metadata, "version", lambda name: {"fake_baseline": "1.2.3"}[name])
+    assert common._optional_version("fake_baseline") == "1.2.3"
+
+
+def test_optional_version_is_none_without_a_version(monkeypatch):
+    import types
+
+    def no_distribution(name):
+        raise common.importlib.metadata.PackageNotFoundError(name)
+
+    monkeypatch.setitem(sys.modules, "fake_baseline", types.ModuleType("fake_baseline"))
+    monkeypatch.setattr(common.importlib.metadata, "version", no_distribution)
+    assert common._optional_version("fake_baseline") is None
+    assert common._optional_version("not_an_installed_module_xyz") is None
 
 
 def test_run_batch_sweep_rows_and_skip_cells(capsys):
