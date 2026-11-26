@@ -55,9 +55,11 @@ class SOLD2(nn.Module):
           ``line_seg1`` is, ``-1`` for every segment of ``line_seg1`` when ``line_seg2`` is.
         - After a float16 conversion (``.half()`` or ``.to(torch.float16)``), the BatchNorm that ends each hourglass
           stack keeps its running statistics in float32 and normalizes in float32 with float32 copies of its weight
-          and bias: the pretrained running variances exceed float16's range. Convert the model to float16 before
-          tracing, scripting or exporting it; a trace or export taken from the float16 model cannot be converted to
-          another dtype. In the float16 model, module hooks or ``torch.nn.utils.prune`` on these two BatchNorms,
+          and bias: the pretrained running variances exceed float16's range. Global module hooks, such as those of
+          ``torch.utils.flop_counter.FlopCounterMode``, do not see these two BatchNorms on that path. Convert the
+          model to float16 before tracing, scripting or exporting it; a trace or export taken from the float16 model
+          cannot be converted to another dtype, and on torch 2.5 a non-strict ``torch.export`` of it raises. In the
+          float16 model, forward or backward hooks or ``torch.nn.utils.prune`` on these two BatchNorms,
           ``torch.nn.SyncBatchNorm.convert_sync_batchnorm``, ``fuse_modules_qat`` and wrapping either BatchNorm in
           FSDP on its own make the next forward raise on CPU; on MPS the hooks, pruning and the two conversions abort
           the process.

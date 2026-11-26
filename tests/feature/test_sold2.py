@@ -21,6 +21,7 @@ import warnings
 import pytest
 import torch
 import torch.nn.functional as F
+from torch.utils.flop_counter import FlopCounterMode
 
 from kornia.core.check import ShapeError
 from kornia.feature._normalization import _Float32BatchNormSequential
@@ -29,7 +30,7 @@ from kornia.feature.sold2.sold2 import WunschLineMatcher, keypoints_to_grid
 from kornia.feature.sold2.sold2_detector import LineSegmentDetectionModule, line_map_to_segments, prob_to_junctions
 from kornia.feature.sold2.structures import DetectorCfg, LineDetectorCfg
 
-from testing.base import BaseTester, skip_unsupported_autocast
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available, skip_unsupported_autocast
 
 
 class TestSOLD2_detector(BaseTester):
@@ -606,6 +607,39 @@ class TestFloat16HourglassBatchNorm(BaseTester):
         self.assert_close(block(x), torch.relu(x), rtol=0.0, atol=0.0)
         assert Counting.calls == 1
 
+    @pytest.mark.parametrize("kind", ["forward_pre", "forward", "full_backward_pre", "full_backward"])
+    def test_batchnorm_with_its_own_hooks_runs_as_a_module(self, device, kind, monkeypatch):
+        # The BatchNorm is called as a module, so that its own hooks run; in the float16 model that call raises on
+        # CPU, as the Convention block of SOLD2 states. A stand-in forward keeps this test to the routing.
+        calls = []
+        monkeypatch.setattr(torch.nn.BatchNorm2d, "forward", lambda module, input: calls.append("forward") or input)
+        block, _ = _block([0.1, -2.3], [0.3, 0.7], [0.1, -0.2], 2.6e6)
+        block = block.to(device).train().half()
+        getattr(block[1], f"register_{kind}_hook")(lambda module, *args: calls.append(kind))
+        x = torch.tensor(_X, device=device).repeat(4).reshape(2, 2, 2, 2).half()
+        block(x).float().sum().backward()
+        assert sorted(calls) == sorted(["forward", kind])
+
+    def test_global_hooks_keep_the_float32_path(self, device):
+        # Global module hooks, such as those of FlopCounterMode, do not see the BatchNorm, which keeps normalizing in
+        # float32.
+        block, plain = _block([0.1, -2.3], [0.3, 0.7], [0.1, -0.2], 2.6e6, identity=True)
+        block, plain = block.to(device).eval().half(), plain.to(device).eval()
+        with torch.no_grad():
+            for parameter in plain.parameters():
+                parameter.copy_(parameter.half().float())
+        x = torch.tensor(_X, device=device).repeat(4).reshape(2, 2, 2, 2).half()
+        expected = plain(x.float()).half()
+        seen = []
+        handle = torch.nn.modules.module.register_module_forward_hook(lambda module, args, output: seen.append(module))
+        try:
+            self.assert_close(block(x), expected, rtol=0.0, atol=0.0)
+        finally:
+            handle.remove()
+        assert block[1] not in seen
+        with FlopCounterMode(display=False):
+            self.assert_close(block(x), expected, rtol=0.0, atol=0.0)
+
     def test_batchnorm_made_float16_again_runs_as_a_plain_sequential(self, device):
         # A BatchNorm converted to float16 by its own call after the block's conversion runs in float16, as before.
         block, plain = _block([0.5, -2.0], [0.25, 1.0], [0.5, -0.25], 2.0)
@@ -654,6 +688,20 @@ class TestFloat16HourglassBatchNorm(BaseTester):
         self.assert_close(x.grad, ref_x.grad, rtol=0.0, atol=0.0)
         self.assert_close(block[1].weight.grad, plain[1].weight.grad, rtol=0.0, atol=0.0)
         self.assert_close(block[1].running_var, plain[1].running_var, rtol=0.0, atol=0.0)
+
+    @pytest.mark.applies_to(devices=("cpu",), reason="graph capture is checked once on CPU")
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    @pytest.mark.parametrize("target", [torch.float32, torch.float16])
+    def test_captured_as_one_graph(self, device, target):
+        # The Dynamo of torch 2.5 to 2.8 cannot trace next() with a default.
+        block, _ = _block([0.1, -2.3], [0.3, 0.7], [0.1, -0.2], 2.6e6)
+        block = block.to(device, target).eval()
+        x = torch.tensor(_X, device=device).repeat(4).reshape(2, 2, 2, 2).to(target)
+        expected = block(x)
+        torch._dynamo.reset()
+        self.assert_close(torch.compile(block, backend="eager", fullgraph=True)(x), expected, rtol=0.0, atol=0.0)
+        exported = torch.export.export(block, (x,), strict=True)
+        self.assert_close(exported.module()(x), expected, rtol=0.0, atol=0.0)
 
     def test_fx_fusion_and_scripting_see_a_plain_batchnorm(self, device):
         model = SOLD2_detector(pretrained=False).to(device).eval()

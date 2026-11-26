@@ -137,12 +137,18 @@ class _Float32BatchNormSequential(nn.Sequential):
                         weight = module.weight
                         upcast = weight is not None and weight.dtype == torch.float16
                     else:
-                        # torch.fx traces a parameter read as an attribute, and a traced dtype cannot decide a branch.
-                        # FSDP and DataParallel replicas hold the weight as a plain tensor instead of a parameter.
-                        weight = next(iter(module.parameters()), None)
-                        if weight is None:
-                            weight = getattr(module, "weight", None)
-                        hooks = module._forward_hooks or module._forward_pre_hooks
+                        # torch.fx traces a parameter read as an attribute, and a traced dtype cannot decide a branch;
+                        # the Dynamo of torch 2.5 to 2.8 cannot trace next() with a default. FSDP and DataParallel
+                        # replicas hold the weight as a plain tensor instead of a parameter.
+                        parameters = list(module.parameters())
+                        weight = parameters[0] if parameters else getattr(module, "weight", None)
+                        # Global module hooks are left out, so that tools such as FlopCounterMode keep working.
+                        hooks = (
+                            module._forward_hooks
+                            or module._forward_pre_hooks
+                            or module._backward_hooks
+                            or module._backward_pre_hooks
+                        )
                         upcast = (
                             type(module) is nn.BatchNorm2d
                             and not hooks
