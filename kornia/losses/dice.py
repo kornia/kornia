@@ -116,6 +116,9 @@ def _dice_loss_cpu(
     if weight is not None:
         _check_weight(pred, weight)
 
+    if target_mask is not None:
+        pred = pred.masked_fill(~target_mask.unsqueeze(1), 0.0)
+
     pred_soft = pred.softmax(1)
     valid = torch.ones_like(target, dtype=pred.dtype) if target_mask is None else target_mask.to(pred.dtype)
     # The masses before the target probability: the backward then reaches the gather's fresh gradient first and adds
@@ -271,10 +274,12 @@ def dice_loss(
     if _dice_loss_cpu_eligible(pred, weight):
         return _dice_loss_cpu(pred, target, average, eps, weight, ignore_index)
 
+    target, target_mask = mask_ignore_pixels(target, ignore_index)
+    if target_mask is not None:
+        pred = pred.masked_fill(~target_mask.unsqueeze(1), 0.0)
+
     # compute F.softmax over the classes axis
     pred_soft: torch.Tensor = F.softmax(pred, dim=1)
-
-    target, target_mask = mask_ignore_pixels(target, ignore_index)
 
     # create the labels one hot torch.Tensor. A half-precision target is built in float32, the dtype of the sums below:
     # the intersection gradient of a class absent from the target is 2 / (cardinality + eps) up to the averaging, past
