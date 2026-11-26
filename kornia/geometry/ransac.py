@@ -1635,7 +1635,7 @@ class RANSAC(nn.Module):
                 convert_points_to_homogeneous(kp.masked_fill(~finite[:, None], float("nan")))
                 for kp in (kp1_host, kp2_host)
             )
-            t1 = t2 = torch.eye(3, dtype=torch.float64)
+            t1 = t2 = torch.eye(3, device=host, dtype=torch.float64)
             threshold = self.inl_th**2
         else:
             x1_host, x2_host, t1, t2, s1, s2 = _normalize_correspondences(kp1_host, kp2_host, not planar)

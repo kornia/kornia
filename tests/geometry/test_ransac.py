@@ -2326,6 +2326,22 @@ class TestRANSACEssentialLevenbergMarquardt(BaseTester):
         assert mask.shape == (60,)
         assert torch.equal(mask.cpu(), inliers)
 
+    def test_under_default_device(self, device, dtype):
+        # Host normalization/placeholder identity matrices and the CPU 5-point solve ignore ambient default devices.
+        kp1, kp2, _, _, inliers = _scene("essential", 60, 10, 0.0, seed=5)
+        kp1, kp2 = kp1.to(device, dtype), kp2.to(device, dtype)
+        expected_E, expected_mask = RANSAC("essential", inl_th=_px("essential", 1.0), seed=0)(kp1, kp2)
+        # On accelerators use the accelerator default so float64 host-only tensors fail if misplaced; on CPU use meta.
+        default_ctx = torch.device("meta") if device.type == "cpu" else torch.device(device)
+        with default_ctx:
+            actual_E, actual_mask = RANSAC("essential", inl_th=_px("essential", 1.0), seed=0)(kp1, kp2)
+
+        assert actual_E.device == kp1.device
+        assert actual_mask.device == kp1.device
+        self.assert_close(actual_E, expected_E, rtol=0, atol=0)
+        assert torch.equal(actual_mask, expected_mask)
+        assert torch.equal(actual_mask.cpu(), inliers)
+
 
 @pytest.mark.applies_to(dtypes=("float32", "float64"), reason="the kernels run in float32 or float64")
 class TestRANSACLevenbergMarquardtKernels(BaseTester):

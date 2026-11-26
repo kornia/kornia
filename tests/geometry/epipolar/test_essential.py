@@ -263,6 +263,25 @@ class TestFindEssential(BaseTester):
         assert torch.isfinite(points1.grad).all()
         assert bool((points1.grad != 0).any())
 
+    @pytest.mark.parametrize("num_points", [5, 7])
+    def test_under_default_device(self, num_points, device, dtype):
+        # _nister_candidates solves its degree-10 companion matrix on the CPU in float64; a meta default
+        # exposes host companion construction on every runner without accelerator hardware.
+        scene = calibrated_two_view_scene(num_points, 0.0, 8)
+        points1 = scene["x1"][None].to(device, dtype).requires_grad_()
+        points2 = scene["x2"][None].to(device, dtype)
+        expected = epi.find_essential(points1, points2)
+        expected_grad = torch.autograd.grad(expected.nan_to_num().sum(), points1)[0]
+        with torch.device("meta"):
+            actual = epi.find_essential(points1, points2)
+            grad = torch.autograd.grad(actual.nan_to_num().sum(), points1)[0]
+
+        assert actual.device == points1.device
+        assert actual.dtype == points1.dtype
+        assert torch.equal(torch.isnan(actual), torch.isnan(expected))
+        self.assert_close(actual.nan_to_num(7.0), expected.nan_to_num(7.0), rtol=0, atol=0)
+        self.assert_close(grad, expected_grad, rtol=0, atol=0)
+
     def test_repeated_calls_are_bitwise_equal(self, device, dtype):
         # No atomic accumulation: CUDA's scatter_add_ summed the determinant polynomial in a varying order.
         generator = torch.Generator().manual_seed(0)
