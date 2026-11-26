@@ -163,7 +163,9 @@ def _chunked_neighbours(
     Without gradients, an 8,192 x 8,192 float32 distance product takes at most 16 MiB instead of 256 MiB, plus
     linear padding and selection storage. Autograd can retain distances from every block for backward, so the
     total gradient-enabled peak need not have the same bound. Changing GEMM's row count can change its last bits.
-    Dynamo and ONNX export specialize the number of row blocks; sizes within one block count can remain dynamic.
+    Dynamo and modern ONNX export specialize the number of row blocks; sizes within one block count can remain
+    dynamic. Varying block counts can exhaust Dynamo's recompilation limit and fall back to eager execution.
+    Legacy ONNX tracing unrolls this loop: its query count must stay fixed after export, even with dynamic axes.
     The public NN/SNN entry points are scripted during JIT tracing so their block loop and empty-result branches
     stay dynamic when the traced graph is called with different descriptor counts.
     """
@@ -277,6 +279,12 @@ def _get_lazy_distance_matrix(
     desc1: torch.Tensor, desc2: torch.Tensor, dm_: Optional[torch.Tensor] = None
 ) -> torch.Tensor:
     """Check validity of provided distance matrix, or calculates L2-distance matrix if dm is not provided.
+
+    Note:
+        ``torch.compile`` specializes the number of 512-row blocks. Varying query counts across many block counts
+        can reach Dynamo's recompilation limit and fall back to eager execution. Ordinary ``torch.jit.trace``
+        keeps the loop dynamic. Legacy ONNX export (``dynamo=False``) requires a fixed query count: ``dynamic_axes``
+        does not make its unrolled loop dynamic, and a changed query count can omit rows or fail at runtime.
 
     Args:
         desc1: Batch of descriptors of a shape ``(B1, D)``.
@@ -440,7 +448,7 @@ def match_nn(
         - :class:`DescriptorMatcher`: the module form, with ``match_mode="nn"``.
 
     """
-    # Keep legacy ONNX's tracer path: its exporter cannot lower the scripted autocast contexts.
+    # Legacy ONNX cannot lower scripted autocast contexts; its tracer path requires fixed query counts (see Note).
     if not torch.jit.is_scripting():  # noqa: SIM102
         if torch.jit.is_tracing() and not torch.onnx.is_in_onnx_export():
             return _trace_match_nn(desc1, desc2, dm)
@@ -591,6 +599,10 @@ def match_snn(
         See the Convention block on :func:`match_nn`; ``dists`` is the ratio of the nearest to the second-nearest
         distance.
 
+    Note:
+        The capture limits documented on :func:`match_nn` also apply here: Dynamo specializes row-block counts,
+        and legacy ONNX export requires a fixed query count even when ``dynamic_axes`` is supplied.
+
     Args:
         desc1: Batch of descriptors of a shape ``(B1, D)``.
         desc2: Batch of descriptors of a shape ``(B2, D)``.
@@ -611,7 +623,7 @@ def match_snn(
         - :class:`DescriptorMatcher`: the module form, with ``match_mode="snn"``.
 
     """
-    # Keep legacy ONNX's tracer path, as in match_nn.
+    # Legacy ONNX needs a fixed query count, as documented on match_nn.
     if not torch.jit.is_scripting():  # noqa: SIM102
         if torch.jit.is_tracing() and not torch.onnx.is_in_onnx_export():
             return _trace_match_snn(desc1, desc2, th, dm)
