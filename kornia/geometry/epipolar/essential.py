@@ -397,11 +397,11 @@ def _nister_candidates(basis: torch.Tensor, out_dtype: torch.dtype) -> Tuple[tor
     lead = cs[:, -1]
     usable = ~singular & torch.isfinite(cs).all(1) & (lead != 0)
     detached = cs.detach().cpu().double()
-    companion = torch.zeros(B, 10, 10, dtype=torch.float64)
-    companion[:, :9, 1:] = torch.eye(9, dtype=torch.float64)
+    companion = torch.zeros(B, 10, 10, device="cpu", dtype=torch.float64)
+    companion[:, :9, 1:] = torch.eye(9, device="cpu", dtype=torch.float64)
     companion[:, 9] = -detached[:, :10] / torch.where(detached[:, 10:] == 0, 1.0, detached[:, 10:])
     host_usable = usable.cpu() & torch.isfinite(companion).flatten(1).all(1)
-    companion = torch.where(host_usable[:, None, None], companion, torch.eye(10, dtype=torch.float64))
+    companion = torch.where(host_usable[:, None, None], companion, torch.eye(10, device="cpu", dtype=torch.float64))
     eigenvalues = torch.linalg.eigvals(companion)
     real = eigenvalues.imag.abs() <= 1e-10 * eigenvalues.abs().clamp(min=1.0)
     # A root beyond the fifth root of the dtype's largest number could overflow the z^4 terms of the back-substitution,
