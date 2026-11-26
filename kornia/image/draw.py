@@ -465,7 +465,13 @@ def _batch_polygons(polygons: List[Tensor]) -> Tensor:
 
     """
     B, N = len(polygons), len(max(polygons, key=len))
-    batched_polygons = torch.zeros(B, N, 2, dtype=polygons[0].dtype, device=polygons[0].device)
+    # Pad in the common edge-working dtype: casting to the first polygon's dtype can truncate later vertices
+    # before _get_convex_edges promotes them. Homogeneous half/integer lists also avoid a second full batch buffer.
+    # Eight 4/5-vertex polygons allocate 160/640 fewer bytes for float16/int64; float32/float64 storage is unchanged.
+    dtype = torch.float32
+    for polygon in polygons:
+        dtype = torch.promote_types(dtype, polygon.dtype)
+    batched_polygons = torch.zeros(B, N, 2, dtype=dtype, device=polygons[0].device)
     for b, p in enumerate(polygons):
         if len(p) == 0:
             # No last vertex to repeat; the row stays zero and the caller must not fill it.
@@ -488,6 +494,8 @@ def draw_convex_polygon(images: Tensor, polygons: Union[Tensor, List[Tensor]], c
         - The polygon is taken to be convex: each row is filled from its leftmost to its rightmost edge crossing, so
           in a concave polygon a gap between two edges within a row is filled too.
         - The polygons and the colors must already be on the images' device; the other draw functions move theirs.
+        - A polygon list is padded in its common dtype, at least float32, so an earlier polygon cannot narrow the
+          coordinates of a later one. Float64 vertices keep their precision.
         - The color and the in-place drawing follow :func:`~kornia.image.draw_line`.
 
     Args:
