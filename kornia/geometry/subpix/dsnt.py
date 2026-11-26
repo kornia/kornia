@@ -30,7 +30,7 @@ import torch.nn.functional as F
 
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE, _check_async
 from kornia.core.utils import is_compiling
-from kornia.geometry.grid import create_meshgrid
+from kornia.geometry.grid import _meshgrid_ramps
 
 
 def _validate_batched_image_tensor_input(tensor: torch.Tensor) -> None:
@@ -164,8 +164,8 @@ def spatial_expectation2d(input: torch.Tensor, normalized_coordinates: bool = Tr
     # Use the shared coordinate convention without allocating an H x W grid. float64 coordinates carry no
     # float32 rounding; float16/bfloat16 coordinates are still built in float32 and rounded once.
     grid_dtype = torch.float32 if input.dtype in (torch.float16, torch.bfloat16) else input.dtype
-    pos_x = create_meshgrid(1, width, normalized_coordinates, input.device, grid_dtype)[0, 0, :, 0].to(input.dtype)
-    pos_y = create_meshgrid(height, 1, normalized_coordinates, input.device, grid_dtype)[0, :, 0, 1].to(input.dtype)
+    pos_x, pos_y = _meshgrid_ramps(height, width, normalized_coordinates, input.device, grid_dtype)
+    pos_x, pos_y = pos_x.to(input.dtype), pos_y.to(input.dtype)
 
     # Each coordinate is constant along the other axis. Marginalize first on every device and capture path,
     # so both the coordinate vectors and the weighted products need only O(H + W) storage per map.
