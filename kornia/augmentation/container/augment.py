@@ -28,6 +28,7 @@ from kornia.augmentation._2d.geometric.fisheye import RandomFisheye
 from kornia.augmentation._2d.geometric.thin_plate_spline import RandomThinPlateSpline
 from kornia.augmentation._3d.base import AugmentationBase3D, RigidAffineAugmentationBase3D
 from kornia.augmentation.base import _AugmentationBase
+from kornia.augmentation.utils.box_frames import _BOX_KEYS, _KEYPOINT_KEYS, _box_key, _warn_about_frames
 from kornia.augmentation.utils.helpers import _boxes_to_padded_tensor, _raise_input_rank_error
 from kornia.constants import DataKey, Resample
 from kornia.core.check import _check_async
@@ -51,8 +52,8 @@ __all__ = ["AugmentationSequential"]
 
 # Dynamo cannot trace membership checks against a Python set; tuples keep these constants
 # capture-friendly while preserving the membership-only behavior used below.
-_BOXES_OPTIONS = (DataKey.BBOX, DataKey.BBOX_XYXY, DataKey.BBOX_XYWH)
-_KEYPOINTS_OPTIONS = (DataKey.KEYPOINTS,)
+_BOXES_OPTIONS = tuple(_BOX_KEYS)
+_KEYPOINTS_OPTIONS = _KEYPOINT_KEYS
 _IMG_OPTIONS = (DataKey.INPUT, DataKey.IMAGE)
 _MSK_OPTIONS = (DataKey.MASK,)
 _CLS_OPTIONS = (DataKey.CLASS, DataKey.LABEL)
@@ -60,6 +61,16 @@ _CLS_OPTIONS = (DataKey.CLASS, DataKey.LABEL)
 _NON_RIGID_WARPS = (RandomElasticTransform, RandomFisheye, RandomThinPlateSpline)
 
 MaskDataType = Union[torch.Tensor, List[torch.Tensor]]
+
+
+def _shift_points(
+    points: Union[torch.Tensor, List[torch.Tensor]], shift: float
+) -> Union[torch.Tensor, List[torch.Tensor]]:
+    """Add ``shift`` to every coordinate in float32 or wider; the edge-frame ``x`` is the pixel-centre ``x - 1/2``."""
+    if isinstance(points, list):
+        return [cast(torch.Tensor, _shift_points(p, shift)) for p in points]
+    working = torch.promote_types(points.dtype, torch.float32) if points.is_floating_point() else torch.float32
+    return points.to(working) + shift
 
 
 def _is_numpy_array(arg: Any) -> bool:
@@ -89,7 +100,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         *args: a list of kornia augmentation modules.
 
         data_keys: the input type sequential for applying augmentations. Accepts "input", "image", "mask",
-                   "bbox", "bbox_xyxy", "bbox_xywh", "keypoints", "class", "label".
+                   "bbox_xyxy_edge", "bbox_xyxy_index", "bbox_edge", "bbox_index", "bbox_xywh", "keypoints",
+                   "keypoints_edge", "class", "label", and the bare "bbox" and "bbox_xyxy".
 
         same_on_batch: apply the same transformation across the batch. If None, it will not overwrite the function-wise
                        settings.
@@ -149,14 +161,16 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         - each child keeps the contract of its own base and class; mix and 3D children do not inherit every
           :class:`~kornia.augmentation.AugmentationBase2D` convention.
         - ``data_keys`` names one entry per positional argument, case-insensitively: ``input`` (alias
-          ``image``), ``mask``, ``bbox``, ``bbox_xyxy``, ``bbox_xywh``, ``keypoints`` and ``label`` (alias
-          ``class``); any other name raises a ``ValueError`` that is also a ``KeyError``. With ``data_keys=None``
-          the call takes a dict whose keys are these names, optionally followed by a ``_`` or ``-`` suffix
-          (``mask_2``, ``class_id``). The longest matching name wins and a suffix needs its separator:
-          ``bbox_xyxy2`` is a ``bbox`` key and must hold vertices. Unrecognized keys (``images``, ``masks``,
-          ``labels``) are returned unchanged, without a warning. The input dict is not modified.
-        - the layouts are ``(B, C, H, W)`` for images and masks, ``(B, N, 4, 2)`` vertices for ``bbox``,
-          ``(B, N, 4)`` for ``bbox_xyxy`` and ``bbox_xywh``, and ``(B, N, 2)`` in ``(x, y)`` for ``keypoints``;
+          ``image``), ``mask``, a box key, a keypoint key and ``label`` (alias ``class``); the box and keypoint keys
+          are the members of :class:`~kornia.constants.DataKey`, named by frame below. Any other name raises a
+          ``ValueError`` that is also a ``KeyError``. With ``data_keys=None`` the call takes a dict whose keys are
+          these names, optionally followed by a ``_`` or ``-`` suffix (``mask_2``, ``class_id``). The longest
+          matching name wins and a suffix needs its separator: ``bbox_xyxy2`` is a ``bbox`` key and must hold
+          vertices. Unrecognized keys (``images``, ``masks``, ``labels``) are returned unchanged, without a warning.
+          The input dict is not modified.
+        - the layouts are ``(B, C, H, W)`` for images and masks, ``(B, N, 4, 2)`` vertices for the ``bbox`` keys,
+          ``(B, N, 4)`` for the ``bbox_xyxy`` keys and ``bbox_xywh``, and ``(B, N, 2)`` in ``(x, y)`` for the
+          ``keypoints`` keys;
           ``N = 0`` is accepted. 3D inputs are ``(D, H, W)`` or ``(B, C, D, H, W)``; rank 4 is rejected as
           ambiguous. A ``(B, H, W)`` mask is returned as ``(B, 1, H, W)``, or as ``(B, H, W)`` under
           ``keepdim=True``. A single tensor mask, ``(H, W)``, ``(1, H, W)``, ``(1, C, H, W)`` or one ``(C, H, W)``,
@@ -171,17 +185,26 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
           a bare augmentation gives; next to a video or 3D child it lists the shapes the container runs, the
           video's 5D layout or ``(D, H, W)`` and ``(B, C, D, H, W)``
           (`#4424 <https://github.com/kornia/kornia/issues/4424>`_).
-        - a tensor under the bare ``bbox`` or ``bbox_xyxy`` key holds corners in the pixel-centre frame of the
-          image matrices, read as the inclusive ``'vertices_plus'`` or ``'xyxy_plus'`` mode of
-          :class:`~kornia.geometry.boxes.Boxes`, and the matrices move them as they move keypoints: flips map
-          ``x' = W - 1 - x`` and ``y' = H - 1 - y``, as :func:`~kornia.geometry.transform.hflip` does, and its
-          numbers are those of the releases before `#6710 <https://github.com/kornia/kornia/issues/6710>`_. A
-          :class:`~kornia.geometry.boxes.Boxes` object under any key, and a tensor under ``bbox_xywh``, holds
-          exclusive boxes, transformed in the edge frame: ``e' = M (e - 1/2) + 1/2``, so a flip maps
-          ``x' = W - x`` and a 2x resize ``x' = 2 x``. A ``bbox_xywh`` row with zero width or height is no box, as
-          a box ``RandomMosaic`` clips away is: it is accepted, so one container's output is another's input, and
-          every output gives an all-zero row for it. Negative extents still raise. Labels pass through geometric
-          steps untouched.
+        - box and keypoint keys name a coordinate frame
+          (`#6710 <https://github.com/kornia/kornia/issues/6710>`_). A tensor under ``bbox_xyxy_edge``,
+          ``bbox_edge``, ``bbox_xywh`` or ``keypoints_edge`` is in the edge frame of COCO and torchvision, pixel
+          ``i`` spanning ``[i, i + 1)``: the pixel-centre matrices of the children apply as
+          ``e' = M (e - 1/2) + 1/2``, so a flip maps ``x' = W - x`` and a 2x resize ``x' = 2 x``. A tensor under
+          ``bbox_xyxy_index``, ``bbox_index`` or ``keypoints`` is in the pixel-centre frame, pixel ``i`` centred at
+          ``i``: the matrices move it as they are, as :func:`~kornia.geometry.transform.hflip` moves pixels, so a
+          flip maps ``x' = W - 1 - x`` and a 2x resize ``x' = 2 x + 1/2``. Boxes are regions in both frames:
+          ``RandomMosaic`` clips them to ``[0, W]`` in the edge frame and to ``[-1/2, W - 1/2]`` in the pixel-centre
+          frame, and ``min_bbox_size`` compares ``(xmax - xmin) * (ymax - ymin)``. Under the frame-named box keys a
+          row with zero width or height is no box: it is accepted, so one container's output is another's input,
+          and every output gives an all-zero row for it; negative extents raise. A
+          :class:`~kornia.geometry.boxes.Boxes` object under any key is in the edge frame, and a
+          :class:`~kornia.geometry.keypoints.Keypoints` object under any key in the pixel-centre frame.
+        - the bare ``bbox_xyxy`` and ``bbox`` keys are aliases of ``bbox_xyxy_index`` and ``bbox_index`` and keep the
+          numbers of the releases before `#6710 <https://github.com/kornia/kornia/issues/6710>`_ for every
+          transformed coordinate. Two differences keep their earlier inputs working: an all-zero row is a box at the
+          origin, and an extent above ``-1`` passes. They warn once per process with
+          :class:`~kornia.augmentation.BoxFrameWarning`, as does a call that mixes the two frames. Labels pass
+          through geometric steps untouched.
         - masks are resampled with nearest interpolation by default (see ``extra_args``; padding can still add the
           fill value) and come back in their own dtype. Floating masks use the image's working dtype; integer
           masks use at least float32 (float64 with a float64 image). Integer labels not exactly representable
@@ -336,7 +359,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
     With ``data_keys=None``, dictionary keys match data-key names case-insensitively, optionally followed
     by an underscore or hyphen suffix (for example, ``image_2`` or ``bbox_xyxy-left``). The longest matching
-    name wins, so coordinate boxes with an underscore/hyphen suffix retain their coordinate format.
+    name wins, so coordinate boxes with an underscore/hyphen suffix retain their coordinate format, and
+    ``bbox_xyxy_edge`` is the edge-frame key, not ``bbox_xyxy`` with an ``_edge`` suffix.
     Without that separator, ``bbox_xyxy2`` matches ``bbox`` and requires vertex boxes. ``input`` and ``class`` are
     aliases of ``image`` and ``label``. Unrecognized items are returned without augmentation, and the
     caller's dictionary is left intact.
@@ -412,6 +436,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
             if self.data_keys[0] != DataKey.INPUT:
                 raise NotImplementedError(f"The first input must be {DataKey.INPUT}.")
+
+            _warn_about_frames(self.data_keys)
 
         self.transform_op = AugmentationSequentialOps(self.data_keys)
 
@@ -844,6 +870,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
         original_data_keys = self.transform_op.preproc_datakeys(data_keys)
         self.transform_op.data_keys = original_data_keys
+        _warn_about_frames(original_data_keys)
 
         try:
             self._validate_args_datakeys(*args, data_keys=original_data_keys, params=params)
@@ -1257,42 +1284,40 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         return arg.to(ref.dtype)
 
     def _preproc_boxes(self, arg: DataType, dcate: DataKey) -> Boxes:
-        if DataKey.get(dcate) in [DataKey.BBOX]:
-            mode = "vertices_plus"
-        elif DataKey.get(dcate) in [DataKey.BBOX_XYXY]:
-            mode = "xyxy_plus"
-        elif DataKey.get(dcate) in [DataKey.BBOX_XYWH]:
-            mode = "xywh"
-        else:
-            raise ValueError(f"Unsupported mode `{DataKey.get(dcate).name}`.")
+        spec = _box_key(DataKey.get(dcate))
         if isinstance(arg, Boxes):
             return arg
-        # A tensor under the bare ``"bbox"`` or ``"bbox_xyxy"`` key keeps the legacy inclusive storage, in which image
-        # matrices move its corners as they are: its outputs keep their numbers until frame-named keys exist. Every
-        # other input is stored exclusive and transformed in the edge frame (#6710).
-        legacy = DataKey.get(dcate) in [DataKey.BBOX, DataKey.BBOX_XYXY]
+        # A tensor under a pixel-centre key (``"bbox_xyxy_index"``, ``"bbox_index"`` and the bare ``"bbox_xyxy"`` and
+        # ``"bbox"``) is held in the pixel-centre storage, to whose corners image matrices apply as they are. A tensor
+        # under an edge-frame key is stored exclusive and transformed in the edge frame, as a ``Boxes`` object is
+        # (#6710). The bare keys import as they did before; the other keys read a zero extent as no box, such as the
+        # all-zero row ``RandomMosaic`` gives for a box outside its window, so one container's output is another's
+        # input.
         if self.contains_video_sequential:
             arg = cast(torch.Tensor, arg)
-            # Video boxes are (B, T, N, 4, 2) inclusive corners under every key.
-            return VideoBoxes._from_corners(arg, mode="vertices_plus", inclusive=legacy)
+            # Video boxes are (B, T, N, 4, 2) corners under every key: inclusive under the bare keys and
+            # ``"bbox_xywh"``, and in the frame the key names under the other keys.
+            if spec.bare:
+                return VideoBoxes._from_corners(arg, mode="vertices_plus", inclusive=True)
+            # ``"bbox_xywh"`` reads inclusive corners, as before #6710; frame-named keys read corners in their frame.
+            corner_mode = "vertices_plus" if DataKey.get(dcate) == DataKey.BBOX_XYWH else "vertices"
+            video = VideoBoxes._from_corners(arg, mode=corner_mode)
+            video._drop_empty()
+            video._inclusive = spec.pixel_centre
+            return video
         if self.contains_3d_augmentation:
             raise NotImplementedError("3D box handlers are not yet supported.")
         arg = cast(torch.Tensor, arg)
-        # A zero extent under ``"bbox_xywh"`` is no box, such as the all-zero row ``RandomMosaic`` gives for a box
-        # outside its window: it is accepted and removed, so one container's output is another's input.
-        return Boxes._from_tensor(arg, mode=mode, inclusive=legacy, allow_empty=not legacy)
+        if spec.bare:
+            return Boxes._from_tensor(arg, mode=spec.mode_out, inclusive=True)
+        boxes = Boxes._from_tensor(arg, mode=spec.mode_in, allow_empty=True)
+        boxes._inclusive = spec.pixel_centre
+        return boxes
 
     def _postproc_boxes(
         self, in_arg: DataType, out_arg: Boxes, dcate: DataKey
     ) -> Union[torch.Tensor, List[torch.Tensor], Boxes]:
-        if DataKey.get(dcate) in [DataKey.BBOX]:
-            mode = "vertices_plus"
-        elif DataKey.get(dcate) in [DataKey.BBOX_XYXY]:
-            mode = "xyxy_plus"
-        elif DataKey.get(dcate) in [DataKey.BBOX_XYWH]:
-            mode = "xywh"
-        else:
-            raise ValueError(f"Unsupported mode `{DataKey.get(dcate).name}`.")
+        mode = _box_key(DataKey.get(dcate)).mode_out
 
         # TODO: handle 3d scenarios
         if isinstance(in_arg, Boxes):
@@ -1305,6 +1330,11 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
     def _preproc_keypoints(self, arg: DataType, dcate: DataKey) -> Keypoints:
         dtype = None
+        if DataKey.get(dcate) == DataKey.KEYPOINTS_EDGE and not isinstance(arg, Keypoints):
+            # Edge-frame points move to the pixel-centre frame of the image matrices and back in
+            # ``_postproc_keypoint``. The shift runs in float32 or wider, so a half-precision point rounds once, on the
+            # way out. A ``Keypoints`` object is in the pixel-centre frame under every key.
+            arg = _shift_points(cast(Union[torch.Tensor, List[torch.Tensor]], arg), -0.5)
 
         if self.contains_video_sequential:
             if isinstance(arg, VideoKeypoints):
@@ -1342,4 +1372,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         if isinstance(in_arg, Keypoints):
             return out_arg
 
-        return out_arg.to_tensor()
+        out = out_arg.to_tensor()
+        if DataKey.get(dcate) == DataKey.KEYPOINTS_EDGE:
+            like = in_arg[0] if isinstance(in_arg, list) else cast(torch.Tensor, in_arg)
+            return cast(torch.Tensor, _shift_points(cast(torch.Tensor, out), 0.5)).to(like.dtype)
+        return out

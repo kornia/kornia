@@ -187,3 +187,7 @@ its name, for example ``DataKey.INPUT`` or ``"input"``.
 .. autoclass:: DataKey
    :members:
    :undoc-members:
+
+.. currentmodule:: kornia.augmentation
+
+.. autoclass:: BoxFrameWarning

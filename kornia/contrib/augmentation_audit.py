@@ -48,6 +48,7 @@ from kornia.augmentation.container.ops import DataType
 from kornia.augmentation.container.params import ParamItem
 from kornia.augmentation.container.patch import PatchSequential
 from kornia.augmentation.container.video import VideoSequential
+from kornia.augmentation.utils.box_frames import _BOX_KEYS, _KEYPOINT_KEYS
 from kornia.constants import DataKey
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
@@ -58,9 +59,8 @@ if TYPE_CHECKING:
 __all__ = ["AugmentationAuditReport", "AugmentationAuditStep", "SpatialAudit", "audit"]
 
 _T = TypeVar("_T")
-_BOX_MODES = {DataKey.BBOX: "vertices_plus", DataKey.BBOX_XYXY: "xyxy_plus", DataKey.BBOX_XYWH: "xywh"}
-# The tensor keys whose boxes the container keeps in the legacy inclusive storage, as pixel-centre corners.
-_LEGACY_BOX_KEYS = (DataKey.BBOX, DataKey.BBOX_XYXY)
+# The import mode of every box key, as the container reads it (kornia#6710).
+_BOX_MODES = {key: spec.mode_out if spec.bare else spec.mode_in for key, spec in _BOX_KEYS.items()}
 
 
 def _snapshot(value: _T) -> _T:
@@ -282,16 +282,16 @@ def _capture_warnings(sequence: AugmentationSequential, steps: list[Augmentation
 def _coordinates(value: DataType, key: DataKey) -> tuple[Tensor, float, Tensor | None]:
     """Return the stored coordinates, their offset from the pixel-centre frame of the image matrices, and box presence.
 
-    Exclusive box vertices are edges, half a pixel from that frame: the offset is ``0.5``, and they lie in
-    ``[0, W] x [0, H]``. The legacy inclusive storage holds pixel-centre corners, as keypoints do: offset ``0``, in
-    ``[0, W - 1] x [0, H - 1]``.
+    Edge-frame coordinates, the exclusive vertices of a ``Boxes`` object and the tensors of the edge-frame keys, are
+    half a pixel from that frame: the offset is ``0.5``. The pixel-centre keys and keypoints have offset ``0``.
 
     The ``(B, N)`` presence mask is ``False`` for rows that hold no box: the rows a ``Boxes`` object marks invalid, and
-    the zero-extent rows of a ``"bbox_xywh"`` tensor, which the container removes and exports as all-zero rows. It is
-    ``None`` for keypoints and the bare box keys, whose zero rows the container transforms as coordinates.
+    the zero-extent rows of a tensor under a frame-named box key or ``"bbox_xywh"``, which the container removes and
+    exports as all-zero rows. It is ``None`` for keypoints and the bare box keys, whose zero rows the container
+    transforms as coordinates.
     """
     if (isinstance(value, Boxes) and key not in _BOX_MODES) or (
-        isinstance(value, Keypoints) and key != DataKey.KEYPOINTS
+        isinstance(value, Keypoints) and key not in _KEYPOINT_KEYS
     ):
         raise ValueError("audit Boxes/Keypoints objects must match their data key.")
     if isinstance(value, (Boxes, Keypoints)):
@@ -304,15 +304,27 @@ def _coordinates(value: DataType, key: DataKey) -> tuple[Tensor, float, Tensor |
         raise ValueError("audit requires batched tensors, Boxes or Keypoints; ragged inputs are unsupported.")
     if key in _BOX_MODES:
         # Match the container's public representation, including axis-aligned tensor exports.
-        if key in _LEGACY_BOX_KEYS:
+        spec = _BOX_KEYS[key]
+        if spec.bare:
             legacy = Boxes._from_tensor(value, mode=_BOX_MODES[key], validate_boxes=False, inclusive=True)
             return legacy.data, 0.0, None
         # The corners are built in at least float32, as ``x + w`` rounds in half precision; the pipeline's own labels
         # keep their dtype. Zero extents are removed as the container removes them.
         value = value.to(torch.promote_types(value.dtype, torch.float32))
         boxes = Boxes._from_tensor(value, mode=_BOX_MODES[key], validate_boxes=False, allow_empty=True)
-        return boxes.data, 0.5, boxes._valid
-    return value, 0.0, None
+        return boxes.data, 0.0 if spec.pixel_centre else 0.5, boxes._valid
+    return value, 0.5 if key == DataKey.KEYPOINTS_EDGE else 0.0, None
+
+
+def _region_margin(value: DataType, key: DataKey) -> float:
+    """Return how far a box region reaches past the pixel centres of the border: ``1/2`` for pixel-centre box tensors.
+
+    Edge-frame boxes lie in ``[0, W] x [0, H]`` and keypoints on ``[0, W - 1] x [0, H - 1]`` in their frame; the
+    corners of pixel-centre boxes lie in ``[-1/2, W - 1/2] x [-1/2, H - 1/2]``.
+    """
+    if isinstance(value, Tensor) and key in _BOX_KEYS and _BOX_KEYS[key].pixel_centre:
+        return 0.5
+    return 0.0
 
 
 def _spatial_audits(
@@ -329,7 +341,18 @@ def _spatial_audits(
         # hold no box in its input as well.
         result, offset, present = _coordinates(values[index], keys[index])
         audits.append(
-            _spatial_audit(source, result, keys[index], index, shape, inverse, dtype, offset=offset, present=present)
+            _spatial_audit(
+                source,
+                result,
+                keys[index],
+                index,
+                shape,
+                inverse,
+                dtype,
+                offset=offset,
+                present=present,
+                margin=_region_margin(values[index], keys[index]),
+            )
         )
     return audits
 
@@ -412,6 +435,7 @@ def _spatial_audit(
     dtype: torch.dtype,
     offset: float = 0.0,
     present: Tensor | None = None,
+    margin: float = 0.0,
 ) -> SpatialAudit:
     if source.shape != result.shape:
         raise ValueError("audit requires spatial outputs to preserve the source shape and label cardinality.")
@@ -423,10 +447,10 @@ def _spatial_audit(
     returned = result.to(torch.promote_types(result.dtype, torch.float32))
     finite = returned.isfinite().flatten(2).all(-1)
     outside = (
-        (returned[..., 0] < 0)
-        | (returned[..., 0] > shape[-1] - 1 + 2 * offset)
-        | (returned[..., 1] < 0)
-        | (returned[..., 1] > shape[-2] - 1 + 2 * offset)
+        (returned[..., 0] < -margin)
+        | (returned[..., 0] > shape[-1] - 1 + 2 * offset + margin)
+        | (returned[..., 1] < -margin)
+        | (returned[..., 1] > shape[-2] - 1 + 2 * offset + margin)
     )
     if key in _BOX_MODES:
         outside = outside.any(-1)
@@ -538,11 +562,11 @@ def audit(
     sources: dict[int, Tensor] = {}
     metadata = []
     for index, (value, key) in enumerate(zip(args, keys)):
-        if key not in (DataKey.INPUT, DataKey.MASK, DataKey.KEYPOINTS, *_BOX_MODES):
+        if key not in (DataKey.INPUT, DataKey.MASK, *_KEYPOINT_KEYS, *_BOX_MODES):
             raise ValueError(f"audit does not support the data key {key.name}.")
         tensor, _, _ = _coordinates(value, key)
         # All box coordinates have been converted to (B, N, 4, 2).
-        expected_ndims = (3,) if key == DataKey.KEYPOINTS else (3, 4) if key == DataKey.MASK else (4,)
+        expected_ndims = (3,) if key in _KEYPOINT_KEYS else (3, 4) if key == DataKey.MASK else (4,)
         if tensor.ndim not in expected_ndims or tensor.shape[0] != image.shape[0] or tensor.device != image.device:
             raise ValueError("audit inputs must be batched with the same batch size and device as the image.")
         original = value.data if isinstance(value, (Boxes, Keypoints)) else cast(Tensor, value)
@@ -554,7 +578,7 @@ def audit(
                 "device": original.device,
             }
         )
-        if key == DataKey.KEYPOINTS or key in _BOX_MODES:
+        if key in _KEYPOINT_KEYS or key in _BOX_MODES:
             sources[index] = _snapshot(tensor)
     steps: list[AugmentationAuditStep] = []
     handles = [

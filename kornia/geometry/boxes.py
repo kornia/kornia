@@ -531,16 +531,16 @@ class Boxes:
           :meth:`unpad`, :meth:`clamp`, :meth:`filter_boxes_by_area` and :meth:`index_put` reach the caller's tensor.
         - Integer indexing selects one image's box set for batched input, or one box with shape ``(1, 4, 2)`` for
           unbatched input. Scalar integer tensors follow the same rule.
+        - :class:`~kornia.augmentation.container.AugmentationSequential` takes a :class:`Boxes` object under any box
+          key in the edge frame, as it takes tensors under ``"bbox_xyxy_edge"``, ``"bbox_edge"`` and
+          ``"bbox_xywh"``. Its pixel-centre keys, ``"bbox_xyxy_index"``, ``"bbox_index"`` and the bare
+          ``"bbox_xyxy"`` and ``"bbox"``, read tensors half a pixel apart: see :class:`~kornia.constants.DataKey`.
         - An object pickled before `#6710 <https://github.com/kornia/kornia/issues/6710>`_ holds inclusive corners.
           It is read back as such and gives the numbers it gave then; combining it with a new object raises
           ``ValueError``, and ``Boxes.from_tensor(old.to_tensor('xyxy'))`` converts it.
 
     .. warning::
-        :class:`~kornia.augmentation.container.AugmentationSequential` reads a tensor under the bare ``"bbox"`` or
-        ``"bbox_xyxy"`` key as corners in the pixel-centre frame and keeps the numbers it gave before
-        `#6710 <https://github.com/kornia/kornia/issues/6710>`_, while a :class:`Boxes` object under any key, and a
-        tensor under ``"bbox_xywh"``, takes the conversion above: the same boxes give different numbers on the two
-        paths under scaling. Passing the ``'vertices'`` export to the bbox helpers reads one pixel larger:
+        Passing the ``'vertices'`` export to the bbox helpers reads one pixel larger:
         `#4009 <https://github.com/kornia/kornia/issues/4009>`_. :meth:`to_mask` and
         :func:`~kornia.geometry.bbox.bbox_to_mask` agree on ``(height, width)`` once that function is called with
         ``size``; its deprecated ``width, height`` form takes the opposite order:
@@ -606,10 +606,11 @@ class Boxes:
         self._mode = mode
         # ``_inclusive`` records how ``_data`` is stored. Every public construction stores exclusive vertices, where a
         # box spans ``[xmin, xmax)`` and a pixel-centre image matrix is applied in the edge frame
-        # (:func:`_pixel_centre_matrix_to_edge_frame`). The legacy inclusive form, first to last pixel centre with
-        # matrices applied as they are, remains for the bare ``"bbox"`` and ``"bbox_xyxy"`` tensor keys of
-        # :class:`~kornia.augmentation.container.AugmentationSequential`, whose outputs keep their numbers
-        # (`#6710 <https://github.com/kornia/kornia/issues/6710>`_), and for objects pickled before the change.
+        # (:func:`_pixel_centre_matrix_to_edge_frame`). The legacy inclusive form, with matrices applied to the corners
+        # as they are, is the pixel-centre storage of the tensor keys of
+        # :class:`~kornia.augmentation.container.AugmentationSequential` that name that frame (``"bbox_xyxy_index"``,
+        # ``"bbox_index"`` and the bare ``"bbox_xyxy"`` and ``"bbox"``), whose corners keep their numbers
+        # (`#6710 <https://github.com/kornia/kornia/issues/6710>`_), and of objects pickled before the change.
         self._inclusive = False
         # ``_valid`` marks rows that stay in every export as exact zeros, such as the holes filtering leaves.
         # ``_padding`` marks the rows a list input added, which the trimmed export drops and the padded export keeps as
@@ -1016,11 +1017,8 @@ class Boxes:
             out-of-range boxes replaced by zero coordinates.
         """
         # The thresholds meet the area before it is rounded to a half-precision box dtype: in float16 the area 65536 of
-        # a 256 x 256 box becomes ``inf``, and 2401 becomes 2400. The legacy inclusive storage of the bare box keys
-        # still meets the rounded area, so that their outputs keep their numbers.
+        # a 256 x 256 box becomes ``inf``, and 2401 becomes 2400.
         area = self._shoelace_area()
-        if self._inclusive:
-            area = area.to(self._data.dtype)
         area_flat = area.reshape(self._valid.shape)
         keep = torch.ones_like(area_flat, dtype=torch.bool)
         if min_area is not None:

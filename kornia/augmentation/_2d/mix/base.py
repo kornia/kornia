@@ -26,6 +26,7 @@ from kornia.augmentation.utils import (
     _transform_output_shape,
     _validate_input_dtype,
 )
+from kornia.augmentation.utils.box_frames import _BOX_KEYS, _KEYPOINT_KEYS
 from kornia.augmentation.utils.helpers import _boxes_to_padded_tensor
 from kornia.constants import DataKey, DType
 from kornia.core.check import KORNIA_UNWRAP
@@ -85,10 +86,10 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
 
     def _validate_data_key(self, key: DataKey) -> None:
         # Check the handler without executing a transform or requiring subclasses to declare support twice.
-        if key in (DataKey.BBOX, DataKey.BBOX_XYXY, DataKey.BBOX_XYWH):
+        if key in _BOX_KEYS:
             if type(self).apply_transform_boxes is MixAugmentationBaseV2.apply_transform_boxes:
                 raise NotImplementedError
-        elif key == DataKey.KEYPOINTS:
+        elif key in _KEYPOINT_KEYS:
             if type(self).apply_transform_keypoint is MixAugmentationBaseV2.apply_transform_keypoint:
                 raise NotImplementedError
         elif key == DataKey.CLASS:
@@ -313,11 +314,11 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
                 output = self.transform_input(_input, self._params, self.flags)
             elif dcate == DataKey.MASK:
                 output = self.transform_mask(_input, self._params, self.flags)
-            elif dcate == DataKey.BBOX:
+            elif dcate in (DataKey.BBOX, DataKey.BBOX_EDGE):
                 box = Boxes.from_tensor(_input, mode="vertices", validate_boxes=False)
                 box = self.transform_boxes(box, self._params, self.flags)
                 output = _export_boxes(box, "vertices", _input)
-            elif dcate == DataKey.BBOX_XYXY:
+            elif dcate in (DataKey.BBOX_XYXY, DataKey.BBOX_XYXY_EDGE):
                 box = Boxes.from_tensor(_input, mode="xyxy", validate_boxes=False)
                 box = self.transform_boxes(box, self._params, self.flags)
                 output = _export_boxes(box, "xyxy", _input)
@@ -325,7 +326,15 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
                 box = Boxes.from_tensor(_input, mode="xywh", validate_boxes=False)
                 box = self.transform_boxes(box, self._params, self.flags)
                 output = _export_boxes(box, "xywh", _input)
-            elif dcate == DataKey.KEYPOINTS:
+            elif dcate in (DataKey.BBOX_INDEX, DataKey.BBOX_XYXY_INDEX):
+                # Pixel-centre corners keep their numbers in the pixel-centre storage, whose region rules (the Mosaic
+                # window) follow that frame (#6710).
+                spec = _BOX_KEYS[dcate]
+                box = Boxes.from_tensor(_input, mode=spec.mode_in, validate_boxes=False)
+                box._inclusive = True
+                box = self.transform_boxes(box, self._params, self.flags)
+                output = _export_boxes(box, spec.mode_out, _input)
+            elif dcate in _KEYPOINT_KEYS:
                 output = self.transform_keypoint(_input, self._params, self.flags)
             elif dcate == DataKey.CLASS:
                 output = self.transform_class(_input, self._params, self.flags)
