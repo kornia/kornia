@@ -333,7 +333,8 @@ def _digest(results_root: Path) -> str:
         if not rows:
             continue
         best = max(rows, key=lambda r: r["throughput_per_s"])
-        kornia_rows = [r for r in rows if r["backend"].startswith("kornia")]
+        # "kornia (eager)" and "kornia (compiled)", not the separate "kornia-rs" baseline
+        kornia_rows = [r for r in rows if r["backend"].startswith("kornia (")]
         worst = min(kornia_rows, key=lambda r: r["throughput_per_s"]) if kornia_rows else None
         extra = _extra_config_fields(rows)
         units = meta.get("units") or "items/s"

@@ -121,6 +121,23 @@ def test_digest_disambiguates_configs_that_share_a_batch(tmp_path: Path) -> None
     assert "LAFs/s" in line
 
 
+def test_digest_slowest_kornia_op_skips_kornia_rs(tmp_path: Path) -> None:
+    # kornia-rs is a separate baseline: a slower kornia-rs row must not be reported as a kornia op.
+    path = _seed(tmp_path) / "0.9.0rc1" / "augmentation--apple-m3--mps.json"
+    payload = json.loads(path.read_text())
+    payload["results"] += [
+        {"op": "ColorJiggle", "backend": "kornia (compiled)", "batch": 32, "throughput_per_s": 900.0},
+        {"op": "RandomGrayscale", "backend": "kornia-rs", "batch": 1, "throughput_per_s": 12.0},
+    ]
+    path.write_text(json.dumps(payload))
+    llms = tmp_path / "llms-full.txt"
+    llms.write_text("a\n<!-- BENCH:BEGIN -->\n<!-- BENCH:END -->\nb\n")
+    generate_benchmarks.refresh_llms(llms, tmp_path)
+    line = next(ln for ln in llms.read_text().splitlines() if ln.startswith("- augmentation"))
+    assert "slowest kornia op ColorJiggle@32 at 317 items/s" in line
+    assert "RandomGrayscale" not in line
+
+
 def test_latest_version_orders_rc_before_final() -> None:
     assert generate_benchmarks.latest_version(["0.9.0rc1", "0.9.0", "0.8.3"]) == "0.9.0"
 
