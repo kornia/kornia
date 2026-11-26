@@ -38,7 +38,9 @@ class TestONNXLoader:
     def test_get_file_path(self):
         # Test getting local file path for caching
         model_name = "some_model"
-        expected_path = os.path.join(".kornia_hub", "some_model.onnx")
+        from kornia.config import kornia_config
+
+        expected_path = os.path.join(kornia_config.hub_cache_dir, "some_model.onnx")
         assert ONNXLoader._get_file_path(model_name, None, suffix=".onnx") == expected_path
 
     @pytest.mark.parametrize("name", ["a/b", "a\\b"])

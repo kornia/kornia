@@ -177,14 +177,18 @@ class ONNXLoader(CachedDownloader):
     Example:
         .. code-block:: python
 
+            import os
+
+            from kornia.config import kornia_config
             from kornia.onnx.utils import ONNXLoader
 
-            # downloaded on the first call into .kornia_hub/onnx_models/operators/
+            # downloaded on the first call into <torch.hub.get_dir()>/kornia/onnx_models/operators/
             model = ONNXLoader.load_model("hf://operators/kornia.color.gray.GrayscaleToRgb")
             # the same file from the cache; download=False raises ValueError if it is not cached
             model = ONNXLoader.load_model("hf://operators/kornia.color.gray.GrayscaleToRgb", download=False)
             # a local file, by its path
-            model = ONNXLoader.load_model(".kornia_hub/onnx_models/operators/kornia.color.gray.GrayscaleToRgb.onnx")
+            path = os.path.join(kornia_config.hub_onnx_dir, "operators", "kornia.color.gray.GrayscaleToRgb.onnx")
+            model = ONNXLoader.load_model(path)
 
     """
 

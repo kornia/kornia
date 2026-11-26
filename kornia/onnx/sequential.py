@@ -62,7 +62,7 @@ class ONNXSequential(ONNXMixin, ONNXRuntimeMixin):
             indexed by the joint; entries past the last joint are not read.
         cache_dir: The directory where downloaded ONNX models (``hf://`` names and URLs) are cached, as
             :meth:`~kornia.onnx.utils.ONNXLoader.load_model` lays it out. If None,
-            ``kornia.config.kornia_config.hub_onnx_dir`` (``.kornia_hub/onnx_models`` under the working directory).
+            ``kornia.config.kornia_config.hub_onnx_dir`` (``<torch.hub.get_dir()>/kornia/onnx_models`` by default).
         auto_ir_version_conversion: If True, convert the models to one IR version and one OPSET version before
             combining them: IR version 9, and the highest OPSET version among the models, to which the others are
             converted up.

@@ -37,8 +37,8 @@ enumerated in :data:`WEIGHT_REGISTRIES`). Two other download paths live in
 ``kornia/`` and are invisible to the prefetch list -- ``download_file_from_url``
 as the vision-language builders (``kornia/models/{kimi_vl,siglip2}/builder.py``)
 call it, to fetch a ``model.safetensors``, and as ``kornia/feature/lightglue_onnx/utils/download.py``
-calls it, to fetch the LightGlue ONNX models -- and ``CachedDownloader`` into
-``.kornia_hub/`` (``kornia/onnx/utils.py``, ``kornia/models/_hf_models/hf_onnx_community.py``). Nothing in the PR
+calls it, to fetch the LightGlue ONNX models -- and ``CachedDownloader`` into ``kornia_config.hub_cache_dir``
+(``kornia/onnx/utils.py``, ``kornia/models/_hf_models/hf_onnx_community.py``). Nothing in the PR
 matrix downloads through either today; a test that did would fetch live from every
 matrix cell with this file still green.
 
