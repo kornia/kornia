@@ -44,7 +44,11 @@ class TestTinyViTCheckpoint(BaseTester):
     def test_frozen_prefix_retains_parameter_gradients(self, device, dtype, first_trainable_stage, training):
         # Fine-tuning can freeze the patch embedder or the first complete stage. The first remaining trainable
         # block then receives an activation without requires_grad; its parameters must still receive gradients.
-        reference = _small_model(stochastic=training).train(training).to(device=device, dtype=dtype)
+        # PyTorch checkpoint does not preserve MPS RNG state on the reviewed stable/nightly builds:
+        # https://github.com/kornia/kornia/pull/6872#issuecomment-7170283835
+        # Keep MPS training and parameter-gradient checks, with stochastic layers inactive until that is fixed.
+        stochastic = training and device.type != "mps"
+        reference = _small_model(stochastic=stochastic).train(training).to(device=device, dtype=dtype)
         reference.patch_embed.requires_grad_(False)
         for layer in list(reference.layers)[:first_trainable_stage]:
             layer.requires_grad_(False)
