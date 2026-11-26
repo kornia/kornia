@@ -50,13 +50,15 @@ class TestPsnr(BaseTester):
         assert torch.isfinite(expected)
         self.assert_close(actual, expected, rtol=0, atol=0)
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["partner_dtype"] == torch.float64),
+        reason="MPS has no float64",
+    )
     @pytest.mark.parametrize("partner_dtype", [torch.float16, torch.bfloat16, torch.float64])
     def test_integer_image_with_a_floating_partner(self, device, partner_dtype):
         # The integer image counts as float32 and the pair is computed in the promoted dtype, as in ssim, so a half
         # partner gives float32, not the half dtype. Given two dtypes, mse_loss aborts the process on MPS and its
         # backward raises on torch 2.5.1 (#5536).
-        if device.type == "mps" and partner_dtype == torch.float64:
-            pytest.skip("MPS has no float64")
         generator = torch.Generator().manual_seed(0)
         image = (torch.rand(2, 3, 9, 13, generator=generator) * 255).to(torch.uint8).to(device)
         partner = (torch.rand(2, 3, 9, 13, generator=generator) * 255).round().to(device, partner_dtype)
@@ -70,6 +72,9 @@ class TestPsnr(BaseTester):
         assert partner.grad is not None
         assert partner.grad.dtype == partner_dtype
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and torch.float64 in p["dtypes"]), reason="MPS has no float64"
+    )
     @pytest.mark.parametrize(
         "dtypes",
         [
@@ -84,8 +89,6 @@ class TestPsnr(BaseTester):
         # Two floating images of different dtypes are compared in their promoted dtype, in either order, and each
         # gradient keeps its image's dtype. Given two dtypes, mse_loss aborts the process on MPS and its backward
         # raises on torch 2.5.1 (#5536).
-        if device.type == "mps" and torch.float64 in dtypes:
-            pytest.skip("MPS has no float64")
         generator = torch.Generator().manual_seed(0)
         image = torch.rand(2, 3, 9, 13, generator=generator).to(device, dtypes[0])
         target = torch.rand(2, 3, 9, 13, generator=generator).to(device, dtypes[1])
@@ -177,3 +180,102 @@ class TestConventionsPsnr(BaseTester):
         assert actual.dtype == torch.float32
         self.assert_close(actual, expected, rtol=0.0, atol=0.0)
         assert torch.isfinite(kornia.metrics.psnr(a.to(dtype), b.to(dtype), 255.0))
+
+
+class TestPSNRIntegerRange(BaseTester):
+    def test_int64_range_keeps_its_arithmetic(self, device, dtype):
+        """Keep int64 squares, or the existing float32 computation for half images."""
+        image = torch.zeros(3, device=device, dtype=dtype)
+        target = torch.ones_like(image)
+        max_val = torch.tensor([2**24 + 1, 2**30 + 1], device=device, dtype=torch.int64)
+        if dtype in (torch.float16, torch.bfloat16):
+            expected = (10 * max_val.float().square().log10()).to(dtype)
+        else:
+            expected = 10 * (max_val.square() / torch.ones((), device=device, dtype=dtype)).log10()
+        self.assert_close(kornia.metrics.psnr(image, target, max_val), expected, atol=0, rtol=0)
+
+    @pytest.mark.parametrize(
+        "range_dtype,range_value",
+        [(torch.uint8, 255), (torch.int8, 127), (torch.int16, 255), (torch.int32, 65535), (torch.int64, 65535)],
+    )
+    @pytest.mark.parametrize("scalar_range", [True, False])
+    @pytest.mark.parametrize("integer_image", [True, False])
+    def test_tensor_range_does_not_overflow(self, device, dtype, range_dtype, range_value, scalar_range, integer_image):
+        """An MSE of one gives 20 log10(range), including ordinary 8-bit and 16-bit image ranges."""
+        image = torch.zeros(1, 3, 4, 4, device=device, dtype=torch.uint8 if integer_image else dtype)
+        target = torch.ones_like(image)
+        values = range_value if scalar_range else [range_value, 1]
+        max_val = torch.tensor(values, device=device, dtype=range_dtype)
+        expected_dtype = torch.float32 if integer_image else dtype
+        expected = (20 * max_val.cpu().double().log10()).to(device=device, dtype=expected_dtype)
+        actual = kornia.metrics.psnr(image, target, max_val)
+        assert actual.shape == max_val.shape
+        assert actual.dtype == expected_dtype
+        assert torch.isfinite(actual).all()
+        self.assert_close(actual, expected)
+        self.assert_close(kornia.losses.psnr_loss(image, target, max_val), -expected)
+        self.assert_close(kornia.losses.PSNRLoss(max_val)(image, target), -expected)
+
+
+class TestPSNRHalfPrecision(BaseTester):
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["range_dtype"] == torch.float64),
+        reason="MPS has no float64",
+    )
+    @pytest.mark.parametrize("image_dtype", [torch.float16, torch.bfloat16])
+    @pytest.mark.parametrize("range_dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64])
+    @pytest.mark.parametrize("scalar_range", [True, False])
+    def test_tensor_range_value_dtype_and_gradients(self, device, image_dtype, range_dtype, scalar_range):
+        """Square tensor data ranges in the compute dtype without losing their output dtype or gradients."""
+        image = torch.tensor([32.0], device=device, dtype=image_dtype, requires_grad=True)
+        values = 512.0 if scalar_range else [512.0, 1024.0]
+        max_val = torch.tensor(values, device=device, dtype=range_dtype, requires_grad=True)
+        expected_dtype = torch.promote_types(image_dtype, range_dtype)
+        reference_range = max_val.detach().cpu().double()
+        reference = (20 * torch.log10(reference_range / 32)).to(device=device, dtype=expected_dtype)
+
+        actual = kornia.metrics.psnr(image, torch.zeros_like(image), max_val)
+        assert actual.shape == max_val.shape
+        assert actual.dtype == expected_dtype
+        assert torch.isfinite(actual).all()
+        self.assert_close(actual, reference)
+        actual.sum().backward()
+        expected_range_grad = (20 / (math.log(10) * reference_range)).to(device=device, dtype=range_dtype)
+        self.assert_close(max_val.grad, expected_range_grad)
+        self.assert_close(image.grad, image.new_tensor([-20 * max_val.numel() / (math.log(10) * 32)]))
+
+    @pytest.mark.parametrize("residual,max_val", [(1e-4, 1.0), (1.0 / 512, 1.0), (300.0, 512.0)])
+    def test_representable_psnr(self, device, dtype, residual, max_val):
+        """Finite half-precision PSNR and its loss wrappers match the scalar reference."""
+        image = torch.tensor([residual], device=device, dtype=dtype)
+        target = torch.zeros_like(image)
+        delta = image.detach().cpu().double().item()
+        expected = image.new_tensor(20 * math.log10(max_val / abs(delta)))
+        actual = kornia.metrics.psnr(image, target, max_val)
+        assert actual.dtype == dtype
+        assert torch.isfinite(actual)
+        self.assert_close(actual, expected)
+        self.assert_close(kornia.losses.psnr_loss(image, target, max_val), -expected)
+        self.assert_close(kornia.losses.PSNRLoss(max_val)(image, target), -expected)
+
+    @pytest.mark.parametrize("residual,max_val", [(1.0 / 512, 1.0), (300.0, 512.0)])
+    def test_representable_gradient(self, device, dtype, residual, max_val):
+        """Image and target gradients match the analytic derivative for represented residuals."""
+        image = torch.tensor([residual], device=device, dtype=dtype, requires_grad=True)
+        target = torch.zeros_like(image, requires_grad=True)
+        result = kornia.metrics.psnr(image, target, max_val)
+        grad_image, grad_target = torch.autograd.grad(result, (image, target))
+        expected = image.new_tensor([-20 / (math.log(10) * image.detach().cpu().double().item())])
+        assert torch.isfinite(grad_image).all()
+        assert torch.isfinite(grad_target).all()
+        self.assert_close(grad_image, expected)
+        self.assert_close(grad_target, -expected)
+
+    def test_tensor_max_val_keeps_its_result_dtype(self, device, dtype):
+        """A float32 tensor range retains its contribution to the result dtype."""
+        # A float32 tensor max_val gave a float32 PSNR for every image dtype before half precision moved to float32.
+        image = torch.tensor([1.0 / 512], device=device, dtype=dtype)
+        max_val = torch.tensor([1.0, 255.0], device=device)
+        actual = kornia.metrics.psnr(image, torch.zeros_like(image), max_val)
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, max_val.new_tensor([20 * math.log10(512), 20 * math.log10(255 * 512)]))

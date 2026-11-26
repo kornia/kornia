@@ -76,9 +76,8 @@ class TestFindAffine(BaseTester):
         weight_scale = 1.0e-2 if dtype in (torch.float16, torch.bfloat16) else 1.0e-10
         self.assert_close(find_affine(points, target, weights * weight_scale), actual, rtol=tol, atol=tol)
 
+    @pytest.mark.applies_to(dtypes=("float16", "bfloat16"), reason="Exercises mixed-precision weight normalization.")
     def test_weights_do_not_narrow_before_normalization(self, device, dtype):
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("Exercises mixed-precision weight normalization.")
         points, target, expected = self._points(device, dtype)
         tolerance = 3e-3
         for scale in (1.0e-8, 1.0e10):
@@ -86,18 +85,16 @@ class TestFindAffine(BaseTester):
             actual = find_affine(points, target, weights)
             self.assert_close(actual, expected, rtol=tolerance, atol=tolerance)
 
+    @pytest.mark.applies_to(devices=("cpu",), reason="CPU float64 regression for extreme floating-point weights.")
     def test_float64_extreme_weight_scale_invariance(self, device):
-        if device.type != "cpu":
-            pytest.skip("CPU float64 regression for extreme floating-point weights.")
         points, target, expected = self._points(device, torch.float64)
         weights = torch.full((1, 4), 1.0e300, device=device, dtype=torch.float64)
         actual = find_affine(points, target, weights)
         self.assert_close(actual, expected, rtol=1e-10, atol=1e-10)
 
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason="Input rounding dominates in half precision.")
     @pytest.mark.parametrize("angle", [0.0, 45.0, 120.0])
     def test_elongated_source_any_direction(self, device, dtype, angle):
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("Input rounding dominates in half precision.")
         # A 1000 px by 6 px strip of exact correspondences, centred at (700, 500) and rotated by `angle`.
         u = torch.linspace(-500.0, 500.0, 64, dtype=torch.float64)
         v = 3.0 * torch.tensor([1.0, -1.0], dtype=torch.float64).repeat(32)
@@ -130,10 +127,9 @@ class TestFindAffine(BaseTester):
         points = torch.empty(2, 5, 2, device="meta")
         assert find_affine(points, points).shape == (2, 3, 3)
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda", "mps"), reason="CPU/CUDA/MPS mixed-precision coverage")
     def test_autocast_preserves_float32_solver_precision(self, device):
         """Float32 inputs must not let ambient AMP narrow the affine matrix products."""
-        if device.type not in ("cpu", "cuda", "mps"):
-            pytest.skip("CPU/CUDA/MPS mixed-precision coverage")
         autocast_dtype = torch.bfloat16 if device.type == "cpu" else torch.float16
         u = torch.linspace(-500.0, 500.0, 64, device=device)
         v = 100.0 * torch.tensor([1.0, -1.0], device=device).repeat(32)
@@ -249,9 +245,10 @@ class TestFindAffine(BaseTester):
         if dtype != torch.float64:
             assert torch.isnan(actual[3]).all()
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="Compares two float32 solvers on the same half-rounded inputs."
+    )
     def test_origin_fixed_pair_matches_least_squares(self, device, dtype):
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("Compares two float32 solvers on the same half-rounded inputs.")
         generator = torch.Generator().manual_seed(3)
         points = (torch.rand(64, 2, 2, generator=generator) - 0.5).to(device=device, dtype=dtype)
         target = (torch.rand(64, 2, 2, generator=generator) - 0.5).to(device=device, dtype=dtype)
@@ -279,9 +276,10 @@ class TestFindAffine(BaseTester):
         tol = 1e-2 if dtype in (torch.float16, torch.bfloat16) else 1e-4
         self.assert_close(actual, expected.expand(4, -1, -1), rtol=tol, atol=tol)
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="Compares two float32 solvers on the same half-rounded inputs."
+    )
     def test_triplet_matches_find_affine(self, device, dtype):
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("Compares two float32 solvers on the same half-rounded inputs.")
         generator = torch.Generator().manual_seed(7)
         points = (1000 * torch.rand(64, 3, 2, generator=generator)).to(device=device, dtype=dtype)
         target = (1000 * torch.rand(64, 3, 2, generator=generator)).to(device=device, dtype=dtype)
@@ -338,9 +336,8 @@ class TestFindAffine(BaseTester):
             actual = torch.compile(find_affine, backend="eager", fullgraph=True)(points, target, weights)
         self.assert_close(actual, find_affine(points, target, weights))
 
+    @pytest.mark.applies_to(devices=("cuda",), reason="Host synchronization is observable on CUDA only.")
     def test_weighted_fit_without_host_sync(self, device, dtype):
-        if device.type != "cuda":
-            pytest.skip("Host synchronization is observable on CUDA only.")
         points, target, _ = self._points(device, dtype)
         weights = torch.ones(1, 4, device=device, dtype=dtype)
         find_affine(points, target, weights)  # lazy CUDA and cuBLAS initialization may synchronize

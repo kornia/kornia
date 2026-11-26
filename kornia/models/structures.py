@@ -31,10 +31,10 @@ class SegmentationResults:
     """Encapsulate the results obtained by a Segmentation model.
 
     Args:
-        logits: Results logits with shape :math:`(K, C, H, W)` for one image: :math:`K` is the number of its prompts
+        logits: Results logits with shape ``(K, C, H, W)`` for one image: :math:`K` is the number of its prompts
             (the leading size of its point, box or mask prompts; 1 when it has none), :math:`C` the number of masks
             predicted per prompt (3 with ``multimask_output``, else 1), and :math:`H = W = 256` for SAM.
-        scores: The predicted IoU of each mask. Shape :math:`(K, C)`
+        scores: The predicted IoU of each mask. Shape ``(K, C)``
         mask_threshold: The threshold value to generate the `binary_masks` from the `logits`
 
     """
@@ -48,7 +48,7 @@ class SegmentationResults:
     def binary_masks(self) -> torch.Tensor:
         """Binary mask generated from logits considering the mask_threshold.
 
-        Shape will be the same of logits :math:`(K, C, H, W)` where :math:`C` is the number masks predicted per prompt.
+        Shape will be the same of logits ``(K, C, H, W)`` where :math:`C` is the number masks predicted per prompt.
 
         .. note:: If you run `original_res_logits`, this will generate the masks
            based on the original resolution logits.
@@ -74,7 +74,7 @@ class SegmentationResults:
                                 logits back to encoder resolution before remove the padding.
 
         Returns:
-            Batched logits in :math:`(K, C, H, W)` format, where (H, W) is given by original_size.
+            Batched logits in ``(K, C, H, W)`` format, where (H, W) is given by original_size.
 
         """
         x = self.logits
@@ -103,10 +103,10 @@ class Prompts:
     """Encapsulate the prompts inputs for a Model.
 
     Args:
-        points: A tuple with the keypoints (coordinates x, y) and their respective labels. Shape :math:`(K, N, 2)` for
-                the keypoints, and :math:`(K, N)`
-        boxes: Batched box inputs, with shape :math:`(K, 4)`. Expected to be into xyxy format.
-        masks: Batched mask prompts to the model with shape :math:`(K, 1, H, W)`
+        points: A tuple with the keypoints (coordinates x, y) and their respective labels. Shape ``(K, N, 2)`` for
+                the keypoints, and ``(K, N)``
+        boxes: Batched box inputs, with shape ``(K, 4)``. Expected to be into xyxy format.
+        masks: Batched mask prompts to the model with shape ``(K, 1, H, W)``
 
     """
 

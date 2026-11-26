@@ -209,12 +209,12 @@ class DinoVisionTransformer(nn.Module):
         """Interpolate positional encodings to the current patch grid.
 
         Args:
-            x: Token sequence with class token prepended, shape :math:`(B, N+1, D)`.
+            x: Token sequence with class token prepended, shape ``(B, N+1, D)``.
             w: Image width in pixels.
             h: Image height in pixels.
 
         Returns:
-            Positional embedding tensor resized to match the current patch grid, shape :math:`(1, N'+1, D)`.
+            Positional embedding tensor resized to match the current patch grid, shape ``(1, N' + 1, D)``.
         """
         previous_dtype = x.dtype
         npatch = x.shape[1] - 1
@@ -245,11 +245,11 @@ class DinoVisionTransformer(nn.Module):
         """Prepare image patch tokens before transformer encoding.
 
         Args:
-            x: Input image tensor with shape :math:`(B, C, H, W)`.
-            masks: Optional boolean mask tensor with shape :math:`(B, N)` for masked patch tokens.
+            x: Input image tensor with shape ``(B, C, H, W)``.
+            masks: Optional boolean mask tensor with shape ``(B, N)`` for masked patch tokens.
 
         Returns:
-            Token sequence with class token, positional embeddings, and optional masks, shape :math:`(B, N+1, D)`.
+            Token sequence with class token, positional embeddings, and optional masks, shape ``(B, N+1, D)``.
         """
         _B, _nc, w, h = x.shape
         x = self.patch_embed(x)
@@ -263,8 +263,8 @@ class DinoVisionTransformer(nn.Module):
         """Compute transformer features for one image tensor.
 
         Args:
-            x: Input image tensor with shape :math:`(B, C, H, W)`.
-            masks: Optional boolean mask tensor with shape :math:`(B, N)` or ``None``.
+            x: Input image tensor with shape ``(B, C, H, W)``.
+            masks: Optional boolean mask tensor with shape ``(B, N)`` or ``None``.
 
         Returns:
             Feature dictionary with keys ``x_norm_clstoken``, ``x_norm_patchtokens``, ``x_prenorm``, and ``masks``.
@@ -319,9 +319,9 @@ class DinoVisionTransformer(nn.Module):
         """Return selected intermediate transformer layer outputs.
 
         Args:
-            x: Input image tensor with shape :math:`(B, C, H, W)`.
+            x: Input image tensor with shape ``(B, C, H, W)``.
             n: Number of last transformer blocks to return, or explicit list of block indices.
-            reshape: If ``True``, reshape patch tokens from :math:`(B, N, D)` to :math:`(B, D, H_p, W_p)`.
+            reshape: If ``True``, reshape patch tokens from ``(B, N, D)`` to ``(B, D, H_p, W_p)``.
             return_class_token: If ``True``, return ``(patch_tokens, class_token)`` tuples.
             norm: If ``True``, apply layer normalization to each output.
 
@@ -339,7 +339,9 @@ class DinoVisionTransformer(nn.Module):
         if reshape:
             B, _, w, h = x.shape
             outputs = [
-                out.reshape(B, w // self.patch_size, h // self.patch_size, -1).permute(0, 3, 1, 2).contiguous()
+                out.reshape(B, w // self.patch_size, h // self.patch_size, out.shape[-1])
+                .permute(0, 3, 1, 2)
+                .contiguous()
                 for out in outputs
             ]
         if return_class_token:
@@ -351,7 +353,8 @@ class DinoVisionTransformer(nn.Module):
 
         Returns:
             During training: full feature dictionary from ``forward_features``.
-            During inference: class token projection with shape :math:`(B, \text{out\_dim})`.
+            During inference: the normalised class token with shape ``(B, embed_dim)``, through the identity
+            ``head``.
         """
         ret = self.forward_features(*args, **kwargs)
         if is_training:
@@ -394,7 +397,26 @@ def vit_base(patch_size=16, **kwargs) -> DinoVisionTransformer:
 
 
 def vit_large(patch_size=16, **kwargs) -> DinoVisionTransformer:
-    """Return ViT Large."""
+    """Build the DINOv2 ViT-L vision transformer that DeDoDe's G descriptor runs as its frozen backbone.
+
+    ``backbone = vit_large(patch_size=14, img_size=518, init_values=1.0, ffn_layer="mlp", block_chunks=0)`` builds
+    the ViT-L architecture of the ``dinov2_vitl14_pretrain.pth`` checkpoint, 24 blocks of width 1024 with 16 heads,
+    with random weights and every parameter frozen (``requires_grad`` is ``False``); load the checkpoint with
+    ``backbone.load_state_dict``, as :class:`~kornia.feature.DeDoDe` does for its ``G`` descriptor. Then
+    ``backbone.forward_features(images)["x_norm_patchtokens"]`` takes images ``(B, 3, H, W)`` with ``H`` and ``W``
+    multiples of ``patch_size`` and returns one token per patch, ``(B, (H / patch_size) * (W / patch_size), 1024)``,
+    and ``backbone(images)`` returns the class token ``(B, 1024)``. The defaults, ``patch_size=16``,
+    ``img_size=224``, no layer scale (``init_values=None``) and ``block_chunks=1``, do not match that checkpoint.
+    The other keyword arguments go to ``DinoVisionTransformer``, except ``embed_dim``, ``depth``, ``num_heads``,
+    ``mlp_ratio`` and ``block_fn``, which this function sets.
+
+    See Also:
+        - :class:`~kornia.feature.DeDoDe`: builds this backbone for its ``G`` descriptor and loads the DINOv2 weights
+          into it.
+        - :class:`~kornia.models.vit.VisionTransformer`: kornia's general ViT encoder, which loads AugReg weights
+          rather than DINOv2's.
+
+    """
     return DinoVisionTransformer(
         patch_size=patch_size,
         embed_dim=1024,

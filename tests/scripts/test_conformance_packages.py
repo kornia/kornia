@@ -22,7 +22,7 @@ from pathlib import Path
 
 import pytest
 
-from testing import conformance
+from testing import conformance, conformance_promise
 
 # `.github/scripts/` is neither a package nor on the path; see tests/scripts/test_check_torch_env.py for why this
 # stays a per-module insert.
@@ -217,9 +217,9 @@ def test_cli_requires_a_promise():
 
 
 def test_stable_core_matches_the_test_and_the_stability_page():
-    assert STABLE_CORE == conformance.STABLE_CORE
+    assert STABLE_CORE == conformance_promise.STABLE_CORE
     assert set(conformance.REGISTRIES_OF) == set(STABLE_CORE)
-    assert TEST_FILES == {promise.field: promise.test_file for promise in conformance.PROMISES}
+    assert TEST_FILES == {promise.field: promise.test_file for promise in conformance_promise.PROMISES}
     page = (REPO / "docs" / "source" / "get-started" / "stability.rst").read_text(encoding="utf-8")
     paragraph = page.split("**Stable core**", 1)[1].split("\n\n", 1)[0]
     assert set(re.findall(r"``kornia\.(\w+)``", paragraph)) == set(STABLE_CORE)

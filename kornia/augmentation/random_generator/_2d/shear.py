@@ -28,7 +28,7 @@ from kornia.augmentation.utils import (
     _shear_bound,
 )
 from kornia.augmentation.utils.helpers import _constant_tensor
-from kornia.core.utils import _extract_device_dtype
+from kornia.core.utils import _extract_device_dtype, _to_device_nonblocking
 
 __all__ = ["ShearGenerator"]
 
@@ -39,7 +39,7 @@ class ShearGenerator(RandomGeneratorBase):
     Args:
         shear: Range of degrees to select from.
             If float, a shear parallel to the x axis in the range (-shear, +shear) will be applied.
-            If (a, b), a shear parallel to the x axis in the range (-shear, +shear) will be applied.
+            If (a, b), a shear parallel to the x axis in the range (a, b) will be applied.
             If (a, b, c, d), then x-axis shear in (shear[0], shear[1]) and y-axis shear in (shear[2], shear[3])
             will be applied. Will not apply shear by default.
             If torch.Tensor, shear is a 2x2 torch.Tensor, a x-axis shear in (shear[0][0], shear[0][1]) and
@@ -96,7 +96,7 @@ class ShearGenerator(RandomGeneratorBase):
 
         sx = _adapted_rsampling((batch_size,), self.shear_x_sampler, same_on_batch)
         sy = _adapted_rsampling((batch_size,), self.shear_y_sampler, same_on_batch)
-        sx = sx.to(device=_device, dtype=_dtype)
-        sy = sy.to(device=_device, dtype=_dtype)
+        sx = _to_device_nonblocking(sx, _device, _dtype)
+        sy = _to_device_nonblocking(sy, _device, _dtype)
 
         return {"center": center, "shear_x": sx, "shear_y": sy}

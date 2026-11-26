@@ -16,10 +16,10 @@ runs it with ONNX Runtime. It is useful when you have pre-exported operators or 
 - **Execution providers**: run on CPU, CUDA, TensorRT or OpenVINO through ONNX Runtime, with control over the
   session options.
 
-The :ref:`ONNX, torch.compile and torch.export survey <export-support>` records whether each operator, model
-and augmentation exported in one dated measurement, with the cause of each failure. It is a snapshot, not a
-support guarantee, and Kornia's tests check only part of it: export your own pipeline and compare it with eager
-before relying on it.
+Which operators Kornia promises to export, and how continuous integration checks it, is stated in
+:ref:`What Kornia promises <export-support-promise>`. The survey on the same page records whether each operator, model
+and augmentation exported in one dated measurement, with the cause of each failure: for anything the promise does not
+cover, export your own pipeline and compare it with eager before relying on it.
 
 Quickstart
 ----------
@@ -36,8 +36,8 @@ Quickstart
    ``torch.onnx.export`` turns it into an ONNX file that :class:`~kornia.onnx.sequential.ONNXSequential`
    can load, chain and re-export. Use the ``torch.export``-based exporter (``dynamo=True``). It is the
    default of ``torch.onnx.export`` from PyTorch 2.9, which deprecates the TorchScript-based one, and it is
-   the exporter the :ref:`export survey <export-support>` measures. Passing ``dynamo=True`` explicitly makes
-   the same call work on PyTorch 2.5 to 2.8, where the TorchScript-based exporter is still the default:
+   the exporter :ref:`Kornia's ONNX promise <export-support-promise>` covers. Passing ``dynamo=True`` explicitly
+   makes the same call work on PyTorch 2.5 to 2.8, where the TorchScript-based exporter is still the default:
 
    .. code-block:: python
 
@@ -194,9 +194,10 @@ Yes. Pass them as ``session_options=`` to the constructor of
 the object on the one it already has.
 
 **Which operators export?**
-The :ref:`ONNX, torch.compile and torch.export survey <export-support>` lists every surveyed operator with
-its ONNX export, ``torch.export`` and ``torch.compile`` outcome in one dated measurement, searchable by name and
-filterable by result. Treat an entry as a starting point, not a guarantee.
+The promised ones: :ref:`What Kornia promises <export-support-promise>` counts them per package, and the survey on the
+same page marks them *promised*. The survey lists every surveyed operator with its ONNX export, ``torch.export`` and
+``torch.compile`` outcome in one dated measurement, searchable by name and filterable by result; treat an entry that is
+not promised as a starting point, not a guarantee.
 
 **Where are the pre-exported Kornia operators?**
 In the `kornia/ONNX_models <https://huggingface.co/kornia/ONNX_models>`_ Hugging Face repository; load them with

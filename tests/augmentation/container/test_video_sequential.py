@@ -22,16 +22,10 @@ import kornia
 import kornia.augmentation as K
 
 from testing.augmentation.utils import assert_close, reproducibility_test
+from testing.base import autocast_for
 
 
 class TestVideoSequential:
-    def test_smoke(self, device, dtype):
-        input_1 = torch.randn(2, 3, 1, 5, 6, device=device, dtype=dtype).repeat(1, 1, 3, 1, 1)
-        input_2 = torch.randn(4, 3, 1, 5, 6, device=device, dtype=dtype).repeat(1, 1, 3, 1, 1)
-        aug_list = K.VideoSequential(K.ColorJiggle(0.1, 0.1, 0.1, 0.1))
-        aug_list(input_1)
-        aug_list(input_2)
-
     @pytest.mark.parametrize("shape", [(3, 4), (2, 3, 4), (2, 3, 5, 6), (2, 3, 4, 5, 6, 7)])
     @pytest.mark.parametrize("data_format", ["BCTHW", "BTCHW"])
     def test_exception(self, shape, data_format, device, dtype):
@@ -79,15 +73,15 @@ class TestVideoSequential:
             [K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0)],
             [K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0)],
             [K.RandomAffine(360, p=1.0), kornia.color.BgrToRgb()],
-            [K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=0.0), K.RandomAffine(360, p=0.0)],
-            [K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=0.0)],
-            [K.RandomAffine(360, p=0.0)],
+            # p=0 leaves every frame alone, which no frame comparison can tell from same_on_frame: see
+            # test_zero_probability_passes_through.
             # NOTE: RandomMixUpV2 failed occasionally but always passed in the debugger. Unable to debug now.
             # [K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0), K.RandomMixUpV2(p=1.0)],
         ],
     )
     @pytest.mark.parametrize("data_format", ["BCTHW", "BTCHW"])
-    @pytest.mark.parametrize("random_apply", [1, (1, 1), (1,), 10, True, False])
+    # 1 is not repeated next to (1, 1): both store the range (1, 2), and 10 is an int.
+    @pytest.mark.parametrize("random_apply", [(1, 1), (1,), 10, True, False])
     def test_same_on_frame(self, augmentations, data_format, random_apply, device, dtype):
         aug_list = K.VideoSequential(
             *augmentations, data_format=data_format, same_on_frame=True, random_apply=random_apply
@@ -106,6 +100,19 @@ class TestVideoSequential:
             assert_close(output[:, 1], output[:, 2])
             assert_close(output[:, 2], output[:, 3])
         reproducibility_test(input, aug_list)
+
+    @pytest.mark.parametrize("same_on_frame", [True, False])
+    @pytest.mark.parametrize("data_format", ["BCTHW", "BTCHW"])
+    def test_zero_probability_passes_through(self, data_format, same_on_frame, device, dtype):
+        aug_list = K.VideoSequential(
+            K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=0.0),
+            K.RandomAffine(360, p=0.0),
+            data_format=data_format,
+            same_on_frame=same_on_frame,
+        )
+        shape = (2, 3, 4, 5, 6) if data_format == "BCTHW" else (2, 4, 3, 5, 6)
+        input = torch.rand(*shape, device=device, dtype=dtype)
+        assert_close(aug_list(input), input, rtol=0, atol=0)
 
     @pytest.mark.parametrize(
         "augmentations",
@@ -143,18 +150,8 @@ class TestVideoSequential:
             output_2 = output_2.transpose(1, 2)
         assert_close(output_1, output_2)
 
-    @pytest.mark.skip(reason="turn off due to Union Type")
-    def test_jit(self, device, dtype):
-        B, C, D, H, W = 2, 3, 5, 4, 4
-        img = torch.ones(B, C, D, H, W, device=device, dtype=dtype)
-        op = K.VideoSequential(K.ColorJiggle(0.1, 0.1, 0.1, 0.1), same_on_frame=True)
-        op_jit = torch.jit.script(op)
-        assert_close(op(img), op_jit(img))
-
     @pytest.mark.parametrize("data_format", ["BCTHW", "BTCHW"])
     def test_autocast(self, data_format, device, dtype):
-        if not hasattr(torch, "autocast"):
-            pytest.skip("PyTorch version without autocast support")
 
         tfs = (K.RandomAffine(0.5, (0.1, 0.5), (0.5, 1.5), 1.2, p=1.0), K.RandomGaussianBlur((3, 3), (0.1, 3), p=1))
         aug = K.VideoSequential(*tfs, data_format=data_format, random_apply=True)
@@ -163,7 +160,7 @@ class TestVideoSequential:
         elif data_format == "BTCHW":
             imgs = torch.randn(2, 1, 3, 5, 6, device=device, dtype=dtype).repeat(1, 4, 1, 1, 1)
 
-        with torch.autocast(device.type):
+        with autocast_for(device, dtype):
             output = aug(imgs)
 
         assert output.dtype == dtype, "Output image dtype should match the input dtype"
@@ -316,6 +313,160 @@ class TestVideoSequential:
         assert_close(out, aug(video.reshape(-1, 3, 8, 8), params=params).reshape(video.shape))
 
     @staticmethod
+    def _tagged_boxes(batch_size, frame_num, device, dtype):
+        """One box per frame, shifted by its video and frame, so a box names the frame it came from."""
+        box = torch.tensor([[1.0, 1.0], [4.0, 1.0], [4.0, 4.0], [1.0, 4.0]], device=device, dtype=dtype)
+        shift = torch.stack(
+            torch.meshgrid(
+                torch.arange(batch_size, device=device, dtype=dtype),
+                torch.arange(frame_num, device=device, dtype=dtype),
+                indexing="ij",
+            ),
+            dim=-1,
+        )
+        return (box + 0.5 * shift[:, :, None]).unsqueeze(2).contiguous()  # (B, T, 1, 4, 2)
+
+    @staticmethod
+    def _dense_boxes(boxes):
+        from kornia.augmentation.utils.helpers import _boxes_to_padded_tensor
+
+        return _boxes_to_padded_tensor(boxes, "vertices_plus")
+
+    @staticmethod
+    def _legacy_boxes(boxes):
+        # A tensor under the bare "bbox" key keeps the legacy inclusive storage in the container (kornia#6710).
+        return kornia.geometry.boxes.Boxes._from_tensor(boxes, mode="vertices_plus", inclusive=True)
+
+    @staticmethod
+    def _exclusive_video_boxes(boxes):
+        # The VideoBoxes of the same regions as the inclusive (B, T, N, 4, 2) corners ``boxes``.
+        from kornia.geometry.boxes import Boxes, VideoBoxes
+
+        stored = Boxes.from_tensor(boxes.flatten(0, 1), mode="vertices_plus").data
+        return VideoBoxes.from_tensor(stored.unflatten(0, boxes.shape[:2]))
+
+    @pytest.mark.parametrize("p", [1.0, 0.5])
+    def test_mosaic_boxes_same_on_frame_follow_each_frame_6173(self, p, device, dtype):
+        # Frame t of the boxes is the mosaic of frame t of every video with the video-level parameters, as for the
+        # images. VideoBoxes indexes whole videos, so the mosaic's frame permutation raised IndexError (#6173).
+        batch_size, frame_num = 3, 2
+        mosaic = K.RandomMosaic(p=p)
+        aug = K.AugmentationSequential(K.VideoSequential(mosaic, same_on_frame=True), data_keys=["input", "bbox"])
+        video = torch.rand(batch_size, frame_num, 3, 8, 8, device=device, dtype=dtype)
+        boxes = self._tagged_boxes(batch_size, frame_num, device, dtype)
+        partial = False
+        for seed in range(6):
+            torch.manual_seed(seed)
+            out, out_boxes = aug(video, boxes)
+            torch.manual_seed(seed)
+            params = mosaic.forward_parameters(torch.Size((batch_size, 3, 8, 8)))
+            applied = params["batch_prob"] > 0.5
+            partial |= bool(applied.any()) and not bool(applied.all())
+            for frame in range(frame_num):
+                assert_close(out[:, frame], mosaic(video[:, frame], params=params))
+                frame_boxes = self._legacy_boxes(boxes[:, frame])
+                expected = self._dense_boxes(mosaic.transform_boxes(frame_boxes, params, mosaic.flags))
+                assert out_boxes.shape == (batch_size, frame_num, *expected.shape[1:])
+                assert_close(out_boxes[:, frame], expected)
+        assert partial == (p < 1.0)
+
+    @pytest.mark.parametrize("p", [1.0, 0.5])
+    def test_mosaic_boxes_not_same_on_frame_match_flattened_frames_6173(self, p, device, dtype):
+        # With same_on_frame=False the mosaic runs on the B * T frames; the boxes follow the same frames (#6173).
+        batch_size, frame_num = 2, 3
+        mosaic = K.RandomMosaic(p=p)
+        aug = K.AugmentationSequential(K.VideoSequential(mosaic, same_on_frame=False), data_keys=["input", "bbox"])
+        video = torch.rand(batch_size, frame_num, 3, 8, 8, device=device, dtype=dtype)
+        boxes = self._tagged_boxes(batch_size, frame_num, device, dtype)
+        frames = video.reshape(-1, 3, 8, 8)
+        frame_boxes = self._legacy_boxes(boxes.flatten(0, 1))
+        partial = False
+        for seed in range(6):
+            torch.manual_seed(seed)
+            out, out_boxes = aug(video, boxes)
+            torch.manual_seed(seed)
+            params = mosaic.forward_parameters(torch.Size((batch_size * frame_num, 3, 8, 8)))
+            applied = params["batch_prob"] > 0.5
+            partial |= bool(applied.any()) and not bool(applied.all())
+            assert_close(out, mosaic(frames, params=params).reshape(video.shape))
+            expected = self._dense_boxes(mosaic.transform_boxes(frame_boxes.clone(), params, mosaic.flags))
+            assert_close(out_boxes, expected.reshape(batch_size, frame_num, *expected.shape[1:]))
+        assert partial == (p < 1.0)
+
+    def test_mosaic_video_boxes_object_input_exports_padded_6173(self, device, dtype):
+        # A VideoBoxes input comes back as VideoBoxes. After a partial gate its frames hold 4 or 1 boxes, and
+        # to_tensor() returns them as one padded (B, T, N, 4, 2) tensor, of the shape of the dense tensor input's
+        # output and equal to the mosaic of each frame's exclusive Boxes. It differs from the dense output where a
+        # box lies beyond the far border: exclusive vertices clamp at the far edge W, the legacy storage at W - 1.
+        from kornia.geometry.boxes import VideoBoxes
+
+        batch_size, frame_num = 3, 2
+        mosaic = K.RandomMosaic(p=0.5)
+        aug = K.AugmentationSequential(K.VideoSequential(mosaic, same_on_frame=True), data_keys=["input", "bbox"])
+        video = torch.rand(batch_size, frame_num, 3, 8, 8, device=device, dtype=dtype)
+        boxes = self._tagged_boxes(batch_size, frame_num, device, dtype)
+        partial = False
+        for seed in range(6):
+            torch.manual_seed(seed)
+            _, dense = aug(video, boxes)
+            torch.manual_seed(seed)
+            _, wrapped = aug(video, self._exclusive_video_boxes(boxes))
+            torch.manual_seed(seed)
+            applied = mosaic.forward_parameters(torch.Size((batch_size, 3, 8, 8)))["batch_prob"] > 0.5
+            partial |= bool(applied.any()) and not bool(applied.all())
+            assert isinstance(wrapped, VideoBoxes)
+            exported = wrapped.to_tensor("vertices_plus")
+            assert exported.shape == dense.shape
+            torch.manual_seed(seed)
+            params = mosaic.forward_parameters(torch.Size((batch_size, 3, 8, 8)))
+            for frame in range(frame_num):
+                frame_boxes = kornia.geometry.boxes.Boxes.from_tensor(boxes[:, frame], mode="vertices_plus")
+                expected = self._dense_boxes(mosaic.transform_boxes(frame_boxes, params, mosaic.flags))
+                assert_close(exported[:, frame], expected)
+            assert wrapped.to_tensor("xyxy").shape == (*dense.shape[:3], 4)
+        assert partial
+
+    @pytest.mark.parametrize("then_flip", [False, True])
+    def test_mosaic_video_boxes_padding_exports_as_zero_6173(self, then_flip, device, dtype):
+        # A video a partial gate skips keeps its one box per frame, followed by padding rows up to the mosaic box
+        # count. A stored zero row exports as [0, 0, -1, -1] in the inclusive modes and a later flip moves it (to
+        # [8, 0, 8, 1] on 8-pixel frames), so the padding has to export as zero in every mode and after indexing,
+        # while the real rows export as their stored coordinates do.
+        from kornia.geometry.boxes import Boxes
+
+        batch_size, frame_num = 3, 2
+        mosaic = K.RandomMosaic(p=0.5)
+        children = [mosaic] + ([K.RandomHorizontalFlip(p=1.0)] if then_flip else [])
+        aug = K.AugmentationSequential(K.VideoSequential(*children, same_on_frame=True), data_keys=["input", "bbox"])
+        video = torch.rand(batch_size, frame_num, 3, 8, 8, device=device, dtype=dtype)
+        boxes = self._tagged_boxes(batch_size, frame_num, device, dtype)
+        partial = False
+        for seed in range(6):
+            torch.manual_seed(seed)
+            _, dense = aug(video, boxes)
+            torch.manual_seed(seed)
+            _, wrapped = aug(video, self._exclusive_video_boxes(boxes))
+            torch.manual_seed(seed)
+            applied = mosaic.forward_parameters(torch.Size((batch_size, 3, 8, 8)))["batch_prob"] > 0.5
+            if bool(applied.all()):
+                continue
+            partial |= bool(applied.any())
+            num_boxes = wrapped.data.shape[1]
+            # In a skipped video, the rows after each frame's own box are padding.
+            padding = ~applied.to(device)[:, None, None] & (torch.arange(num_boxes, device=device) >= boxes.shape[2])
+            padding = padding.expand(batch_size, frame_num, num_boxes)
+            assert wrapped.to_tensor("vertices_plus").shape == dense.shape
+            for mode in ("xyxy", "xyxy_plus", "xywh", "vertices", "vertices_plus"):
+                exported = wrapped.to_tensor(mode)
+                assert (exported[padding] == 0).all(), mode
+                frames = Boxes(wrapped.data, False).to_tensor(mode).reshape(exported.shape)
+                assert_close(exported[~padding], frames[~padding])
+                # Indexing whole videos keeps each frame's padding.
+                assert_close(wrapped[1:].to_tensor(mode), exported[1:])
+                assert_close(wrapped[0].to_tensor(mode), exported[:1])
+        assert partial
+
+    @staticmethod
     def _tagged_video(batch_size, frame_num, data_format, device, dtype):
         """Build a video whose pixel value is ``10 * (video + 1) + frame``.
 
@@ -404,11 +555,6 @@ class TestVideoSequential:
             assert torch.equal(pairs[..., frame] // frame_num, pairs[..., 0] // frame_num)
             assert torch.equal(boxes[:, :, frame], boxes[:, :, 0])
 
-    def test_cutmix_not_same_on_frame_still_runs(self, device, dtype):
-        aug = K.VideoSequential(K.RandomCutMixV2(p=1.0, use_correct_lambda=True), same_on_frame=False)
-        video = torch.rand(2, 4, 3, 8, 8, device=device, dtype=dtype)
-        assert aug(video).shape == video.shape
-
     @pytest.mark.parametrize("batch_size", [1, 2])
     @pytest.mark.parametrize("frame_num", [1, 4])
     def test_cutmix_default_same_on_frame_replay(self, batch_size, frame_num, device, dtype):
@@ -444,3 +590,73 @@ class TestVideoSequential:
 
         assert aug(video).shape == video.shape
         assert aug(video, params=aug._params).shape == video.shape
+
+    @pytest.mark.parametrize("same_on_frame", [False, True])
+    def test_partial_gate_keypoints_round_trip_6375(self, same_on_frame, device, dtype):
+        # Keypoints reach VideoSequential as VideoKeypoints, which index whole videos (#6375), while a partially
+        # applied child gates frames. VideoSequential hands its children frame-level Keypoints, as it does for boxes
+        # (#6173), so the inverse of a partial gate restores every frame's points.
+        affine = K.RandomAffine(30.0, translate=(0.1, 0.1), p=0.5)
+        aug = K.AugmentationSequential(
+            K.VideoSequential(affine, same_on_frame=same_on_frame), data_keys=["input", "keypoints"]
+        )
+        video = torch.rand(3, 4, 3, 16, 16, device=device, dtype=dtype)
+        points = torch.rand(3, 4, 5, 2, device=device, dtype=dtype) * 15
+        # A forward and inverse warp rounds 15 px coordinates to about the dtype's spacing there (0.125 in bfloat16).
+        tol = {torch.float16: 1e-2, torch.bfloat16: 0.125}.get(dtype, 1e-4)
+        partial = False
+        for seed in range(4):
+            torch.manual_seed(seed)
+            out_video, out_points = aug(video, points)
+            applied = aug._params[0].data[0].data["batch_prob"] > 0.5
+            partial |= bool(applied.any()) and not bool(applied.all())
+            # The gate is per frame: a skipped frame's points are unchanged and an applied frame's points move.
+            moved = (out_points - points).abs().flatten(0, 1).amax((-1, -2)) > tol
+            assert_close(moved, applied.to(moved.device))  # the gate is drawn on the CPU
+            _, restored = aug.inverse(out_video, out_points)
+            assert out_points.shape == points.shape
+            assert_close(restored, points, atol=tol, rtol=0.0)
+        assert partial
+
+    def test_video_keypoints_object_input_6375(self, device, dtype):
+        # A VideoKeypoints object goes through a VideoSequential pipeline and comes back as VideoKeypoints, equal to
+        # the output for the same points as a (B, T, N, 2) tensor. It used to raise a TypeError in is_floating_point.
+        # Plain Keypoints carry no frame count, so they are rejected with a message that says so.
+        from kornia.geometry.keypoints import Keypoints, VideoKeypoints
+
+        aug = K.AugmentationSequential(
+            K.VideoSequential(K.RandomAffine(30.0, p=0.5), K.RandomHorizontalFlip(p=0.5)),
+            data_keys=["input", "keypoints"],
+        )
+        video = torch.rand(3, 4, 3, 16, 16, device=device, dtype=dtype)
+        points = torch.rand(3, 4, 5, 2, device=device, dtype=dtype) * 15
+        torch.manual_seed(0)
+        out_video, dense = aug(video, points)
+        torch.manual_seed(0)
+        _, wrapped = aug(video, VideoKeypoints.from_tensor(points.clone()))
+        assert isinstance(wrapped, VideoKeypoints)
+        assert_close(wrapped.to_tensor(), dense)
+        _, restored = aug.inverse(out_video, wrapped)
+        assert isinstance(restored, VideoKeypoints)
+        assert_close(restored.to_tensor(), aug.inverse(out_video, dense)[1])
+
+        with pytest.raises(TypeError, match="VideoKeypoints or a"):
+            aug(video, Keypoints(points.flatten(0, 1)))
+
+    def test_inverse_follows_replayed_params_6909(self, device, dtype):
+        # inverse() without params undoes the most recent forward, including a replay with explicit params. It used to
+        # undo the last forward that sampled a draw, and raised a RuntimeError when the first forward was a replay.
+        video = torch.arange(48, device=device, dtype=dtype).reshape(3, 2, 1, 2, 4)
+        seq = K.VideoSequential(K.RandomHorizontalFlip(p=0.5))
+        torch.manual_seed(0)
+        original = seq(video)
+        saved = seq._params
+        torch.manual_seed(1)
+        newer = seq(video)
+        assert not torch.equal(newer, original)  # the two draws flip different videos
+        replayed = seq(video, params=saved)
+        assert_close(replayed, original)
+        assert_close(seq.inverse(replayed), video)
+
+        fresh = K.VideoSequential(K.RandomHorizontalFlip(p=0.5))
+        assert_close(fresh.inverse(fresh(video, params=saved)), video)

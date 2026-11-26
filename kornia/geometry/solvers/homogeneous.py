@@ -22,6 +22,7 @@ from __future__ import annotations
 import torch
 
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core.utils import _needs_derivatives
 
 
 def _det3(
@@ -63,7 +64,12 @@ def _det3(
 
 
 def null_vector_3x4(A: torch.Tensor) -> torch.Tensor:
-    r"""Return the null vector of a rank-3 matrix of shape :math:`(*, 3, 4)`.
+    r"""Compute the null vector of rank-3 ``(*, 3, 4)`` matrices from cofactors, without an SVD.
+
+    ``v = null_vector_3x4(A)`` takes matrices ``(*, 3, 4)`` and returns unnormalized vectors ``(*, 4)`` with
+    :math:`A v = 0`: the last right singular vector up to scale and sign when ``A`` has rank 3, and the zero vector
+    when its rank is lower. Each component is a signed ``3 x 3`` determinant, so no LAPACK or cuSOLVER call is made.
+    For a least-squares null vector of a matrix with more rows, use an SVD (:func:`torch.linalg.svd`).
 
     The null vector :math:`\mathbf{v} \in \mathbb{R}^4` satisfies
     :math:`A\,\mathbf{v} = \mathbf{0}`.  For a matrix of rank 3 this solution
@@ -96,14 +102,18 @@ def null_vector_3x4(A: torch.Tensor) -> torch.Tensor:
         rank-deficient inputs (rank < 3) the result is the zero vector.
 
     Args:
-        A: matrix of shape :math:`(*, 3, 4)`.
+        A: matrix of shape ``(*, 3, 4)``.
 
     Returns:
-        Null vector of shape :math:`(*, 4)`.
+        Null vector of shape ``(*, 4)``.
 
     Raises:
         TypeCheckError: if ``A`` is not a :class:`torch.Tensor`.
         ShapeError: if the last two dimensions of ``A`` are not ``(3, 4)``.
+
+    See Also:
+        - :func:`~kornia.geometry.epipolar.triangulate_points`: its ``"cofactor"`` solver uses these minors on the
+          ``4 x 4`` DLT systems of a triangulation.
 
     Example:
         >>> A = torch.tensor([[[1., 0., 0., 0.],
@@ -170,7 +180,7 @@ def null_vector_3x4(A: torch.Tensor) -> torch.Tensor:
     return torch.stack([v0, v1, v2, v3], dim=-1)
 
 
-def _null_space_lu(A: torch.Tensor) -> torch.Tensor:
+def _null_space_lu(A: torch.Tensor, *, rank_deficient_basis: bool = False) -> torch.Tensor:
     r"""Right null spaces of a batch of ``(B, m, n)`` matrices, ``m < n``, as ``(B, n, n - m)``.
 
     With ``A^T = P L U`` from a partial-pivoted LU factorization, ``f^T A^T = 0`` exactly when ``y = P^T f`` solves
@@ -182,9 +192,40 @@ def _null_space_lu(A: torch.Tensor) -> torch.Tensor:
     backend, and working on ``A`` rather than ``A^T A`` does not square its condition number. ``L_1`` is unit
     triangular, so a rank-deficient ``A`` still gives a basis of null vectors, of dimension ``n - m`` only, as long
     as the factorization stays finite; callers treat non-finite vectors as degenerate.
+
+    On CUDA without a gradient, a matrix whose factorization meets an exactly zero pivot before its last column (an
+    exactly rank-deficient ``A``, such as one with a zero row above its last) gives NaN instead, unless
+    ``rank_deficient_basis`` asks for that basis on every backend; every other matrix gives the same basis.
     """
     batch, m, n = A.shape
-    lu, pivots, _ = torch.linalg.lu_factor_ex(A.mT)
+    stopped = None
+    if A.device.type == "cuda" and not rank_deficient_basis and not _needs_derivatives(A):
+        # Since torch 2.15, a batch of non-square matrices on CUDA is factorized one matrix at a time (looped
+        # cuSOLVER, a regression from dropping MAGMA: pytorch/pytorch#200581), and a square batch still in one
+        # batched cuBLAS kernel. On an RTX 4090, 8192 (9, 8) matrices take 920 ms on torch 2.15 and 8 ms on 2.14,
+        # against 0.02 ms square, and 0.3 ms for this whole function. Zero columns appended on the right make A^T
+        # square and leave its first m columns and their pivots unchanged, since partial pivoting never reads a column
+        # before eliminating it; the two kernels agree to the bit there. CPU keeps the non-square call, which is faster.
+        # The batched kernel stops at the first exactly zero pivot, where LAPACK skips that column and goes on: a
+        # zero pivot before column m leaves the rest of L unfinished, so that matrix's basis is reported as NaN
+        # (info, the first zero pivot, is always at most m + 1 here, as the padding is zero). A zero pivot at
+        # column m itself is the last step and agrees with the non-square factorization. A matrix with a
+        # duplicated row, such as a minimal sample with a repeated correspondence, has such a zero pivot unless the
+        # copy is its last row. The padded matrix is singular, so its derivatives are not finite: a gradient
+        # (torch.func.grad included, whose inputs require one) or a forward-mode tangent (dual tensors,
+        # torch.func.jvp and jacfwd) keeps the non-square call. _needs_derivatives also sees both through
+        # torch.func.vmap, whose batching wrapper hides them. Forward mode fails in torch.lu_unpack on both paths
+        # on torch 2.15; the check keeps it off this one if that is fixed. torch.func.vmap without a derivative
+        # takes this path and agrees to the bit. Retire this branch once pytorch/pytorch#200581 is fixed and no
+        # supported torch release has the regression.
+        # Copying into one zero tensor writes the result once; a cat also materializes the zero block first.
+        padded = A.new_zeros(batch, n, n)
+        padded[..., :m] = A.mT
+        lu, pivots, info = torch.linalg.lu_factor_ex(padded)
+        lu, pivots = lu[..., :m], pivots[..., :m]
+        stopped = (info > 0) & (info < m)
+    else:
+        lu, pivots, _ = torch.linalg.lu_factor_ex(A.mT)
     square = lu[:, :m, :m]
     if torch.compiler.is_compiling() and A.device.type == "cuda":
         # The CUDA meta kernel tests column-major contiguity of this strided LU view. With an unbacked
@@ -198,7 +239,10 @@ def _null_space_lu(A: torch.Tensor) -> torch.Tensor:
     lower = torch.linalg.solve_triangular(square, rhs, upper=False, left=False, unitriangular=True)
     eye = torch.eye(n - m, dtype=A.dtype, device=A.device).expand(batch, -1, -1)
     permutation, _, _ = torch.lu_unpack(lu, pivots, unpack_data=False)
-    return permutation @ torch.cat([-lower.mT, eye], 1)
+    basis = permutation @ torch.cat([-lower.mT, eye], 1)
+    if stopped is not None:
+        basis = torch.where(stopped[:, None, None], torch.full_like(basis, float("nan")), basis)
+    return basis
 
 
 def _null_space_householder(A: torch.Tensor) -> torch.Tensor:

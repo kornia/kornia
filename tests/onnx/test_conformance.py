@@ -33,23 +33,20 @@ from __future__ import annotations
 import pytest
 
 from testing.conformance import (
-    ENFORCED_TORCH_RELEASES,
     LEGACY_PASSES,
-    ONNX,
     import_survey_module,
     load_known_failures,
-    manifest_path,
     parametrize_cases,
     pin_problems,
     process_state,
     promised_case,
-    promised_cases,
     raise_for_status,
     registration_problems,
     run_onnx_case,
     selection,
     state_changes,
 )
+from testing.conformance_promise import ENFORCED_TORCH_RELEASES, ONNX, manifest_path, promised_cases
 
 # Every case runs on CPU tensors and is compared in onnxruntime as numpy, whatever ``--device`` says. The registries
 # and the harness call torch.manual_seed, which seeds CUDA and MPS too; testing.conformance forks only the CPU

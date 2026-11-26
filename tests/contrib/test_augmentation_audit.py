@@ -190,6 +190,109 @@ class TestAugmentationAudit(BaseTester):
         assert report.spatial[0].metric == "corner_hausdorff"
         assert report.spatial[0].roundtrip_max.item() < 1e-4
 
+    @pytest.mark.parametrize("key", ["bbox", "bbox_xywh"])
+    def test_half_precision_exclusive_boxes_shift_after_promotion_6710(self, key, device):
+        # The diagnostics move exclusive vertices half a pixel into the pixel-centre frame. bfloat16 has no 139.5 or
+        # 129.5, so the shift runs in float32: the exact flip of x = 130..140 to 20..30 in a 160-pixel image reports
+        # no round-trip error, where shifting in bfloat16 reported 0.5.
+        image = torch.rand(1, 3, 32, 160, device=device)
+        xywh = torch.tensor([[[130.0, 4.0, 10.0, 6.0]]], device=device, dtype=torch.bfloat16)
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1), data_keys=["input", key])
+        (_, out), report = audit(aug, image, Boxes.from_tensor(xywh, mode="xywh") if key == "bbox" else xywh)
+        exported = out.to_tensor("xywh") if key == "bbox" else out
+        self.assert_close(exported, xywh.new_tensor([[[20.0, 4.0, 10.0, 6.0]]]), atol=0.0, rtol=0.0)
+        assert report.spatial[0].roundtrip_max.item() < 1e-4
+        assert report.spatial[0].out_of_frame.item() == 0
+
+    @pytest.mark.parametrize("key", ["bbox", "bbox_xywh"])
+    def test_exclusive_edge_just_below_zero_is_out_of_frame_6710(self, key, device):
+        # Exclusive edges lie in [0, W]. The frame is checked on the edges themselves: shifting -1e-8 by -1/2 into the
+        # pixel-centre frame first rounds it onto the bound -0.5 in float32, so the box would count as inside.
+        image = torch.rand(1, 3, 4, 4, device=device)
+        xywh = torch.tensor([[[-1e-8, 1.0, 1.0, 1.0]]], device=device)
+        aug = K.AugmentationSequential(data_keys=["input", key])
+        _, report = audit(aug, image, Boxes.from_tensor(xywh, mode="xywh") if key == "bbox" else xywh)
+        assert report.spatial[0].out_of_frame.item() == 1
+        inside = xywh.new_tensor([[[0.0, 1.0, 4.0, 3.0]]])
+        _, report = audit(aug, image, Boxes.from_tensor(inside, mode="xywh") if key == "bbox" else inside)
+        assert report.spatial[0].out_of_frame.item() == 0
+
+    def test_rows_without_a_box_are_left_out_6710(self, device):
+        # Zero-extent "bbox_xywh" rows hold no box: the container removes them and returns all-zero rows. The audit
+        # leaves them out of the counts and statistics. Inverse-mapping their zeros as a point reported a 20-pixel
+        # error for this exact flip, and for the all-empty second sample.
+        image = torch.rand(2, 3, 10, 20, device=device)
+        xywh = torch.zeros(2, 3, 4, device=device)
+        xywh[0, 1] = xywh.new_tensor([4.0, 3.0, 2.0, 2.0])
+        xywh[0, 2] = xywh.new_tensor([4.0, 3.0, 0.0, 2.0])
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input", "bbox_xywh"])
+        (_, out), report = audit(aug, image, xywh)
+        expected = torch.zeros_like(xywh)
+        expected[0, 1] = xywh.new_tensor([14.0, 3.0, 2.0, 2.0])
+        self.assert_close(out, expected, atol=0.0, rtol=0.0)
+        spatial = report.spatial[0]
+        assert spatial.count.tolist() == [1, 0]
+        assert spatial.roundtrip_valid_count.tolist() == [1, 0]
+        assert spatial.roundtrip_max[0].item() < 1e-4
+        assert spatial.roundtrip_max[1].isnan()
+        assert spatial.out_of_frame.tolist() == [0, 0]
+        assert spatial.out_of_frame_fraction[1].isnan()
+        assert report.warnings == []
+
+    def test_invalid_rows_of_boxes_objects_are_left_out_6710(self, device):
+        # A row that filtering removed holds no box either. The crop moves its stored zeros to (-5, -2), outside the
+        # frame, and it is not counted there. The zero rows of a bare-key tensor are coordinates and keep their round
+        # trip.
+        image = torch.rand(1, 3, 10, 20, device=device)
+        xyxy = torch.tensor([[[6.0, 3.0, 8.0, 5.0], [1.0, 1.0, 9.0, 9.0]]], device=device)
+        boxes = Boxes.from_tensor(xyxy).filter_boxes_by_area(max_area=10.0)
+        aug = K.AugmentationSequential(K.CenterCrop((6, 10)), data_keys=["input", "bbox"])
+        (_, out), report = audit(aug, image, boxes)
+        expected = xyxy.new_tensor([[[1.0, 1.0, 3.0, 3.0], [0.0, 0.0, 0.0, 0.0]]])
+        self.assert_close(out.to_tensor("xyxy"), expected, atol=0.0, rtol=0.0)
+        spatial = report.spatial[0]
+        assert spatial.count.tolist() == [1]
+        assert spatial.roundtrip_valid_count.tolist() == [1]
+        assert spatial.roundtrip_max.item() < 1e-4
+        assert spatial.out_of_frame.tolist() == [0]
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input", "bbox_xyxy"])
+        _, report = audit(aug, image, torch.zeros_like(xyxy))
+        assert report.spatial[0].count.tolist() == [2]
+        assert report.spatial[0].roundtrip_valid_count.tolist() == [2]
+
+    def test_invalid_rows_are_left_out_of_the_nonfinite_count_6710(self, device):
+        # The pixel-centre matrix with the last row (1, 1, 1) sends the edge-frame origin (-1/2, -1/2) to infinity,
+        # and with it the stored zeros of the float16 box that filtering removed. That row still exports as zeros and
+        # holds no box, so it is not counted as nonfinite and gives no warning.
+        image = torch.rand(1, 3, 10, 20, device=device)
+        xyxy = torch.tensor([[[6.0, 3.0, 8.0, 5.0], [1.0, 1.0, 9.0, 9.0]]], device=device, dtype=torch.float16)
+        boxes = Boxes.from_tensor(xyxy).filter_boxes_by_area(max_area=10.0)
+        module = K.RandomPerspective(0.5, p=1.0)
+        params = module.forward_parameters(image.shape)
+        start = image.new_tensor([[[0.0, 0.0], [19.0, 0.0], [19.0, 9.0], [0.0, 9.0]]])
+        params["start_points"] = start
+        params["end_points"] = start / (start.sum(-1, keepdim=True) + 1.0)
+        aug = K.AugmentationSequential(module, data_keys=["input", "bbox"])
+        (_, out), report = audit(aug, image, boxes, params=[ParamItem("RandomPerspective_0", params)])
+        assert not out.data[0, 1].isfinite().any()
+        self.assert_close(out.to_tensor("xyxy")[0, 1], xyxy.new_zeros(4), atol=0.0, rtol=0.0)
+        spatial = report.spatial[0]
+        assert spatial.count.tolist() == [1]
+        assert spatial.nonfinite.tolist() == [0]
+        assert not any("nonfinite" in warning for warning in report.warnings)
+
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="MPS has no float64 boxes")
+    def test_bounds_read_the_returned_precision_6710(self, device):
+        # A float64 right edge at 4 + 1e-7 lies outside a 4-pixel frame. The check reads it as returned; the float32
+        # diagnostic dtype of the image rounded it onto 4.
+        image = torch.rand(1, 3, 4, 4, device=device)
+        aug = K.AugmentationSequential(data_keys=["input", "bbox"])
+        for right, outside in ((4.0000001, 1), (4.0, 0)):
+            xyxy = torch.tensor([[[1.0, 1.0, right, 2.0]]], device=device, dtype=torch.float64)
+            (_, out), report = audit(aug, image, Boxes.from_tensor(xyxy))
+            self.assert_close(out.to_tensor("xyxy"), xyxy, atol=0.0, rtol=0.0)
+            assert report.spatial[0].out_of_frame.item() == outside
+
     def test_box_tensor_envelope_loss(self, device, dtype):
         image = torch.rand(1, 1, 20, 20, device=device, dtype=dtype)
         boxes = Boxes(image.new_tensor([[[[6, 7], [12, 7], [12, 13], [6, 13]]]]))
@@ -216,18 +319,21 @@ class TestAugmentationAudit(BaseTester):
         self.assert_close(report.spatial[0].roundtrip_max, torch.tensor([7], device=device, dtype=diagnostic_dtype))
         assert "round-trip error" in report.summary()
 
-    def test_nonrigid_silent_identity_is_not_supported(self, device, dtype):
+    def test_nonrigid_geometry_is_not_supported(self, device, dtype):
         image = torch.rand(1, 1, 8, 10, device=device, dtype=dtype)
-        aug = K.AugmentationSequential(K.RandomElasticTransform(p=1), data_keys=["input", "keypoints"])
-        points = image.new_tensor([[[1, 2]]])
-        outputs, report = audit(aug, image, points)
-        self.assert_close(outputs[1], points)
+        aug = K.AugmentationSequential(K.RandomElasticTransform(p=1), data_keys=["input", "mask"])
+        _, report = audit(aug, image, torch.ones_like(image))
         assert report.geometry_status == "unsupported"
         assert report.matrix is None
         assert report.inverse_matrix is None
-        assert report.spatial[0].roundtrip_valid_count.item() == 0
-        assert torch.isnan(report.spatial[0].roundtrip_max).all()
         assert "non-rigid" in report.summary()
+
+    def test_nonrigid_keypoints_are_refused(self, device, dtype):
+        # The sequence refuses keypoints through a non-rigid warp (#4420); they used to come back unchanged.
+        image = torch.rand(1, 1, 8, 10, device=device, dtype=dtype)
+        aug = K.AugmentationSequential(K.RandomElasticTransform(p=1), data_keys=["input", "keypoints"])
+        with pytest.raises(NotImplementedError, match="RandomElasticTransform does not support keypoints"):
+            audit(aug, image, image.new_tensor([[[1, 2]]]))
 
     def test_singular_and_nonfinite_matrices(self, device, dtype):
         class SingularFlip(K.RandomHorizontalFlip):

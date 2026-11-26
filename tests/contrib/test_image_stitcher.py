@@ -367,13 +367,14 @@ class TestImageStitcher(BaseTester):
             assert out.shape[:-1] == torch.Size([1, 3, 6])
             assert out.shape[-1] <= 12
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["dtype_name"] == "float64"), reason="MPS has no float64"
+    )
     @pytest.mark.parametrize("estimator", ["ransac", "vanilla"])
     def test_real_matcher_in_the_image_dtype(self, estimator, device, dtype):
         # A real matcher, not keypoints mocked in the test dtype: a float16 or bfloat16 SIFT matcher returns float32
         # keypoints and so a float32 homography, which the stitcher must warp the half-precision image with. The right
         # crop overlaps the left one by 64 px of a 96 x 224 scene, so the panorama is about 224 px wide.
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS has no float64")
         if not (supports_reflect_padding(device, dtype) and supports_replicate_padding(device, dtype)):
             pytest.skip(f"SIFTFeature pads with reflection and replication, absent for {dtype} on {device.type}")
         g = torch.Generator().manual_seed(0)

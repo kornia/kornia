@@ -29,7 +29,7 @@ from kornia.augmentation.utils import (
     _joint_range_check,
 )
 from kornia.augmentation.utils.helpers import _constant_tensor
-from kornia.core.utils import _extract_device_dtype
+from kornia.core.utils import _extract_device_dtype, _to_device_nonblocking
 from kornia.geometry.bbox import bbox_generator
 
 __all__ = ["CutmixGenerator"]
@@ -63,6 +63,9 @@ class CutmixGenerator(RandomGeneratorBase):
 
     """
 
+    # Its ``make_samplers`` reads the values of a range, and its draws carry no gradient back to the range.
+    _follows_ranges_in_forward = False
+
     def __init__(
         self,
         cut_size: Optional[Union[torch.Tensor, Tuple[float, float]]] = None,
@@ -83,10 +86,15 @@ class CutmixGenerator(RandomGeneratorBase):
         return f"cut_size={self.cut_size}, beta={self.beta}, num_mix={self.num_mix}"
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
+        # torch draws Beta through Dirichlet, which has no CPU half-precision kernel: a generator moved to float16 by
+        # .to() raised on every draw. Draw in float32 for half precision, as the position samplers do (#4553). Build
+        # the concentration from the supplied beta directly in that dtype: a float16 round trip turns a large beta
+        # into inf and a small one into 0.
+        beta_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
         if self.beta is None:
-            self._beta = torch.tensor(1.0, device=device, dtype=dtype)
+            self._beta = torch.tensor(1.0, device=device, dtype=beta_dtype)
         else:
-            self._beta = torch.as_tensor(self.beta, device=device, dtype=dtype)
+            self._beta = torch.as_tensor(self.beta, device=device, dtype=beta_dtype)
         if self.cut_size is None:
             self._cut_size = torch.tensor([0.0, 1.0], device=device, dtype=dtype)
         else:
@@ -125,19 +133,18 @@ class CutmixGenerator(RandomGeneratorBase):
 
         if batch_size == 0:
             return {
-                "mix_pairs": torch.zeros([0, 3], device=_device, dtype=torch.long),
-                "crop_src": torch.zeros([0, 4, 2], device=_device, dtype=_dtype),
+                "mix_pairs": torch.zeros([self.num_mix, 0], device=_device, dtype=torch.long),
+                "crop_src": torch.zeros([self.num_mix, 0, 4, 2], device=_device, dtype=_dtype),
+                "image_shape": _constant_tensor(batch_shape[-2:], device=_device, dtype=_dtype),
             }
 
         with torch.no_grad():
             batch_probs: torch.Tensor = _adapted_sampling(
                 (batch_size * self.num_mix,), self.prob_sampler, same_on_batch
             )
-            mix_pairs: torch.Tensor = (
-                _adapted_sampling((self.num_mix, batch_size), self.pair_sampler, False)
-                .to(device=_device, dtype=_dtype)
-                .argsort(dim=1)
-            )
+            mix_pairs: torch.Tensor = _to_device_nonblocking(
+                _adapted_sampling((self.num_mix, batch_size), self.pair_sampler, False), _device, _dtype
+            ).argsort(dim=1)
 
         if same_on_batch:
             cutmix_betas = _adapted_rsampling((self.num_mix,), self.beta_sampler, False).repeat_interleave(batch_size)
@@ -149,8 +156,8 @@ class CutmixGenerator(RandomGeneratorBase):
         cutmix_betas = torch.min(torch.max(cutmix_betas, self._cut_size[0]), self._cut_size[1])
         cutmix_rate = torch.sqrt(1.0 - cutmix_betas) * batch_probs
 
-        cut_height = (cutmix_rate * height).floor().to(device=_device, dtype=_dtype)
-        cut_width = (cutmix_rate * width).floor().to(device=_device, dtype=_dtype)
+        cut_height = _to_device_nonblocking((cutmix_rate * height).floor(), _device, _dtype)
+        cut_width = _to_device_nonblocking((cutmix_rate * width).floor(), _device, _dtype)
 
         # One size and start per row when independent; one per mix, repeated over rows when same_on_batch.
         # Legal starts run 0 .. side - cut_side inclusive; the clamp only guards a u -> 1 float round-up.
@@ -161,8 +168,8 @@ class CutmixGenerator(RandomGeneratorBase):
         else:
             x_start = _adapted_rsampling(_gen_shape, self.rand_sampler, False)
             y_start = _adapted_rsampling(_gen_shape, self.rand_sampler, False)
-        x_start = x_start.to(device=_device, dtype=_dtype) * (width - cut_width + 1)
-        y_start = y_start.to(device=_device, dtype=_dtype) * (height - cut_height + 1)
+        x_start = _to_device_nonblocking(x_start, _device, _dtype) * (width - cut_width + 1)
+        y_start = _to_device_nonblocking(y_start, _device, _dtype) * (height - cut_height + 1)
         x_start = torch.minimum(x_start.floor(), width - cut_width)
         y_start = torch.minimum(y_start.floor(), height - cut_height)
 

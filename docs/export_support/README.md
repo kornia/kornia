@@ -1,9 +1,11 @@
-# Graph-capture survey behind the survey page
+# Graph-capture survey behind the support page
 
-The [ONNX, torch.compile and torch.export survey](../source/get-started/index.rst) page of the
-documentation is rendered from `docs/source/_data/export_support.json`, a committed snapshot of
-what this directory measures. The page itself is generated at docs build time by
-`docs/generate_export_support.py`; nothing here runs during a docs build.
+The survey of the [ONNX, torch.compile and torch.export support](../source/get-started/index.rst) page
+of the documentation is rendered from `docs/source/_data/export_support.json`, a committed snapshot of
+what this directory measures; the page's support statement ("What Kornia promises") is rendered from
+`testing/conformance_promise.py`, the promise the conformance tests check. The page itself is
+generated at docs build time by `docs/generate_export_support.py`; nothing here runs during a docs
+build.
 
 ## What is measured
 
@@ -24,22 +26,27 @@ For each case:
 - **ONNX** (`harness.py`): `torch.onnx.export(dynamo=True, opset_version=18)`, `onnx.checker`,
   then an `onnxruntime` run compared against eager: the same dtype, and values within the case's tolerance.
 - **torch.export** and **torch.compile** (`probe_compile.py`): `torch.export.export`, then
-  `torch._dynamo.explain` for the graph-break count and a `torch.compile` run compared against
-  eager. The count is the operator's own: the wrapper returns a tensor output without probing its
-  attributes, which would be a break of its own after a resumed frame. An explain count of 0 is not
-  proof of a single graph (Dynamo can run part of a frame eagerly without recording a break; #6194);
-  the conformance test compiles with `fullgraph=True`.
+  `torch.compile(..., fullgraph=True)` compared against eager: `ok` means one graph that matches.
+  A case `fullgraph=True` refuses gets `torch._dynamo.explain`'s graph-break count and a default
+  `torch.compile` run compared against eager (`ok-breaks` when it matches). An explain count of 0 is
+  no proof of a single graph (Dynamo can run part or all of a frame eagerly without recording a
+  break; #6194), so such a case is `ok-breaks` with no break counted and the refusal as its reason.
+  The count is the operator's own: the wrapper returns a tensor output without probing its
+  attributes, which would be a break of its own after a resumed frame.
 
 Random operators cannot be compared value-for-value (the RNG stream differs inside the graph), so
 they are reported as *ok-unverified* when the captured program runs and returns finite outputs of
-the right shape.
+the right shape. Under `torch.compile` that does not mean one graph: a random case `fullgraph=True`
+refuses is compiled like the rest, with graph breaks, and nothing promises an *ok-unverified* case.
 
 The cases also drive the conformance tests of #5819. Every case the snapshot records as ONNX "ok"
-in a stable-core package, and not tagged `pretrained`, is promised to `tests/onnx/test_conformance.py`,
+in a stable-core package, not tagged `pretrained` and not excluded (`EXCLUDED` in
+`testing/conformance_promise.py`, with the reason), is promised to `tests/onnx/test_conformance.py`,
 which runs it through the same `harness.run_case`; every such case recorded as compile "ok" is promised
 to `tests/test_inductor_conformance.py`, which runs it through `probe_compile.run_case(case,
 export=False, fullgraph=True)`. Pull requests run both for the packages they touch and the packages
-that import them. Renaming, skipping or dropping a promised case therefore fails those tests, and the
+that import them. Renaming, skipping or dropping a promised case therefore fails those tests, and so
+does an exclusion whose case a regenerated snapshot no longer records as "ok" (delete the entry). The
 harness and the probe must not change the process they are imported into: the survey's own process
 settings (quiet logging and warnings, four threads, the compile probe's per-case timeout and Dynamo
 cache limit) are applied by `run_cases` and `probe_compile.main`, not at import.

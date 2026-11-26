@@ -130,9 +130,17 @@ class MaskDecoder(nn.Module):
         tokens = torch.cat((output_tokens, sparse_prompt_embeddings), dim=1)
 
         # Expand per-image data in batch direction to be per-mask
-        src = torch.repeat_interleave(image_embeddings, tokens.shape[0], dim=0)
+        src = (
+            image_embeddings.expand(tokens.shape[0], -1, -1, -1)
+            if image_embeddings.shape[0] == 1
+            else torch.repeat_interleave(image_embeddings, tokens.shape[0], dim=0)
+        )
         src = src + dense_prompt_embeddings
-        pos_src = torch.repeat_interleave(image_pe, tokens.shape[0], dim=0)
+        pos_src = (
+            image_pe.expand(tokens.shape[0], -1, -1, -1)
+            if image_pe.shape[0] == 1
+            else torch.repeat_interleave(image_pe, tokens.shape[0], dim=0)
+        )
         b, c, h, w = src.shape
 
         # Run the transformer
@@ -148,7 +156,7 @@ class MaskDecoder(nn.Module):
             hyper_in_list.append(self.output_hypernetworks_mlps[i](mask_tokens_out[:, i, :]))
         hyper_in = torch.stack(hyper_in_list, dim=1)
         b, c, h, w = upscaled_embedding.shape
-        masks = (hyper_in @ upscaled_embedding.view(b, c, h * w)).view(b, -1, h, w)
+        masks = (hyper_in @ upscaled_embedding.view(b, c, h * w)).view(b, hyper_in.shape[1], h, w)
 
         # Generate mask quality predictions
         iou_pred = self.iou_prediction_head(iou_token_out)

@@ -35,26 +35,6 @@ class TestNamedPose(BaseTester):
         assert isinstance(pose, NamedPose)
         assert isinstance(pose.pose, Se3)
 
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_cardinality(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_jit(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_exception(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_module(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_gradcheck(self, device):
-        pass
-
     def test_mul(self, device, dtype):
         b_from_a = NamedPose(
             Se3.trans_x(torch.tensor([1.0], device=device, dtype=dtype)), frame_src="frame_a", frame_dst="frame_b"
@@ -114,10 +94,12 @@ class TestNamedPose(BaseTester):
             b_from_a.pose.matrix(), NamedPose.from_rt(So3.from_matrix(rotation), translation).pose.matrix()
         )
 
+    @pytest.mark.applies_to(
+        dtypes=("float16", "float32", "float64"),
+        reason="torch.complex has no bfloat16 overload, so So2 cannot be built at all",
+    )
     @pytest.mark.parametrize("batch_size", [None, 1, 2])
     def test_from_rt_tensor_batch_2d(self, device, dtype, batch_size):
-        if dtype == torch.bfloat16:
-            pytest.skip("torch.complex has no bfloat16 overload, so So2 cannot be built at all")
         batch_shape = () if batch_size is None else (batch_size,)
         rotation = So2.random(batch_size, device=device, dtype=dtype).matrix()
         translation = torch.rand(*batch_shape, 2, device=device, dtype=dtype)
@@ -187,6 +169,15 @@ class TestNamedPose(BaseTester):
         assert b_from_a.translation.dtype == bf16
         assert isinstance((b_from_a.inverse() * b_from_a).pose, Se2)
 
+    def test_wrong_matrix_shape_message_6422(self, device, dtype):
+        # The message used to print [2, 2]x[2, 2] and carry a run of spaces from a backslash continuation.
+        with pytest.raises(ValueError) as excinfo:
+            NamedPose.from_rt(torch.eye(4, device=device, dtype=dtype), torch.zeros(4, device=device, dtype=dtype))
+        assert str(excinfo.value) == "R must be either [2, 2] or [3, 3], got torch.Size([4, 4])"
+        with pytest.raises(ValueError) as excinfo:
+            NamedPose.from_matrix(torch.eye(5, device=device, dtype=dtype))
+        assert str(excinfo.value) == "RT must be either [3, 3] or [4, 4], got torch.Size([5, 5])"
+
     def test_inverse(self, device, dtype):
         b_from_a = NamedPose(
             Se3.trans_x(torch.tensor([1.0], device=device, dtype=dtype)), frame_src="frame_a", frame_dst="frame_b"
@@ -221,6 +212,22 @@ class TestNamedPose(BaseTester):
         shift_x = torch.tensor([1.0, 0.0, 0.0], device=device, dtype=dtype)
         self.assert_close(points_in_b, (points_in_a + shift_x) @ rot_z.T, low_tolerance=low_tolerance)
         self.assert_close(a_from_b.transform_points(points_in_b), points_in_a, low_tolerance=low_tolerance)
+
+    def test_transform_points_point_set_with_unbatched_se3(self, device, dtype):
+        # #6426: an unbatched 3D pose maps an (N, 3) point set, as an unbatched 2D pose maps (N, 2).
+        torch.manual_seed(0)
+        points_in_a = (2 * torch.rand(7, 3) - 1).to(device, dtype)
+        b_from_a_se3 = Se3.rot_z(torch.tensor(0.5, device=device, dtype=dtype)) * Se3.trans_x(
+            torch.tensor(1.0, device=device, dtype=dtype)
+        )
+        b_from_a = NamedPose(b_from_a_se3, frame_src="frame_a", frame_dst="frame_b")
+
+        points_in_b = b_from_a.transform_points(points_in_a)
+
+        # R p + t in float64, on the CPU, from the same rounded pose and points: only the output is rounded
+        r = So3(Quaternion(b_from_a_se3.so3.q.data.cpu().double())).matrix()
+        expected = points_in_a.cpu().double() @ r.mT + b_from_a_se3.t.cpu().double()
+        self.assert_close(points_in_b.cpu(), expected.to(dtype))
 
 
 class TestNamedPoseConventions(BaseTester):
@@ -282,9 +289,8 @@ class TestNamedPoseConventions(BaseTester):
         low = dtype in (torch.float16, torch.bfloat16)
         self.assert_close(a_from_b.pose.matrix(), expected, low_tolerance=low)
 
+    @pytest.mark.applies_to(dtypes=("float16", "float32", "float64"), reason="torch.complex has no bfloat16 overload")
     def test_convention_named_pose_se2_composition_and_inverse(self, device, dtype):
-        if dtype == torch.bfloat16:
-            pytest.skip("torch.complex has no bfloat16 overload")
         # The Se2 half of the block: two non-commuting planar poses (M1 M2 != M2 M1 by 0.611), neither the identity.
         g1 = Se2.exp(torch.tensor([0.5, -1.0, 0.3], device=device, dtype=dtype))
         g2 = Se2.exp(torch.tensor([-0.2, 0.4, -0.7], device=device, dtype=dtype))
@@ -321,9 +327,11 @@ class TestNamedPoseConventions(BaseTester):
         )
         self.assert_close(a_from_b.pose.matrix(), expected_inv)
 
+    @pytest.mark.applies_to(
+        dtypes=("float16", "float32", "float64"),
+        reason="torch.complex has no bfloat16 overload, so So2 (and an Se2 pose) cannot be built at all",
+    )
     def test_named_pose_rejects_wrong_types_4937(self, device, dtype):
-        if dtype == torch.bfloat16:
-            pytest.skip("torch.complex has no bfloat16 overload, so So2 (and an Se2 pose) cannot be built at all")
         # https://github.com/kornia/kornia/issues/4937: the pose type is checked at construction, and composing poses
         # of different groups, or a NamedPose with something else, raises a TypeError that names the offending type.
         g1, _ = self._poses(device, dtype)

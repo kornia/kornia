@@ -23,11 +23,13 @@ import torch
 from kornia.augmentation import (
     AugmentationSequential,
     PatchMix,
+    RandomAffine,
     RandomCutMixV2,
     RandomHorizontalFlip,
     RandomJigsaw,
     RandomMixUpV2,
     RandomMosaic,
+    RandomRotation,
     RandomTransplantation,
     RandomTransplantation3D,
 )
@@ -49,8 +51,8 @@ class TestMixValidation(BaseTester):
         _, output = KeypointMix(p=p)(image, keypoints, data_keys=["input", "keypoints"])
         self.assert_close(output, keypoints + p)
 
-    @pytest.mark.parametrize("p", [0.0, 1.0])
-    @pytest.mark.parametrize("gate", [None, [0.0, 0.0], [1.0, 0.0]])
+    # A call that draws its own gate uses p; replayed params bring their gate, and p leaves the rejection alone.
+    @pytest.mark.parametrize("p,gate", [(0.0, None), (1.0, None), (0.0, [0.0, 0.0]), (0.0, [1.0, 0.0])])
     @pytest.mark.parametrize("constructor_keys", [False, True])
     @pytest.mark.parametrize(
         ("augmentation", "kwargs", "keys", "error"),
@@ -124,7 +126,7 @@ class TestMixValidation(BaseTester):
 
 
 class TestRandomMixUpV2(BaseTester):
-    def test_smoke(self, device, dtype):
+    def test_smoke(self):
         f = RandomMixUpV2()
         repr = "RandomMixUpV2(lambda_val=None, p=1.0, p_batch=1.0, same_on_batch=False)"
         assert str(f) == repr, str(f)
@@ -264,12 +266,12 @@ class TestRandomMixUpV2(BaseTester):
             labels.to(torch.float32),
         )
 
-    @pytest.mark.parametrize("p", [0.0, 0.5])
-    def test_partial_batch_passthrough(self, p, device, dtype):
-        # See TestRandomJigsaw.test_partial_batch_passthrough: output batch size must
-        # match the input and unselected samples must be left byte-identical.
+    def test_partial_batch_passthrough(self, device, dtype):
+        # See TestRandomJigsaw.test_partial_batch_passthrough: output batch size must match the input and unselected
+        # samples must be left byte-identical. Here p gates the whole batch, so p=0.5 either skips every sample, like
+        # p=0, or applies to every one, like the p=1 numerical tests; only p=0 is kept.
         torch.manual_seed(0)
-        f = RandomMixUpV2(p=p, data_keys=["input"])
+        f = RandomMixUpV2(p=0.0, data_keys=["input"])
 
         input = torch.rand((12, 3, 8, 8), device=device, dtype=dtype)
         output = f(input)
@@ -295,6 +297,40 @@ class TestRandomMixUpV2(BaseTester):
 
 
 class TestRandomCutMixV2(BaseTester):
+    @pytest.mark.parametrize("p", [0.0, 0.5, 1.0])
+    @pytest.mark.parametrize("num_mix", [1, 3])
+    def test_empty_image_and_class_batch_4429(self, p, num_mix, device, dtype):
+        image = torch.empty(0, 3, 7, 9, device=device, dtype=dtype, requires_grad=True)
+        labels = torch.empty(0, device=device, dtype=torch.long)
+        aug = RandomCutMixV2(num_mix=num_mix, p=p, data_keys=["input", "class"], use_correct_lambda=True)
+        aug = aug.to(device=device, dtype=dtype)
+
+        output_image, output_labels = aug(image, labels)
+        assert output_image.shape == (0, 3, 7, 9)
+        assert output_image.device == device
+        assert output_image.dtype == dtype
+        assert output_labels.shape == (num_mix, 0, 3)
+        assert output_labels.device == device
+        assert output_labels.dtype == (torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype)
+        output_image.sum().backward()
+        self.assert_close(image.grad, torch.empty_like(image))
+
+        replayed_image, replayed_labels = aug(image, labels, params=aug._params)
+        self.assert_close(replayed_image, output_image)
+        self.assert_close(replayed_labels, output_labels)
+
+    # A model moved to half precision moves its augmentations too. CutMix's Beta draw used to raise there on CPU
+    # ("dirichlet" has no Half kernel), on 0.8.3 as well for a direct .to(); it now draws in float32.
+    @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
+    def test_module_moved_to_half_precision(self, device, half_dtype):
+        torch.manual_seed(0)
+        aug = RandomCutMixV2(p=1.0, data_keys=["input", "class"]).to(device=device, dtype=half_dtype)
+        image = torch.rand(2, 3, 8, 8, device=device, dtype=half_dtype)
+        out_image, out_labels = aug(image, torch.tensor([0, 1], device=device))
+        assert out_image.dtype == half_dtype
+        assert torch.isfinite(out_image).all()
+        assert torch.isfinite(out_labels).all()
+
     def test_smoke(self):
         f = RandomCutMixV2(data_keys=["input", "class"], use_correct_lambda=True)
         expected_repr = "RandomCutMixV2(cut_size=None, beta=None, num_mix=1, p=1.0, p_batch=1.0, same_on_batch=False)"
@@ -486,12 +522,12 @@ class TestRandomCutMixV2(BaseTester):
             labels.to(torch.float32),
         )
 
-    @pytest.mark.parametrize("p", [0.0, 0.5])
-    def test_partial_batch_passthrough(self, p, device, dtype):
-        # See TestRandomJigsaw.test_partial_batch_passthrough: output batch size must
-        # match the input and unselected samples must be left byte-identical.
+    def test_partial_batch_passthrough(self, device, dtype):
+        # See TestRandomJigsaw.test_partial_batch_passthrough: output batch size must match the input and unselected
+        # samples must be left byte-identical. Here p gates the whole batch, so p=0.5 either skips every sample, like
+        # p=0, or applies to every one, like the p=1 numerical tests; only p=0 is kept.
         torch.manual_seed(0)
-        f = RandomCutMixV2(p=p, data_keys=["input"], use_correct_lambda=True)
+        f = RandomCutMixV2(p=0.0, data_keys=["input"], use_correct_lambda=True)
 
         input = torch.rand((12, 3, 8, 8), device=device, dtype=dtype)
         output = f(input)
@@ -501,10 +537,8 @@ class TestRandomCutMixV2(BaseTester):
         if untouched.any():
             self.assert_close(output[untouched], input[untouched])
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64")
     def test_random_cutmix_float64_lambda(self, device):
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64")
-
         torch.manual_seed(76)
         f = RandomCutMixV2(p=1.0, data_keys=["input", "class"])
 
@@ -916,28 +950,31 @@ class TestRandomMosaic(BaseTester):
         )
 
         # The start corner is floored to the integer the slice crop uses (issue #5464), so boxes are
-        # translated by whole pixels and land on integer coordinates.
+        # translated by whole pixels and land on integer coordinates. The boxes are exclusive and clamped to
+        # [0, 8]. A box the window clips to zero width or height, such as [1, 2, 3, 4] moved by (-3, -4), is removed
+        # and exports as zeros, as min_bbox_size removes boxes (kornia#6710); the inclusive storage left a one-pixel
+        # sliver such as [0, 0, 1, 1].
         expected_box = torch.tensor(
             [
                 [
-                    [1.0000, 1.0000, 3.0000, 3.0000],
-                    [0.0000, 0.0000, 1.0000, 1.0000],
-                    [0.0000, 6.0000, 3.0000, 8.0000],
-                    [0.0000, 3.0000, 1.0000, 5.0000],
-                    [7.0000, 1.0000, 8.0000, 3.0000],
-                    [6.0000, 0.0000, 8.0000, 1.0000],
-                    [7.0000, 7.0000, 8.0000, 8.0000],
-                    [6.0000, 6.0000, 8.0000, 8.0000],
+                    [1.0, 1.0, 3.0, 3.0],
+                    [0.0, 0.0, 0.0, 0.0],
+                    [0.0, 6.0, 3.0, 8.0],
+                    [0.0, 0.0, 0.0, 0.0],
+                    [0.0, 0.0, 0.0, 0.0],
+                    [0.0, 0.0, 0.0, 0.0],
+                    [0.0, 0.0, 0.0, 0.0],
+                    [6.0, 6.0, 8.0, 8.0],
                 ],
                 [
-                    [0.0000, 0.0000, 1.0000, 3.0000],
-                    [0.0000, 0.0000, 1.0000, 1.0000],
-                    [0.0000, 7.0000, 1.0000, 8.0000],
-                    [0.0000, 7.0000, 1.0000, 8.0000],
-                    [5.0000, 0.0000, 8.0000, 3.0000],
-                    [2.0000, 0.0000, 4.0000, 1.0000],
-                    [5.0000, 7.0000, 8.0000, 8.0000],
-                    [2.0000, 4.0000, 4.0000, 6.0000],
+                    [0.0, 0.0, 1.0, 3.0],
+                    [0.0, 0.0, 0.0, 0.0],
+                    [0.0, 0.0, 0.0, 0.0],
+                    [0.0, 0.0, 0.0, 0.0],
+                    [5.0, 0.0, 8.0, 3.0],
+                    [0.0, 0.0, 0.0, 0.0],
+                    [5.0, 7.0, 8.0, 8.0],
+                    [0.0, 0.0, 0.0, 0.0],
                 ],
             ],
             device=device,
@@ -951,12 +988,58 @@ class TestRandomMosaic(BaseTester):
         self.assert_close(out_image, expected, rtol=1e-4, atol=1e-4)
         self.assert_close(out_box, expected_box, rtol=rtol, atol=atol)
 
+    @pytest.mark.parametrize("follow", ["flip", "rotation", "shear"])
+    @pytest.mark.parametrize("chained", [False, True])
+    def test_clipped_away_boxes_stay_removed_6710(self, follow, chained, device, dtype):
+        # The 20-pixel window starts 6 to 14 pixels into the 40-pixel canvas (start_ratio_range (0.3, 0.7)), so of
+        # the four tile boxes at [0, 2) and [20, 22) only the one at [20, 22) x [20, 22) stays in it, 2 x 2; the other
+        # three are clipped to zero width, height or both. They are removed and stay all-zero rows after a later
+        # flip, rotation or shear, which would give the line segment of an empty box an area: in the same sequence,
+        # and when a second container takes the "bbox_xywh" output as input.
+        images = torch.rand(2, 3, 20, 20, device=device, dtype=dtype)
+        boxes = torch.tensor([[[0.0, 0.0, 2.0, 2.0]], [[0.0, 0.0, 2.0, 2.0]]], device=device, dtype=dtype)
+        later = {
+            "flip": RandomHorizontalFlip(p=1.0),
+            "rotation": RandomRotation((45.0, 45.0), p=1.0),
+            "shear": RandomAffine(0.0, shear=(30.0, 30.0), p=1.0),
+        }[follow]
+        keys = ["input", "bbox_xywh"]
+        if chained:
+            images, boxes = AugmentationSequential(RandomMosaic((20, 20), p=1.0), data_keys=keys)(images, boxes)
+            out = AugmentationSequential(later, data_keys=keys)(images, boxes)[1]
+        else:
+            out = AugmentationSequential(RandomMosaic((20, 20), p=1.0), later, data_keys=keys)(images, boxes)[1]
+        self.assert_close(out[:, :3], torch.zeros_like(out[:, :3]), atol=0.0, rtol=0.0)
+        assert bool((out[:, 3, 2:] > 0).all())
+
+    def test_bbox_xywh_zero_extent_rows_are_no_box_6710(self, device, dtype):
+        # A zero-width row is accepted and removed: a shear would turn its vertical segment into a 2 x 2 box. The
+        # 2 x 2 box next to it is sheared as usual. A negative width still raises.
+        images = torch.rand(1, 3, 20, 20, device=device, dtype=dtype)
+        boxes = torch.tensor([[[4.0, 3.0, 0.0, 2.0], [4.0, 3.0, 2.0, 2.0]]], device=device, dtype=dtype)
+        shear = AugmentationSequential(RandomAffine(0.0, shear=(45.0, 45.0), p=1.0), data_keys=["input", "bbox_xywh"])
+        out = shear(images, boxes)[1]
+        self.assert_close(out[0, 0], torch.zeros_like(out[0, 0]), atol=0.0, rtol=0.0)
+        assert bool((out[0, 1, 2:] >= 2).all())
+        boxes[0, 0, 2] = -1.0
+        with pytest.raises(ValueError, match="negative widths"):
+            shear(images, boxes)
+
+    def test_far_edge_is_formed_before_the_box_dtype_6710(self, device):
+        # A 258-pixel output has the far edge 258, which bfloat16 holds, and the last pixel centre 257, which it
+        # rounds to 256. The clip bound adds the pixel to the centre before the cast, so boxes over the far edge
+        # stop at 258, not 256.
+        images = torch.rand(2, 3, 258, 258, device=device)
+        corners = torch.tensor([[[0.0, 0.0, 258.0, 258.0]]] * 2, device=device, dtype=torch.bfloat16)
+        mosaic = AugmentationSequential(RandomMosaic((258, 258), p=1.0), data_keys=["input", "bbox"])
+        _, out = mosaic(images, Boxes.from_tensor(corners))
+        assert out.to_tensor("xyxy").amax().item() == 258.0
+
     @pytest.mark.parametrize("p", [0.0, 0.5, 1.0])
     def test_p(self, p, device, dtype):
-        torch.manual_seed(76)
         f = RandomMosaic(output_size=(300, 300), p=p, data_keys=["input", "bbox_xyxy"])
 
-        input = torch.randn((2, 3, 224, 224), device=device, dtype=dtype)
+        input = torch.randn((2, 3, 224, 224), generator=torch.Generator().manual_seed(0)).to(device, dtype)
         boxes = torch.tensor(
             [
                 # image 1
@@ -968,10 +1051,23 @@ class TestRandomMosaic(BaseTester):
             dtype=dtype,
         )
 
-        out_image, _ = f(input, boxes)
-        # Mosaic resizes to output_size, so we can't assert pass-through identity, but the
-        # batch dimension must be preserved regardless of how many samples are selected.
-        assert out_image.shape[0] == input.shape[0]
+        torch.manual_seed(1)
+        out_image, out_boxes = f(input, boxes)
+        applied = (f._params["batch_prob"] > 0.5).tolist()
+        # Seed 1 gates (skip, skip), (skip, apply) and (apply, apply) for p = 0, 0.5 and 1.
+        assert applied == {0.0: [False, False], 0.5: [False, True], 1.0: [True, True]}[p]
+        assert out_image.shape == (2, 3, 300, 300)
+        assert out_boxes.shape == (2, 8 if any(applied) else 2, 4)
+        for b in (b for b, selected in enumerate(applied) if not selected):
+            # A skipped sample sits unscaled in the top-left corner of the zero canvas and keeps its boxes,
+            # followed by zero padding up to the mosaic box count. Sample 1's [0, 0, 0, 0] placeholder is left out:
+            # it comes back as [-1, -1, 1, 1], which is not pinned here.
+            self.assert_close(out_image[b, :, :224, :224], input[b], rtol=0, atol=0)
+            assert out_image[b, :, 224:].count_nonzero() == 0
+            assert out_image[b, :, :, 224:].count_nonzero() == 0
+            num_real_boxes = 2 if b == 0 else 1
+            self.assert_close(out_boxes[b, :num_real_boxes], boxes[b, :num_real_boxes], rtol=0, atol=0)
+            assert out_boxes[b, 2:].count_nonzero() == 0
 
 
 class TestRandomJigsaw(BaseTester):
@@ -1003,14 +1099,26 @@ class TestRandomJigsaw(BaseTester):
         repr = "RandomJigsaw(grid=(4, 4), p=0.5, p_batch=1.0, same_on_batch=False, grid=(4, 4))"
         assert str(f) == repr
 
-        # Test square and non-square images.
-        f = RandomJigsaw(grid=(2, 2), p=1.0, data_keys=["input"])
-        input = torch.arange(64, device=device, dtype=dtype).reshape(2, 1, 4, 8)
-        f(input)
-        input = torch.arange(64, device=device, dtype=dtype).reshape(2, 1, 8, 4)
-        f(input)
-        input = torch.arange(32, device=device, dtype=dtype).reshape(2, 1, 4, 4)
-        f(input)
+    @pytest.mark.parametrize(
+        ("shape", "grid"), [((2, 1, 4, 8), (2, 4)), ((2, 1, 8, 4), (4, 2)), ((2, 1, 4, 8), (2, 2))]
+    )
+    def test_non_square_output_is_a_patch_permutation(self, shape, grid, device, dtype):
+        # Every patch of the input is distinct, so the output must hold each of them exactly once, in a new order.
+        torch.manual_seed(0)
+        input = torch.arange(torch.Size(shape).numel(), device=device, dtype=dtype).reshape(shape)
+        output = RandomJigsaw(grid=grid, p=1.0, data_keys=["input"])(input)
+
+        def patches(x):
+            ph, pw = x.shape[-2] // grid[0], x.shape[-1] // grid[1]
+            patch_grid = x.unfold(2, ph, ph).unfold(3, pw, pw).permute(0, 2, 3, 1, 4, 5)
+            return patch_grid.reshape(x.shape[0], grid[0] * grid[1], -1)
+
+        # The input's patches are in row-major order with increasing first values; sort the output's the same way.
+        out_patches, in_patches = patches(output), patches(input)
+        for out_sample, in_sample in zip(out_patches, in_patches):
+            order = out_sample[:, 0].argsort()
+            self.assert_close(out_sample[order], in_sample, rtol=0, atol=0)
+            assert not torch.equal(out_sample, in_sample)
 
     def test_numerical(self, device, dtype):
         torch.manual_seed(22)
@@ -1038,15 +1146,15 @@ class TestRandomJigsaw(BaseTester):
 
         self.assert_close(out_image, expected, rtol=1e-4, atol=1e-4)
 
-    @pytest.mark.parametrize("p", [0.0, 0.5, 1.0])
-    @pytest.mark.parametrize("same_on_batch", [True, False])
-    def test_p(self, p, same_on_batch, device, dtype):
+    def test_same_on_batch(self, device, dtype):
+        # Identical samples must come out identical: one permutation is drawn for the whole batch.
         torch.manual_seed(76)
-        f = RandomJigsaw(p=p, data_keys=["input"], same_on_batch=same_on_batch)
-
-        input = torch.randn((4, 3, 32, 32), device=device, dtype=dtype)
-
-        f(input)
+        f = RandomJigsaw(grid=(2, 2), p=1.0, data_keys=["input"], same_on_batch=True)
+        input = torch.arange(16, device=device, dtype=dtype).reshape(1, 1, 4, 4).repeat(4, 3, 1, 1)
+        output = f(input)
+        assert not torch.equal(output[0], input[0])
+        for sample in output[1:]:
+            self.assert_close(sample, output[0], rtol=0, atol=0)
 
     @pytest.mark.parametrize("p", [0.0, 0.5])
     def test_partial_batch_passthrough(self, p, device, dtype):
@@ -1275,14 +1383,18 @@ class TestRandomTransplantation(BaseTester):
 
     def test_gradcheck(self, device):
         torch.manual_seed(22)
-        image = torch.rand(1, 3, 2, 2, device=device, dtype=torch.float64)
-        mask = torch.randint(0, 2, (1, 2, 2), device=device, dtype=torch.float64)
+        # Two samples, so every acceptor takes the labelled pixels of the other one: with a single sample the
+        # transplantation copies the image onto itself and the gradient is the identity whatever the op does.
+        image = torch.rand(2, 3, 2, 2, device=device, dtype=torch.float64)
+        mask = torch.tensor([[[1.0, 0.0], [0.0, 0.0]], [[0.0, 0.0], [0.0, 2.0]]], device=device, dtype=torch.float64)
+        aug = RandomTransplantation(p=1.0, excluded_labels=[0])
+        aug(image, mask)
+        params = aug._params
 
-        self.gradcheck(RandomTransplantation(p=1.0), (image, mask))
+        self.gradcheck(lambda x: aug(x, mask, params=params)[0], (image,))
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64")
     def test_exception(self, device, dtype):
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64")
         torch.manual_seed(22)
         image = torch.rand(1, 3, 2, 2, device=device, dtype=torch.float64)
         mask = torch.randint(0, 2, (1, 2, 2), device=device, dtype=torch.float64)

@@ -33,20 +33,10 @@ __all__ = ["RandomMosaic"]
 
 
 class RandomMosaic(MixAugmentationBaseV2):
-    r"""Mosaic augmentation.
+    r"""Replace each sample, with probability ``p`` (default 0.7), by a crop of a mosaic of batch images.
 
-    .. image:: https://raw.githubusercontent.com/kornia/data/main/random_mosaic.png
-
-    Given a certain number of images, mosaic transform combines them into one output image.
-    The output image is composed of the parts from each sub-image. To mess up each image individually,
-    referring to :class:`kornia.augmentation.RandomJigsaw`.
-
-    The mosaic transform steps are as follows:
-
-         1. Concate selected images into a super-image.
-         2. Crop out the outcome image according to the top-left corner and crop size.
-
-    See the Convention block on :class:`~kornia.augmentation.MixAugmentationBaseV2`.
+    ``output = RandomMosaic(output_size, ...)(input)`` arranges batch images in a mosaic before taking one output
+    crop.
 
     Args:
         output_size: the output ``(height, width)`` after mosaicing.
@@ -68,16 +58,9 @@ class RandomMosaic(MixAugmentationBaseV2):
             to extract the window. Use `slice` for efficiency, or `resample` for proper
             differentiability.
 
-    Examples:
-        >>> mosaic = RandomMosaic((300, 300), data_keys=["input", "bbox_xyxy"])
-        >>> boxes = torch.tensor([[
-        ...     [70, 5, 150, 100],
-        ...     [60, 180, 175, 220],
-        ... ]]).repeat(8, 1, 1)
-        >>> input = torch.randn(8, 3, 224, 224)
-        >>> out = mosaic(input, boxes)
-        >>> out[0].shape, out[1].shape
-        (torch.Size([8, 3, 300, 300]), torch.Size([8, 8, 4]))
+    .. image:: https://raw.githubusercontent.com/kornia/data/main/random_mosaic.png
+
+    See the Convention block on :class:`~kornia.augmentation.MixAugmentationBaseV2`.
 
     Convention:
         - ``output_size`` and the default output shape are ordered ``(height, width)``. With ``output_size=None``
@@ -93,7 +76,12 @@ class RandomMosaic(MixAugmentationBaseV2):
           without rescaling; where the window passes the canvas edge it is zero. With an explicit ``output_size`` an
           unselected sample is zero-padded or cropped to that size rather than returned unchanged. The boxes of a
           selected sample are translated with its tiles, not rescaled, and clipped to the output window
-          ``[0, W_out] x [0, H_out]``.
+          ``[0, W_out] x [0, H_out]``. A box the window clips to zero width or height is removed, as
+          ``min_bbox_size`` removes boxes: every export gives an all-zero row for it, also after a later transform.
+          A tensor
+          under the bare ``"bbox"`` or ``"bbox_xyxy"`` key of
+          :class:`~kornia.augmentation.container.AugmentationSequential` holds pixel-centre corners and is clipped
+          to ``[0, W_out - 1] x [0, H_out - 1]``, as before `#6710 <https://github.com/kornia/kornia/issues/6710>`_.
         - A tensor box input comes back as one dense tensor. When the gate selects any sample, every row holds
           ``N * mosaic_grid[0] * mosaic_grid[1]`` boxes for ``N`` input boxes per sample: a selected row holds its
           mosaic boxes, and an unselected row holds its own ``N`` boxes unchanged followed by all-zero padding rows
@@ -106,6 +94,20 @@ class RandomMosaic(MixAugmentationBaseV2):
         - In either form, a selected sample's box that falls below ``min_bbox_size`` is zeroed by
           :meth:`~kornia.geometry.boxes.Boxes.filter_boxes_by_area`. It exports as exact zeros in every box
           format, from a direct call and from :class:`~kornia.augmentation.container.AugmentationSequential`.
+
+    See Also:
+        - :class:`RandomJigsaw`: shuffles tiles within each individual image.
+
+    Examples:
+        >>> mosaic = RandomMosaic((300, 300), data_keys=["input", "bbox_xyxy"])
+        >>> boxes = torch.tensor([[
+        ...     [70, 5, 150, 100],
+        ...     [60, 180, 175, 220],
+        ... ]]).repeat(8, 1, 1)
+        >>> input = torch.randn(8, 3, 224, 224)
+        >>> out = mosaic(input, boxes)
+        >>> out[0].shape, out[1].shape
+        (torch.Size([8, 3, 300, 300]), torch.Size([8, 8, 4]))
 
     """
 
@@ -150,12 +152,17 @@ class RandomMosaic(MixAugmentationBaseV2):
     def apply_transform_boxes(self, input: Boxes, params: Dict[str, torch.Tensor], flags: Dict[str, Any]) -> Boxes:
         to_apply = params["batch_prob"] > 0.5
         src_box = torch.as_tensor(params["src"], device=input.device, dtype=input.dtype)
-        dst_box = torch.as_tensor(params["dst"], device=input.device, dtype=input.dtype)
         # Boxes is BxNx4x2 only.
         batch_shapes = torch.as_tensor(params["batch_shapes"], device=input.device, dtype=input.dtype)
         offset = torch.zeros((len(to_apply), 2), device=input.device, dtype=input.dtype)  # Bx2
-        # NOTE: not a pretty good line I think.
-        offset_end = dst_box[0, 2].repeat(input.data.shape[0], 1)
+        # ``params["dst"]`` holds inclusive crop-window corners, so its far corner is the last pixel of the output.
+        # Exclusive boxes extend to the far edge of that pixel; the legacy inclusive storage of the bare tensor keys
+        # stops at its centre, as it always did (#6710). The edge is derived before the cast to the box dtype: a
+        # 258-pixel bfloat16 output has the edge 258 but not the centre 257.
+        offset_end = torch.as_tensor(params["dst"], device=input.device)[0, 2]
+        if not input._inclusive:
+            offset_end = offset_end + 1
+        offset_end = offset_end.to(input.dtype).repeat(input.data.shape[0], 1)
         idx = torch.arange(0, input.data.shape[0], device=input.device, dtype=torch.long)[to_apply]
 
         num_boxes = input.data.shape[1]
@@ -173,12 +180,8 @@ class RandomMosaic(MixAugmentationBaseV2):
                 _offset[idx, 1] = batch_shapes_idx[:, -2] * j - src_box_idx[:, 0, 1]
                 _box = input.clone()
                 _idx = i * flags["mosaic_grid"][1] + j
+                # A list input pads each sample to the longest one; the tile keeps its source's padding.
                 _box[params["permutation"][:, 0]] = input[params["permutation"][:, _idx]]
-                if input._N is not None:
-                    # A list input pads each sample to the longest one; the tile keeps its source's padding count.
-                    _box._N = list(input._N)
-                    for dst, src in params["permutation"][:, [0, _idx]].tolist():
-                        _box._N[dst] = input._N[src]
                 _box.translate(_offset, inplace=True)
                 if maybe_out_boxes is None:
                     maybe_out_boxes = _box
@@ -186,21 +189,25 @@ class RandomMosaic(MixAugmentationBaseV2):
                     KORNIA_UNWRAP(maybe_out_boxes, Boxes).merge(_box, inplace=True)
         out_boxes: Boxes = KORNIA_UNWRAP(maybe_out_boxes, Boxes)
         out_boxes.clamp(offset, offset_end, inplace=True)
+        if not out_boxes._inclusive:
+            # A box the window clips away has zero width or height: it is removed, as ``min_bbox_size`` removes
+            # boxes, so a later rotation cannot give its line segment an area (#6710).
+            out_boxes._drop_empty()
         out_boxes.filter_boxes_by_area(flags["min_bbox_size"], inplace=True)
 
         if not bool(to_apply.all()):
             # An unselected sample keeps its own boxes unchanged, followed by padding up to the mosaic box count.
-            # The padding is recorded in ``_N`` and exported as all-zero (zero-area) rows.
+            # That padding is recorded and also marked invalid, so every export gives all-zero rows for it, also
+            # after a later geometric transform and in a container such as VideoBoxes that keeps no padding.
             out_boxes._data[~to_apply, :num_boxes] = input._data[~to_apply]
             out_boxes._valid[~to_apply, :num_boxes] = input._valid[~to_apply]
             out_boxes._data[~to_apply, num_boxes:] = 0.0
-            padding = out_boxes._data.shape[1] - num_boxes
-            merged_padding = out_boxes._N if out_boxes._N is not None else [0] * len(to_apply)
-            input_padding = input._N if input._N is not None else [0] * len(to_apply)
-            out_boxes._N = [
-                merged if bool(selected) else own + padding
-                for selected, merged, own in zip(to_apply, merged_padding, input_padding)
-            ]
+            out_boxes._valid[~to_apply, num_boxes:] = False
+            skipped = ~to_apply.cpu()
+            padding = out_boxes._padding_or_real()
+            padding[skipped, :num_boxes] = input._padding_or_real()[skipped]
+            padding[skipped, num_boxes:] = True
+            out_boxes._set_padding(padding)
 
         return out_boxes
 

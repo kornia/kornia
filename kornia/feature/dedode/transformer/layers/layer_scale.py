@@ -52,9 +52,9 @@ class LayerScale(nn.Module):
         """Run this DeDoDe module forward.
 
         Args:
-            x: Input token tensor with shape :math:`(B, N, C)`.
+            x: Input token tensor with shape ``(B, N, C)``.
 
         Returns:
-            Tensor with the same shape :math:`(B, N, C)` scaled element-wise by the learnable ``gamma`` parameter.
+            Tensor with the same shape ``(B, N, C)`` scaled element-wise by the learnable ``gamma`` parameter.
         """
         return x.mul_(self.gamma) if self.inplace else x * self.gamma

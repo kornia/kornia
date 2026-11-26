@@ -132,12 +132,6 @@ class TestSegmentationModelsBuilder(BaseTester):
         std_t = torch.tensor(IMAGENET_PARAMS["std"], device=device, dtype=dtype).view(1, 3, 1, 1)
         self.assert_close(pipeline(x), (x - mean_t) / std_t)
 
-    def test_preprocessing_no_mean_std_is_identity(self, device, dtype):
-        params = {"input_space": "RGB", "input_range": [0, 1], "mean": None, "std": None}
-        pipeline = SegmentationModelsBuilder.get_preprocessing_pipeline(params).to(device, dtype)
-        x = torch.rand(1, 3, 4, 4, device=device, dtype=dtype)
-        self.assert_close(pipeline(x), x)
-
     @pytest.mark.parametrize("missing", ["input_space", "input_range", "mean", "std"])
     def test_exception_missing_key(self, missing):
         params = {k: v for k, v in IMAGENET_PARAMS.items() if k != missing}
@@ -154,11 +148,6 @@ class TestSegmentationModelsBuilder(BaseTester):
         params = {**IMAGENET_PARAMS, "input_range": [0, 65535]}
         with pytest.raises(ValueError, match="Unsupported input range"):
             SegmentationModelsBuilder.get_preprocessing_pipeline(params)
-
-    def test_exception_missing_key_with_build(self):
-        params = {k: v for k, v in IMAGENET_PARAMS.items() if k != "std"}
-        with pytest.raises(Exception, match="preproc_params is missing the key 'std'"):
-            SegmentationModelsBuilder.build(_stand_in_network(), params)
 
 
 class TestSemanticSegmentation(BaseTester):

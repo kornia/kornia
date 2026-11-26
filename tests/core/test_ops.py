@@ -73,8 +73,9 @@ class _BatchLikeMixin(BaseTester):
         """Return the expected output for a batch of `batch` items."""
         raise NotImplementedError
 
-    @pytest.mark.parametrize("n", [1, 2, 3, 4])
-    @pytest.mark.parametrize("input_shape", [(4,), (2, 3), (3, 1, 5, 5)])
+    # Neither `n` nor the input rank selects a branch: a 1x1 and a 3x3 item, from a 1-D and a 4-D input.
+    @pytest.mark.parametrize("n", [1, 3])
+    @pytest.mark.parametrize("input_shape", [(4,), (3, 1, 5, 5)])
     def test_values(self, n, input_shape, device, dtype):
         x = torch.zeros(*input_shape, device=device, dtype=dtype)
         out = self.op(n, x)
@@ -83,10 +84,10 @@ class _BatchLikeMixin(BaseTester):
         assert out.dtype == x.dtype
         assert torch.equal(out, self.expected(input_shape[0], n, device, dtype))
 
-    @pytest.mark.parametrize("shared_memory", [False, True])
-    def test_shared_memory_does_not_change_values(self, shared_memory, device, dtype):
+    def test_shared_memory_does_not_change_values(self, device, dtype):
+        # `test_values` covers the default `shared_memory=False`.
         x = torch.zeros(3, 2, device=device, dtype=dtype)
-        out = self.op(3, x, shared_memory=shared_memory)
+        out = self.op(3, x, shared_memory=True)
         assert out.shape == (3, *self.item_shape(3))
         assert torch.equal(out, self.expected(3, 3, device, dtype))
 

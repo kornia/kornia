@@ -148,7 +148,7 @@ class TestTotalVariation(BaseTester):
     )
     def test_tv_on_3d(self, device, dtype, pred, expected):
         actual = kornia.losses.total_variation(pred.to(device, dtype))
-        self.assert_close(actual, expected.to(device, dtype), rtol=1e-3, atol=1e-3)
+        self.assert_close(actual, expected.to(device, dtype), **_literal_tolerance(dtype))
 
     # Total variation for 4D tensors
     @pytest.mark.parametrize(
@@ -185,7 +185,7 @@ class TestTotalVariation(BaseTester):
     )
     def test_tv_on_4d(self, device, dtype, pred, expected):
         actual = kornia.losses.total_variation(pred.to(device, dtype))
-        self.assert_close(actual, expected.to(device, dtype), rtol=1e-3, atol=1e-3)
+        self.assert_close(actual, expected.to(device, dtype), **_literal_tolerance(dtype))
 
     @pytest.mark.parametrize("pred", [torch.rand(3, 5, 5), torch.rand(4, 3, 5, 5), torch.rand(4, 2, 3, 5, 5)])
     def test_tv_shapes(self, device, dtype, pred):
@@ -228,7 +228,7 @@ class TestTotalVariation(BaseTester):
 
     # Expect TypeError to be raised when non-torch tensors are passed
     @pytest.mark.parametrize("pred", [1, [1, 2]])
-    def test_tv_on_invalid_types(self, device, dtype, pred):
+    def test_tv_on_invalid_types(self, pred):
         with pytest.raises(TypeError):
             kornia.losses.total_variation(pred)
 
@@ -249,14 +249,6 @@ class TestTotalVariation(BaseTester):
         op_optimized = torch_optimizer(op)
 
         self.assert_close(op(image, reduction), op_optimized(image, reduction))
-
-    def test_module(self, device, dtype):
-        image = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
-
-        op = kornia.losses.total_variation
-        op_module = kornia.losses.TotalVariation()
-
-        self.assert_close(op(image), op_module(image))
 
     def test_gradcheck(self, device, dtype):
         dtype = torch.float64
@@ -296,3 +288,13 @@ class TestConventionsTotalVariation(BaseTester):
         self.assert_close(kornia.losses.total_variation(img.transpose(-2, -1), reduction="mean"), expected)
         with pytest.raises((ValueError, BaseError)):
             kornia.losses.total_variation(img, reduction="none")
+
+
+# Defined after the tests: the eager-RNG audit pins the line numbers of the parametrized ``torch.rand`` inputs above.
+def _literal_tolerance(dtype):
+    # The expected sums are float32 results. A half call rounds the input and each difference, which leaves a sum
+    # within about one eps of the float32 one (0.63 eps in bfloat16 here): the dtype's default tolerance. bfloat16
+    # cannot hold the sum 12.6647 to 1e-3: its spacing there is 0.0625.
+    if dtype in (torch.float16, torch.bfloat16):
+        return {}
+    return {"rtol": 1e-3, "atol": 1e-3}

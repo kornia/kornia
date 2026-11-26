@@ -47,7 +47,16 @@ jobs:
           conformance=$(python3 .github/scripts/conformance_packages.py compile <<< "$changed")
           echo "compile-conformance=$conformance" >> "$GITHUB_OUTPUT"
           echo "torch.compile conformance selection: '${conformance}'"
-          if grep -Eqv '^(docs/|.*\.md$|LICENSE$|COPYRIGHT$)' <<< "$changed"; then
+          # The export survey, its snapshot, the support-statement generator and the stability page live under docs/,
+          # but tests/test_generate_export_support.py in the ordinary test suite checks them against the promise (#5819).
+          promise_docs='^(docs/export_support/|docs/generate_export_support\.py$|'
+          promise_docs+='docs/source/_data/export_support\.json$|docs/source/get-started/stability\.rst$)'
+          promise_status=0
+          grep -Eq "$promise_docs" <<< "$changed" || promise_status=$?
+          if [[ "$promise_status" -gt 1 ]]; then
+            exit "$promise_status"
+          fi
+          if [[ "$promise_status" -eq 0 ]] || grep -Eqv '^(docs/|.*\.md$|LICENSE$|COPYRIGHT$)' <<< "$changed"; then
             echo "run-tests=true" >> "$GITHUB_OUTPUT"
           else
             # Must stay the first command here: it captures the `if` condition's
@@ -72,7 +81,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Setup pixi
-        uses: prefix-dev/setup-pixi@v0.10.2
+        uses: prefix-dev/setup-pixi@v0.11.3
         with:
           pixi-version: v0.40.0
           cache: true
@@ -111,7 +120,7 @@ jobs:
       #   - ubuntu 3.12 / torch 2.9.1 (float32): the first release on which `torch.onnx.export`,
       #     and with it `to_onnx`, defaults to the dynamo exporter. Its torch.export specializes
       #     differently from 2.14's: a DexiNed export ran only at the traced batch size (#6066).
-      #   - ubuntu 3.11 / torch 2.14.0 (float32, float64): the oldest Python on the newest torch,
+      #   - ubuntu 3.11 / torch 2.15.0 (float32, float64): the oldest Python on the newest torch,
       #     so every Python and torch pin still gets a full-suite run in both dtypes on Linux.
       #   - windows-latest float64: Windows-only failures (path handling, the eager RNG audit)
       #     showed up on every Windows leg, and this one caught all of them.
@@ -119,12 +128,20 @@ jobs:
       # torch 2.5.1 on Windows runs only in the scheduled matrix, on windows-2022: its wheels
       # crash with STATUS_ILLEGAL_INSTRUCTION (0xc000001d) in affine_grid on the windows-2025
       # image that windows-latest now resolves to.
+      # The ONNX tests (node ID contains "onnx", about 40% of a leg's test time) run on one leg
+      # per torch release, 2.5.1 float64, 2.9.1 and 2.15.0 float32, and on Windows; `skip-onnx`
+      # deselects them on the others. From 2026-10-01 to 2026-11-11, every ONNX test failure on a
+      # leg that now skips them also failed on a leg that keeps them (509 PR and 79 scheduled runs).
+      # Across the PR and scheduled legs, the ONNX tests run in float64 only on torch 2.5.1 and in
+      # float32 only on 2.6.0 and 2.9.1, and never without Dynamo (Python 3.13 on torch 2.5.1). That
+      # history has no failure of either kind.
       matrix:
         include:
           - os: ubuntu-latest
             pytorch-dtype: "float32"
             python-version: "3.13"
             pytorch-version: "2.5.1"
+            skip-onnx: true
           - os: ubuntu-latest
             pytorch-dtype: "float64"
             python-version: "3.12"
@@ -136,19 +153,21 @@ jobs:
           - os: ubuntu-latest
             pytorch-dtype: "float32"
             python-version: "3.11"
-            pytorch-version: "2.14.0"
+            pytorch-version: "2.15.0"
           - os: ubuntu-latest
             pytorch-dtype: "float64"
             python-version: "3.11"
-            pytorch-version: "2.14.0"
+            pytorch-version: "2.15.0"
+            skip-onnx: true
           - os: windows-latest
             pytorch-dtype: "float64"
             python-version: "3.13"
-            pytorch-version: "2.14.0"
+            pytorch-version: "2.15.0"
           - os: macos-latest
             pytorch-dtype: "float32"
             python-version: "3.13"
-            pytorch-version: "2.14.0"
+            pytorch-version: "2.15.0"
+            skip-onnx: true
 
     uses: ./.github/workflows/tests.yml
     with:
@@ -156,6 +175,7 @@ jobs:
       python-version: '["${{ matrix.python-version }}"]'
       pytorch-version: '["${{ matrix.pytorch-version }}"]'
       pytorch-dtype: ${{ matrix.pytorch-dtype }}
+      skip-onnx: ${{ matrix.skip-onnx == true }}
       cache-path: weights/
       cache-key: model-weights-${{ needs.pre-tests.outputs.hash }}
       cache-restore-keys: |
@@ -172,7 +192,7 @@ jobs:
     with:
       os: ubuntu-latest
       python-version: '["3.11"]'
-      pytorch-version: '["2.14.0"]'
+      pytorch-version: '["2.15.0"]'
       pytorch-dtype: ${{ matrix.pytorch-dtype }}
       known-failure-profile: cpu-${{ matrix.pytorch-dtype }}
       # A whole leg takes ~6m, so no single test comes near these limits. A native float16 kernel
@@ -199,7 +219,7 @@ jobs:
     with:
       os: ubuntu-latest
       python-version: '["3.11"]'
-      pytorch-version: '["2.14.0"]'
+      pytorch-version: '["2.15.0"]'
       pytorch-dtype: float32
       optimizer: inductor
       pytest-extra: 'tests/augmentation tests/enhance tests/feature tests/filters tests/color tests/geometry tests/losses tests/morphology tests/models tests/core tests/utils -k "dynamo or compile"'
@@ -211,10 +231,14 @@ jobs:
 
   # Single blocking MPS leg: newest Python, float32, on an Apple-silicon image.
   # The exact known-failure baseline is pinned as strict xfails: a new failure,
-  # changed failure, skipped pin, or fixed pin makes the job red and requires review. The
-  # torch pin tracks the newest pin of the CPU matrix so the leg resolves the locked
-  # dependency set; changing it means re-recording the manifest in the same change, because
-  # a release that adds MPS kernels turns recorded failures into strict XPASSes.
+  # changed failure, skipped pin, or fixed pin makes the job red and requires review.
+  # Changing the torch pin means re-recording the manifest in the same change, because a
+  # release that adds MPS kernels turns recorded failures into strict XPASSes.
+  #
+  # The torch pin stays at 2.14.0, behind the CPU matrix (#6390): torch 2.15 uses only a GPU
+  # in MTLGPUFamilyApple7, and the paravirtual GPU of every GitHub-hosted arm64 image reports
+  # Mac2 and Common3 only, so on 2.15 `Verify MPS device` finds no MPS device. Move the pin
+  # only to a release that accepts this GPU again, or together with a runner that has one.
   #
   # The image is pinned to macos-15 rather than macos-latest, and that is not cosmetic.
   # macos-latest is macos-26-arm64, whose GPU is paravirtualized; on macOS 26 torch 2.14
@@ -250,7 +274,7 @@ jobs:
   # ONNX conformance (#5819): every promised operator of the packages this PR can affect must export with the dynamo
   # exporter and match eager in onnxruntime, and a legacy export that succeeds must not give wrong values. The
   # `changes` job maps the changed paths to the packages they belong to plus every package that imports them
-  # (.github/scripts/conformance_packages.py); the whole set runs on main twice a day on torch 2.9.1 and 2.14.0
+  # (.github/scripts/conformance_packages.py); the whole set runs on main twice a day on torch 2.9.1 and 2.15.0
   # (scheduled_test_cpu.yml). No promised operator needs pretrained weights, so the job does not wait for `pre-tests`
   # and also runs when only the survey or its snapshot under docs/ changed.
   onnx-conformance:
@@ -260,7 +284,7 @@ jobs:
     with:
       os: ubuntu-latest
       python-version: '["3.11"]'
-      pytorch-version: '["2.14.0"]'
+      pytorch-version: '["2.15.0"]'
       pytorch-dtype: float32
       test-path: tests/onnx/test_conformance.py
       # pytest-timeout fails a case that runs past 10 min and names it, rather than the job timeout ending the run
@@ -277,7 +301,7 @@ jobs:
     with:
       os: ubuntu-latest
       python-version: '["3.11"]'
-      pytorch-version: '["2.14.0"]'
+      pytorch-version: '["2.15.0"]'
       pytorch-dtype: float32
       test-path: tests/test_inductor_conformance.py
       # pytest-timeout fails a case that runs past 10 min and names it, rather than the job timeout ending the run

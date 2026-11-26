@@ -24,7 +24,8 @@ from kornia.augmentation.random_generator._2d.perspective import _as_scalar_tens
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check
 from kornia.augmentation.utils.helpers import _constant_tensor
-from kornia.core.utils import _extract_device_dtype
+from kornia.augmentation.utils.param_validation import _in_sampler_rebuild
+from kornia.core.utils import _extract_device_dtype, _to_device_nonblocking
 
 
 class PerspectiveGenerator3D(RandomGeneratorBase):
@@ -55,12 +56,14 @@ class PerspectiveGenerator3D(RandomGeneratorBase):
         return f"distortion_scale={self.distortion_scale}"
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
-        self._distortion_scale = torch.as_tensor(self.distortion_scale, device=device, dtype=dtype)
-        if not (self._distortion_scale.dim() == 0 and 0 <= self._distortion_scale <= 1):
+        self._assign_derived_range(
+            "_distortion_scale", torch.as_tensor(self.distortion_scale, device=device, dtype=dtype)
+        )
+        if not _in_sampler_rebuild() and not (self._distortion_scale.dim() == 0 and 0 <= self._distortion_scale <= 1):
             raise AssertionError(f"'distortion_scale' must be a scalar within [0, 1]. Got {self._distortion_scale}")
         self.rand_sampler = Uniform(
-            torch.tensor(0, device=device, dtype=dtype),
-            torch.tensor(1, device=device, dtype=dtype),
+            _constant_tensor(0, device=device, dtype=dtype),
+            _constant_tensor(1, device=device, dtype=dtype),
             validate_args=False,
         )
 
@@ -72,6 +75,8 @@ class PerspectiveGenerator3D(RandomGeneratorBase):
 
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([self.distortion_scale])
+        # Offset the corners in at least float32 and round once to a half ``_dtype`` at the end, as the 2D generator.
+        _cdtype = torch.promote_types(_dtype, torch.float32)
 
         # Coincident source corners make the perspective solve singular. Give singleton axes a
         # unit extent and no offset, as in the 2D generator. torch.jit.trace passes the sizes as
@@ -82,10 +87,10 @@ class PerspectiveGenerator3D(RandomGeneratorBase):
 
         if isinstance(x_end, torch.Tensor) or isinstance(y_end, torch.Tensor) or isinstance(z_end, torch.Tensor):
             # _constant_tensor is specified for Python scalars only, so build the corners from the traced sizes.
-            x = _as_scalar_tensor(x_end, _device, _dtype)
-            y = _as_scalar_tensor(y_end, _device, _dtype)
-            z = _as_scalar_tensor(z_end, _device, _dtype)
-            zero = torch.zeros((), device=_device, dtype=_dtype)
+            x = _as_scalar_tensor(x_end, _device, _cdtype)
+            y = _as_scalar_tensor(y_end, _device, _cdtype)
+            z = _as_scalar_tensor(z_end, _device, _cdtype)
+            zero = torch.zeros((), device=_device, dtype=_cdtype)
             start_points = torch.stack(
                 [
                     torch.stack([zero, x, x, zero, zero, x, x, zero]),
@@ -109,26 +114,29 @@ class PerspectiveGenerator3D(RandomGeneratorBase):
                     ]
                 ],
                 device=_device,
-                dtype=_dtype,
+                dtype=_cdtype,
             )
         start_points = start_points.expand(batch_size, -1, -1)
 
         # generate random offset not larger than half of the image
-        fx = self._distortion_scale * x_extent / 2
-        fy = self._distortion_scale * y_extent / 2
-        fz = self._distortion_scale * z_extent / 2
+        # Widen only a half-precision sampler scale: a half scale times a Python extent would round the offsets in half
+        # precision. float32 and float64 samplers keep their own dtype, which need not be the input dtype.
+        distortion_scale = self._distortion_scale.to(torch.promote_types(self._distortion_scale.dtype, torch.float32))
+        fx = distortion_scale * x_extent / 2
+        fy = distortion_scale * y_extent / 2
+        fz = distortion_scale * z_extent / 2
 
-        factor = torch.stack([fx, fy, fz], 0).view(-1, 1, 3).to(device=_device, dtype=_dtype)
+        factor = _to_device_nonblocking(torch.stack([fx, fy, fz], 0).view(-1, 1, 3), _device, _cdtype)
 
-        rand_val: torch.Tensor = _adapted_rsampling(start_points.shape, self.rand_sampler, same_on_batch).to(
-            device=_device, dtype=_dtype
+        rand_val: torch.Tensor = _to_device_nonblocking(
+            _adapted_rsampling(start_points.shape, self.rand_sampler, same_on_batch), _device, _cdtype
         )
 
         pts_norm = _constant_tensor(
             [[[1, 1, 1], [-1, 1, 1], [-1, -1, 1], [1, -1, 1], [1, 1, -1], [-1, 1, -1], [-1, -1, -1], [1, -1, -1]]],
             device=_device,
-            dtype=_dtype,
+            dtype=_cdtype,
         )
         end_points = start_points + factor * rand_val * pts_norm
 
-        return {"start_points": start_points, "end_points": end_points}
+        return {"start_points": start_points.to(_dtype), "end_points": end_points.to(_dtype)}

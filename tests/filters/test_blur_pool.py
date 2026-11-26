@@ -25,7 +25,7 @@ import pytest
 import torch
 import torch.nn.functional as F
 
-from kornia.core.exceptions import BaseError
+from kornia.core.exceptions import BaseError, ShapeError, TypeCheckError
 from kornia.filters import (
     BlurPool2D,
     EdgeAwareBlurPool2D,
@@ -49,6 +49,7 @@ class _FunctionalBlurPool(torch.nn.Module):
 
 
 class TestBlurPoolLegacyONNX(BaseTester):
+    @pytest.mark.applies_to(dtypes=("float32",), reason="the exported graph is checked once, in float32")
     @pytest.mark.device_agnostic
     @pytest.mark.parametrize("pool", ["blur", "max", "edge"])
     @pytest.mark.parametrize("as_module", [True, False])
@@ -56,8 +57,6 @@ class TestBlurPoolLegacyONNX(BaseTester):
     @pytest.mark.parametrize("kernel_size", [3, 4])
     def test_export_matches_eager(self, dtype, pool, as_module, dynamic, kernel_size):
         """Pin legacy export and runtime behavior for every blur-pool caller (#5753)."""
-        if dtype != torch.float32:
-            pytest.skip("the exported graph is checked once, in float32")
         pytest.importorskip("onnx")
         ort = pytest.importorskip("onnxruntime")
         module, function = {
@@ -91,13 +90,12 @@ class TestBlurPoolLegacyONNX(BaseTester):
             actual = torch.from_numpy(session.run(None, {"input": image.numpy()})[0])
             self.assert_close(actual, model(image))
 
+    @pytest.mark.applies_to(dtypes=("float32",), reason="the exported graph is checked once, in float32")
     @pytest.mark.device_agnostic
     @pytest.mark.parametrize("pool", ["blur", "max", "edge"])
     @pytest.mark.parametrize("as_module", [True, False])
     def test_torch_export_dynamic_channels(self, dtype, pool, as_module):
         """The tracing-only channel conversion preserves symbolic channels in torch.export."""
-        if dtype != torch.float32:
-            pytest.skip("the exported graph is checked once, in float32")
         if not dynamic_export_is_available():
             pytest.skip("named dynamic export is unavailable on this Torch/Python pair")
         module, function = {
@@ -165,17 +163,10 @@ class TestBlurPoolKernelState(BaseTester):
 
     @staticmethod
     def _integer_call(module, image):
-        # Integer output semantics remain a follow-up to #5669; even a failed call must preserve state.
-        if image.device.type == "mps":
-            with pytest.raises(RuntimeError, match="Convolution is supported only for Floating types"):
-                module(image)
-        else:
-            try:
-                module(image)
-            except RuntimeError as error:
-                # Other backends may lack Byte convolution/pooling kernels.
-                if "not implemented" not in str(error) or "Byte" not in str(error):
-                    raise
+        # The blur pools are network layers: an integer input raises on every device (they do not promote it as the
+        # image filters do since #5669), and the failed call must leave the stored kernel untouched.
+        with pytest.raises(TypeCheckError, match="network layer and expects a floating-point feature map"):
+            module(image)
 
     def test_dtype_call_order_5699(self, module_cls, device, dtype):
         module = module_cls(3).to(device=device)
@@ -218,12 +209,11 @@ class TestBlurPoolKernelState(BaseTester):
 
 
 class TestMaxBlurPool(BaseTester):
-    @pytest.mark.parametrize("kernel_size", [3, (5, 5)])
-    def test_smoke(self, kernel_size, device, dtype):
-        data = torch.rand(1, 1, 10, 10, device=device, dtype=dtype)
-        actual = MaxBlurPool2D(kernel_size)(data)
-
-        assert actual.shape == (1, 1, 5, 5)
+    def test_rectangular_max_pool_keeps_backend_support(self, device, dtype):
+        image = torch.arange(20, device=device, dtype=dtype).reshape(1, 1, 4, 5)
+        expected = torch.tensor([[[[5.0625, 5.8125], [8.8125, 9.5625]]]], device=device, dtype=dtype)
+        self.assert_close(max_blur_pool2d(image, 3, max_pool_size=(2, 3)), expected, rtol=0, atol=0)
+        self.assert_close(MaxBlurPool2D(3, max_pool_size=(2, 3))(image), expected, rtol=0, atol=0)
 
     @pytest.mark.parametrize("kernel_size", [3, (5, 5)])
     @pytest.mark.parametrize("batch_size", [1, 2])
@@ -298,22 +288,11 @@ class TestMaxBlurPool(BaseTester):
     @pytest.mark.parametrize("kernel_size", [3, 4, (5, 5)])
     @pytest.mark.parametrize("batch_size", [1, 2])
     def test_dynamo(self, batch_size, kernel_size, device, dtype, torch_optimizer):
-        data = torch.ones(batch_size, 3, 10, 10, device=device, dtype=dtype)
+        data = torch.rand(batch_size, 3, 10, 10, device=device, dtype=dtype)
         op = MaxBlurPool2D(kernel_size)
         op_optimized = torch_optimizer(op)
 
         self.assert_close(op(data), op_optimized(data))
-
-    @pytest.mark.parametrize("kernel_size", [2, 3, 4])
-    @pytest.mark.parametrize("stride", [1, 2])
-    @pytest.mark.parametrize("max_pool_size", [1, 2, 3])
-    def test_even_kernel_keeps_ceil_size_5166(self, kernel_size, stride, max_pool_size, device, dtype):
-        # An even kernel_size used to lose a row and a column: (7, 10) with kernel_size 2, stride 1, max_pool_size 1
-        # returned (6, 9). The size is ceil((H - max_pool_size + 1) / stride) for every kernel size.
-        data = torch.rand(1, 2, 7, 10, device=device, dtype=dtype)
-        actual = max_blur_pool2d(data, kernel_size, stride=stride, max_pool_size=max_pool_size)
-        expected = tuple(math.ceil((n - max_pool_size + 1) / stride) for n in (7, 10))
-        assert actual.shape == (1, 2, *expected)
 
     @pytest.mark.parametrize("kernel_size", [2, 3, 4])
     @pytest.mark.parametrize("stride", [1, 2])
@@ -328,20 +307,16 @@ class TestMaxBlurPool(BaseTester):
 
 
 class TestBlurPool(BaseTester):
+    @pytest.mark.applies_to(
+        dtypes=("float16", "bfloat16", "float64"),
+        reason="the reference is the float32 result, so a float32 input matches itself",
+    )
     @pytest.mark.parametrize("kernel_size", [5, 7, 9, 11, 17])
     @pytest.mark.parametrize("op", [blur_pool2d, max_blur_pool2d, edge_aware_blur_pool2d])
     def test_large_kernel_matches_float32(self, kernel_size, op, device, dtype):
         data = torch.ones(1, 2, 32, 32, device=device, dtype=dtype)
         expected = op(data.float(), kernel_size).to(dtype)
         self.assert_close(op(data, kernel_size), expected)
-
-    @pytest.mark.parametrize("kernel_size", [3, (5, 5)])
-    @pytest.mark.parametrize("stride", [1, 2])
-    def test_smoke(self, kernel_size, stride, device, dtype):
-        data = torch.rand(1, 1, 10, 10, device=device, dtype=dtype)
-        actual = BlurPool2D(kernel_size, stride=stride)(data)
-        expected = (1, 1, int(10 / stride), int(10 / stride))
-        assert actual.shape == expected
 
     @pytest.mark.parametrize("kernel_size", [3, (5, 5)])
     @pytest.mark.parametrize("batch_size", [1, 2])
@@ -357,6 +332,42 @@ class TestBlurPool(BaseTester):
         with pytest.raises(Exception) as errinfo:
             BlurPool2D((3, 5))(data)
         assert "Invalid kernel shape. Expect CxC_(out, None)xNxN" in str(errinfo)
+
+    @pytest.mark.parametrize(
+        "op",
+        [
+            pytest.param(lambda x: blur_pool2d(x, 3), id="blur_pool2d"),
+            pytest.param(lambda x: max_blur_pool2d(x, 3), id="max_blur_pool2d"),
+            pytest.param(lambda x: edge_aware_blur_pool2d(x, 3), id="edge_aware_blur_pool2d"),
+            pytest.param(BlurPool2D(3), id="BlurPool2D"),
+            pytest.param(MaxBlurPool2D(3), id="MaxBlurPool2D"),
+            pytest.param(EdgeAwareBlurPool2D(3), id="EdgeAwareBlurPool2D"),
+        ],
+    )
+    def test_accepts_unbatched_input(self, op, device, dtype):
+        # Like max_pool2d, a (C, H, W) input is accepted: the result is input[None]
+        # processed with the batch dimension removed.
+        img = torch.rand(2, 16, 16, device=device, dtype=dtype)
+        out = op(img)
+        expected = op(img[None])[0]
+        assert out.shape == expected.shape
+        self.assert_close(out, expected)
+
+    @pytest.mark.parametrize(
+        "op",
+        [
+            pytest.param(lambda x: blur_pool2d(x, 3), id="blur_pool2d"),
+            pytest.param(lambda x: max_blur_pool2d(x, 3), id="max_blur_pool2d"),
+            pytest.param(lambda x: edge_aware_blur_pool2d(x, 3), id="edge_aware_blur_pool2d"),
+            pytest.param(BlurPool2D(3), id="BlurPool2D"),
+            pytest.param(MaxBlurPool2D(3), id="MaxBlurPool2D"),
+            pytest.param(EdgeAwareBlurPool2D(3), id="EdgeAwareBlurPool2D"),
+        ],
+    )
+    def test_rejects_other_ranks(self, op, device, dtype):
+        # Ranks other than (C, H, W) and (B, C, H, W) raise ShapeError.
+        with pytest.raises(ShapeError):
+            op(torch.rand(16, 16, device=device, dtype=dtype))
 
     @pytest.mark.parametrize("batch_size", [1, 2])
     def test_noncontiguous(self, batch_size, device, dtype):
@@ -379,21 +390,22 @@ class TestBlurPool(BaseTester):
         op_module = BlurPool2D
 
         img = torch.rand(batch_size, 3, 4, 5, device=device, dtype=dtype)
-        actual = op_module(kernel_size)(img)
-        expected = op(img, kernel_size)
+        actual = op_module(kernel_size, stride=stride)(img)
+        expected = op(img, kernel_size, stride=stride)
         self.assert_close(actual, expected)
 
     @pytest.mark.parametrize("kernel_size", [3, 4, (5, 5)])
     @pytest.mark.parametrize("batch_size", [1, 2])
     @pytest.mark.parametrize("stride", [1, 2])
     def test_dynamo(self, batch_size, kernel_size, stride, device, dtype, torch_optimizer):
-        data = torch.ones(batch_size, 3, 10, 10, device=device, dtype=dtype)
+        data = torch.rand(batch_size, 3, 10, 10, device=device, dtype=dtype)
         op = BlurPool2D(kernel_size, stride=stride)
         op_optimized = torch_optimizer(op)
 
         self.assert_close(op(data), op_optimized(data))
 
-    @pytest.mark.parametrize("kernel_size", [1, 2, 3, 4, 5, 6])
+    # test_matches_zero_padded_reference_5166 pins the values, and so the size, of kernel sizes 2 to 5
+    @pytest.mark.parametrize("kernel_size", [1, 6])
     @pytest.mark.parametrize("stride", [1, 2, 3])
     def test_even_kernel_keeps_ceil_size_5166(self, kernel_size, stride, device, dtype):
         # An even kernel_size used to lose a row and a column: (7, 10) returned (6, 9) at stride 1 and (3, 5) at
@@ -429,19 +441,10 @@ class TestEdgeAwareBlurPool(BaseTester):
 
     @pytest.mark.parametrize("kernel_size", [3, (5, 5)])
     @pytest.mark.parametrize("batch_size", [1, 2])
-    @pytest.mark.parametrize("edge_threshold", [1.25, 2.5])
-    @pytest.mark.parametrize("edge_dilation_kernel_size", [3, 5])
-    def test_smoke(self, kernel_size, batch_size, edge_threshold, edge_dilation_kernel_size, device, dtype):
-        data = torch.zeros(batch_size, 3, 8, 8, device=device, dtype=dtype)
-        actual = edge_aware_blur_pool2d(data, kernel_size, edge_threshold, edge_dilation_kernel_size)
+    def test_smoke(self, kernel_size, batch_size, device, dtype):
+        data = torch.rand(batch_size, 3, 8, 8, device=device, dtype=dtype)
+        actual = edge_aware_blur_pool2d(data, kernel_size, 2.5, 5)
         assert actual.shape == data.shape
-
-    @pytest.mark.parametrize("kernel_size", [3, (5, 5)])
-    @pytest.mark.parametrize("batch_size", [1, 2])
-    def test_cardinality(self, kernel_size, batch_size, device, dtype):
-        inp = torch.zeros(batch_size, 3, 8, 8, device=device, dtype=dtype)
-        blur = edge_aware_blur_pool2d(inp, kernel_size=kernel_size)
-        assert blur.shape == inp.shape
 
     @pytest.mark.parametrize(("kernel_size", "image_size"), [(3, 16), (5, 16), (7, 16), (9, 16), (9, 4)])
     def test_constant_image_is_preserved_at_boundaries(self, kernel_size, image_size, device, dtype):
@@ -452,7 +455,8 @@ class TestEdgeAwareBlurPool(BaseTester):
     def test_exception(self):
         from kornia.core.exceptions import BaseError, ShapeError
 
-        data = torch.rand(1, 3, 3)
+        # A (C, H, W) input is now accepted (follows max_pool2d); only other ranks raise.
+        data = torch.rand(3, 3)
         with pytest.raises(ShapeError) as errinfo:
             edge_aware_blur_pool2d(data, 3)
         assert "Shape dimension mismatch" in str(errinfo.value) or "Expected shape" in str(errinfo.value)
@@ -514,13 +518,6 @@ class TestEdgeAwareBlurPool(BaseTester):
         op_optimized = torch_optimizer(op)
 
         self.assert_close(op(data), op_optimized(data))
-
-    @pytest.mark.parametrize("kernel_size", [2, 4])
-    def test_even_kernel_keeps_shape_5166(self, kernel_size, device, dtype):
-        # blur_pool2d(stride=1) used to return one row and one column less for an even kernel_size, and the fusion
-        # with the input raised a shape error.
-        data = torch.rand(1, 3, 8, 8, device=device, dtype=dtype)
-        assert edge_aware_blur_pool2d(data, kernel_size).shape == data.shape
 
     @pytest.mark.parametrize("kernel_size", [2, 4])
     @pytest.mark.parametrize("shape", [(8, 8), (8, 9)])
@@ -708,3 +705,49 @@ class TestConventionsBlurPool(BaseTester):
         ones = torch.ones(1, 1, 15, 18, device=device, dtype=dtype)
         for kernel_size in (3, 5, 7, 9, 15):
             self.assert_close(edge_aware_blur_pool2d(ones, kernel_size), ones)
+
+
+@pytest.mark.parametrize("module_cls", [BlurPool2D, MaxBlurPool2D])
+class TestBlurPoolScript(BaseTester):
+    def test_script_roundtrip(self, module_cls, device, dtype):
+        module = module_cls(3).to(device=device, dtype=dtype)
+        image = torch.rand(1, 2, 8, 10, device=device, dtype=dtype)
+        scripted = torch.jit.script(module)
+        buffer = io.BytesIO()
+        torch.jit.save(scripted, buffer)
+        buffer.seek(0)
+        restored = torch.jit.load(buffer, map_location=device)
+        self.assert_close(restored(image), module(image))
+
+    @pytest.mark.parametrize("input_dtype", [torch.uint8, torch.int32, torch.bool])
+    def test_script_rejects_nonfloating_input(self, module_cls, device, input_dtype):
+        scripted = torch.jit.script(module_cls(3).to(device=device))
+        image = torch.ones(1, 1, 8, 8, device=device, dtype=input_dtype)
+        with pytest.raises(torch.jit.Error, match=r"TypeCheckError: .*expects a floating-point feature map"):
+            scripted(image)
+
+
+class TestBlurPoolIntegerInput:
+    # The blur pools are network layers and expect a floating feature map. An integer kernel cast used to truncate
+    # every binomial tap to 0: BlurPool2D and MaxBlurPool2D returned zeros on CPU, the functions raised a dtype
+    # mismatch, and CUDA raised from cuDNN or the Byte max pool. Every entry point now raises the same TypeCheckError.
+    @pytest.mark.parametrize(
+        "call",
+        [
+            BlurPool2D(3),
+            MaxBlurPool2D(3),
+            EdgeAwareBlurPool2D(3),
+            lambda x: blur_pool2d(x, 3),
+            lambda x: max_blur_pool2d(x, 3),
+            lambda x: edge_aware_blur_pool2d(x, 3),
+        ],
+        ids=["BlurPool2D", "MaxBlurPool2D", "EdgeAwareBlurPool2D", "blur_pool2d", "max_blur_pool2d", "edge_aware"],
+    )
+    @pytest.mark.parametrize("int_dtype", [torch.uint8, torch.int32, torch.bool])
+    def test_integer_input_raises(self, call, int_dtype, device):
+        image = (torch.arange(64, device=device).reshape(1, 1, 8, 8) % 7).to(int_dtype)
+        with pytest.raises(TypeCheckError, match="network layer and expects a floating-point feature map") as error:
+            call(image)
+        assert str(int_dtype) in str(error.value)
+        assert error.value.actual_type == int_dtype
+        assert call(image.float()).dtype == torch.float32

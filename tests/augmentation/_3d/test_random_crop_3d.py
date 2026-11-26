@@ -18,8 +18,7 @@
 import pytest
 import torch
 
-import kornia
-from kornia.augmentation import AugmentationSequential, RandomCrop, RandomCrop3D
+from kornia.augmentation import AugmentationSequential, RandomCrop3D
 
 from testing.base import BaseTester
 
@@ -233,35 +232,6 @@ class TestRandomCrop3D(BaseTester):
         input_tensor = torch.rand((3, 3, 3), device=device, dtype=torch.float64)  # 3 x 3
         self.gradcheck(RandomCrop3D(size=(3, 3, 3), p=1.0), (input_tensor,))
 
-    @pytest.mark.skip("Need to fix Union type")
-    def test_jit(self, device, dtype):
-        # Define script
-        op = RandomCrop(size=(3, 3), p=1.0).forward
-        op_script = torch.jit.script(op)
-        img = torch.ones(1, 1, 5, 6, device=device, dtype=dtype)
-
-        actual = op_script(img)
-        expected = kornia.geometry.transform.center_crop3d(img)
-        self.assert_close(actual, expected)
-
-    @pytest.mark.skip("Need to fix Union type")
-    def test_jit_trace(self, device, dtype):
-        # Define script
-        op = RandomCrop(size=(3, 3), p=1.0).forward
-        op_script = torch.jit.script(op)
-        # 1. Trace op
-        img = torch.ones(1, 1, 5, 6, device=device, dtype=dtype)
-
-        op_trace = torch.jit.trace(op_script, (img,))
-
-        # 2. Generate new input
-        img = torch.ones(1, 1, 5, 6, device=device, dtype=dtype)
-
-        # 3. Evaluate
-        actual = op_trace(img)
-        expected = op(img)
-        self.assert_close(actual, expected)
-
     @pytest.mark.parametrize("axis", [0, 1, 2])
     def test_rejects_a_crop_one_voxel_larger_than_the_input(self, axis, device, dtype):
         # The size guard counted valid start offsets and rejected only a negative count, so a crop exactly
@@ -331,15 +301,15 @@ class TestRandomCrop3DEmptyValidation(BaseTester):
     def test_legal_empty_crop_keeps_shape_4429(
         self, size, padding, pad_if_needed, probability, in_sequence, device, dtype
     ):
-        """Empty crops validate against the padded canvas and preserve the skip shape."""
+        """Empty crops validate against the padded canvas and take the crop size under any probability."""
         volume = torch.empty(0, 1, 4, 5, 6, device=device, dtype=dtype)
         crop = RandomCrop3D(size, padding=padding, pad_if_needed=pad_if_needed, p=probability)
         augmentation = AugmentationSequential(crop) if in_sequence else crop
 
         output = augmentation(volume)
 
-        expected_size = size if probability == 1.0 else (4, 5, 6)
-        assert output.shape == (0, 1, *expected_size)
+        # An empty batch has no sample for the gate to skip (#4429).
+        assert output.shape == (0, 1, *size)
         assert output.device == volume.device
         assert output.dtype == volume.dtype
 

@@ -26,7 +26,7 @@ from kornia.geometry.camera.projection_orthographic import (
 )
 from kornia.geometry.camera.projection_z1 import dx_project_points_z1, project_points_z1, unproject_points_z1
 
-from testing.base import BaseTester
+from testing.base import BaseTester, script_uncached
 
 
 class TestProjectionZ1(BaseTester):
@@ -113,6 +113,31 @@ class TestProjectionZ1(BaseTester):
         self.assert_close(project_points_z1(actual), points)
         self.assert_close(torch.jit.script(unproject_points_z1)(points, depth), expected)
 
+    @pytest.mark.parametrize("depth_shape", [(3,), (2, 3, 3)])
+    def test_unproject_rejects_a_depth_per_component(self, device, dtype, depth_shape):
+        from kornia.core.exceptions import ShapeError
+
+        # a depth whose trailing dimension is 3 would broadcast against (u, v, 1) and scale each component separately
+        points = torch.ones(2, 3, 2, device=device, dtype=dtype)
+        depth = torch.full(depth_shape, 2.0, device=device, dtype=dtype)
+        with pytest.raises(ShapeError):
+            unproject_points_z1(points, depth)
+
+    @pytest.mark.parametrize("depth_form", ["none", "flat", "column"])
+    def test_unproject_scripted_empty_after_nonempty_keeps_dtype(self, device, dtype, depth_form):
+        # TorchScript's CUDA fuser used to compile ``cat([points * depth, depth])`` into a group that, once it had
+        # specialized on non-empty calls, returned an int32 tensor for an empty batch.
+        scripted = script_uncached(unproject_points_z1)
+        for batch in (2, 2, 2, 0, 3, 0, 1, 0):
+            points = torch.rand(batch, 2, device=device, dtype=dtype)
+            depth = None
+            if depth_form != "none":
+                depth = torch.rand((batch, 1) if depth_form == "column" else (batch,), device=device, dtype=dtype)
+            actual = scripted(points, depth)
+            assert actual.dtype == dtype
+            assert actual.shape == (batch, 3)
+            self.assert_close(actual, unproject_points_z1(points, depth))
+
     @pytest.mark.parametrize("column_depth", [False, True])
     def test_unproject_batched_depth_gradcheck(self, device, column_depth):
         points = torch.tensor([[1.0, 2.0], [3.0, 4.0]], device=device, dtype=torch.float64)
@@ -183,11 +208,10 @@ class TestProjectionZ1(BaseTester):
         )
         assert not bool(torch.isfinite(project_points_z1(points)).any())
 
+    @pytest.mark.applies_to(dtypes=("bfloat16", "float32", "float64"), reason="1e-9 underflows to zero in float16")
     def test_wart_project_points_z1_differs_below_perspective_epsilon_4267(self, device, dtype):
         # kornia#4267: project_points_z1 divides plainly ([[1e9, 2e9]]) while project_points skips the divide when
         # abs(z) <= 1e-8 ([[1., 2.]]); the decided rule makes both skip it.
-        if dtype == torch.float16:
-            pytest.skip("1e-9 underflows to zero in float16")
         points = torch.tensor([[1.0, 2.0, 1e-9]], device=device, dtype=dtype)
         camera_matrix = torch.eye(3, device=device, dtype=dtype).unsqueeze(0)
         expected_z1 = torch.tensor([[1e9, 2e9]], device=device, dtype=dtype)
@@ -265,6 +289,20 @@ class TestProjectionOrthographic(BaseTester):
         extension = torch.tensor([2.0], device=device, dtype=dtype)
         with pytest.raises(ShapeError):
             unproject_points_orthographic(points, extension)
+
+    def test_exception_extension_trailing_size_not_1(self, device, dtype) -> None:
+        # The extension is the z column, (..., 1) or (...,): one of the same rank with a trailing size other
+        # than 1 used to be concatenated whole and returned more than three coordinates.
+        from kornia.core.exceptions import ShapeError
+
+        points = torch.ones(5, 2, device=device, dtype=dtype)
+        for extension in (torch.ones(5, 2, device=device, dtype=dtype), torch.ones(5, 3, device=device, dtype=dtype)):
+            with pytest.raises(ShapeError):
+                unproject_points_orthographic(points, extension)
+        with pytest.raises(ShapeError):
+            unproject_points_orthographic(
+                torch.ones(2, device=device, dtype=dtype), torch.ones(2, device=device, dtype=dtype)
+            )
 
     def test_convention_dx_orthographic_is_the_scalar_du_dx_not_the_full_jacobian(self, device, dtype):
         # dx_project_points_orthographic returns the scalar du/dx = 1 with shape (..., 1), not the (2, 3)

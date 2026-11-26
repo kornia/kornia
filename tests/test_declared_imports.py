@@ -41,9 +41,10 @@ takes to develop kornia, and something a user runs must not need them.
 The allowed set is *derived* from ``pyproject.toml`` and from the ``LazyLoader`` registry rather
 than hardcoded: adding a dependency in the usual place is all it takes to satisfy these tests.
 The literals are the handful of distribution names whose import name differs
-(:data:`DIST_TO_IMPORT`), :data:`CONTRIBUTOR_EXTRAS`, :data:`IMPLICIT_ALLOWED` and the
-:data:`AUDIT_EAGER_IMPORTS` canaries. The ``LazyLoader`` registry means the module-level instances
-in ``kornia.core.external``; a loader constructed anywhere else is not seen.
+(:data:`DIST_TO_IMPORT`), :data:`CONTRIBUTOR_EXTRAS`, :data:`IMPLICIT_ALLOWED`,
+:data:`GUARDED_IMPORTS` and the :data:`AUDIT_EAGER_IMPORTS` canaries. The ``LazyLoader`` registry
+means the module-level instances in ``kornia.core.external``; a loader constructed anywhere else is
+not seen.
 
 Deliberately no ``packaging`` import: it is not a kornia dependency, and this file must pass on a
 bare ``pip install -e ".[dev]"``.
@@ -80,6 +81,13 @@ DIST_TO_IMPORT = {
 # since ``typing_extensions`` gave way to ``typing`` (every name kornia used is in the 3.11 stdlib);
 # an entry here is a package kornia imports on torch's word alone, so keep it empty when you can.
 IMPLICIT_ALLOWED: frozenset[str] = frozenset()
+
+# Third-party modules that kornia neither requires nor offers as an extra, imported only by the listed
+# files and only after ``importlib.util.find_spec`` has found them, so their absence just selects
+# another code path. ``import kornia`` must not load them (checked by the import probe below).
+# - ``triton``: the optional CLIDD kernels. torch installs it with its CUDA Linux wheels but not with
+#   the CPU, macOS or Windows ones, so it is not something torch installs (``IMPLICIT_ALLOWED``).
+GUARDED_IMPORTS: dict[str, frozenset[str]] = {"triton": frozenset({"kornia/feature/clidd/_triton.py"})}
 
 # Extras that exist for contributors, not for users of the library: nothing a user runs may depend
 # on them, so they do not make a package "declared". Every other extra is user-facing and does.
@@ -205,7 +213,7 @@ def test_every_third_party_import_is_declared():
     undeclared: list[str] = []
     direct_optional: list[str] = []
     for path, line, module in sorted(_imported_modules()):
-        if module in ignored or module in allowed:
+        if module in ignored or module in allowed or path in GUARDED_IMPORTS.get(module, ()):
             continue
         (direct_optional if module in optional else undeclared).append(f"{path}:{line} -> {module}")
 
@@ -276,7 +284,8 @@ def test_import_kornia_does_not_load_optional_dependencies():
     code = (
         "import sys\n"
         "import torch\n"
-        "names = set(sys.argv[1:])\n"
+        "split = sys.argv.index('--')\n"
+        "names, guarded = set(sys.argv[1:split]), set(sys.argv[split + 1 :])\n"
         "attempted = set()\n"
         "class Recorder:\n"
         "    def find_spec(self, fullname, path=None, target=None):\n"
@@ -289,6 +298,7 @@ def test_import_kornia_does_not_load_optional_dependencies():
         "import kornia\n"
         "after = {m.partition('.')[0] for m in sys.modules}\n"
         "print('OPTIONAL_LOADED:' + ' '.join(sorted(attempted | ((after - before) & names))))\n"
+        "print('GUARDED_LOADED:' + ' '.join(sorted((after - before) & guarded)))\n"
     )
     # S603: no untrusted input -- this interpreter, a literal program, and module names derived from
     # pyproject.toml and the registry above. check=False so a crashed probe reports its stderr instead
@@ -296,7 +306,7 @@ def test_import_kornia_does_not_load_optional_dependencies():
     # stdin is closed and the call bounded so a LazyLoader reached during import cannot wait on a
     # terminal, whatever the installation mode (InstallationMode.ASK behaves as RAISE without one).
     result = subprocess.run(  # noqa: S603
-        [sys.executable, "-c", code, *checked],
+        [sys.executable, "-c", code, *checked, "--", *sorted(GUARDED_IMPORTS)],
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
@@ -312,4 +322,9 @@ def test_import_kornia_does_not_load_optional_dependencies():
     assert not loaded, (
         f"`import kornia` eagerly loaded optional dependencies: {loaded}. They must stay behind a "
         f"kornia.core.external.LazyLoader. Checked: {checked}."
+    )
+    guarded = [line for line in result.stdout.splitlines() if line.startswith("GUARDED_LOADED:")]
+    assert len(guarded) == 1, f"the probe printed no single guarded-import line; stdout was:\n{result.stdout}"
+    assert not guarded[0].removeprefix("GUARDED_LOADED:").split(), (
+        f"`import kornia` loaded {guarded[0]}; GUARDED_IMPORTS may only be imported when their code path runs."
     )

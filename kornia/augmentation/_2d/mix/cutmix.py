@@ -28,21 +28,10 @@ from kornia.geometry.bbox import bbox_to_mask, infer_bbox_shape
 
 
 class RandomCutMixV2(MixAugmentationBaseV2):
-    r"""Apply CutMix augmentation to a batch of torch.Tensor images.
+    r"""Mix rectangular image regions and labels, applied to a batch with probability ``p`` (default 1.0).
 
-    .. image:: _static/img/RandomCutMixV2.png
-
-    Implementation for `CutMix: Regularization Strategy to Train Strong Classifiers with
-    Localizable Features` :cite:`yun2019cutmix`.
-
-    The function returns (inputs, labels), in which the inputs is the torch.Tensor that contains the mixup images
-    while the labels is a :math:`(\text{num_mixes}, B, 3)` torch.Tensor that contains
-    (label_batch, label_permuted_batch, lambda) for each cutmix.
-
-    The implementation referred to the following repository: `https://github.com/clovaai/CutMix-PyTorch
-    <https://github.com/clovaai/CutMix-PyTorch>`_.
-
-    See the Convention block on :class:`~kornia.augmentation.MixAugmentationBaseV2`.
+    ``images, labels = RandomCutMixV2(data_keys=["input", "class"])(input, label)`` mixes image patches and
+    returns label pairs with their coefficients. Use :class:`RandomMixUpV2` to blend complete images instead.
 
     Args:
         p: probability for applying an augmentation to a batch. This param controls the augmentation
@@ -64,13 +53,13 @@ class RandomCutMixV2(MixAugmentationBaseV2):
             but will raise a deprecation warning when False.
 
     Inputs:
-        - Input image tensors, shape of :math:`(B, C, H, W)`.
-        - Raw labels, shape of :math:`(B)`.
+        - Input image tensors, shape of ``(B, C, H, W)``.
+        - Raw labels, shape of ``(B)``.
 
     Returns:
         Tuple[torch.Tensor, torch.Tensor]:
-        - Adjusted image, shape of :math:`(B, C, H, W)`.
-        - Raw labels, permuted labels and lambdas for each mix, shape of :math:`(num_mix, B, 3)`.
+        - Adjusted image, shape of ``(B, C, H, W)``.
+        - Raw labels, permuted labels and lambdas for each mix, shape ``(num_mix, B, 3)``.
 
     Convention:
         - With ``data_keys=["input", "class"]``, the class output is ``(num_mix, B, 3)``. Its last axis holds
@@ -80,16 +69,26 @@ class RandomCutMixV2(MixAugmentationBaseV2):
           ``2 ** 24`` stay exact.
           ``use_correct_lambda=True`` returns ``1 - cut_area / image_area``;
           the compatibility default returns ``cut_area / image_area`` and emits a deprecation warning.
-        - ``p`` is a batch-wide gate applied once, unlike the per-sample ``p`` of :class:`RandomJigsaw`
-          (`#4425 <https://github.com/kornia/kornia/issues/4425>`_): ``_params["batch_prob"]`` is all ones or all zeros,
+        - ``p`` is a batch-wide gate applied once, unlike the per-sample ``p`` of :class:`RandomJigsaw`:
+          ``_params["batch_prob"]`` is all ones or all zeros,
           and every row and mix of a selected batch receives a cut, though self-pairing or a zero-sized cut can
           leave a row unchanged. With ``same_on_batch=False`` each row and mix draws its own cut size and placement;
           ``same_on_batch=True`` shares each mix's cut size and placement across rows; each mix still draws its own
           pairing and geometry. At ``p=0`` the image is unchanged and each class row contains the original label twice
           with lambda zero.
 
-    Note:
-        This implementation would randomly cutmix images in a batch. Ideally, the larger batch size would be preferred.
+    .. image:: _static/img/RandomCutMixV2.png
+
+    Implementation for `CutMix: Regularization Strategy to Train Strong Classifiers with
+    Localizable Features` :cite:`yun2019cutmix`.
+
+    The implementation referred to the following repository: `https://github.com/clovaai/CutMix-PyTorch
+    <https://github.com/clovaai/CutMix-PyTorch>`_.
+
+    See the Convention block on :class:`~kornia.augmentation.MixAugmentationBaseV2`.
+
+    See Also:
+        - :class:`RandomMixUpV2`: blends complete paired images instead of rectangular patches.
 
     Examples:
         >>> rng = torch.manual_seed(3)
@@ -192,7 +191,7 @@ class RandomCutMixV2(MixAugmentationBaseV2):
         for pair, crop in zip(params["mix_pairs"], params["crop_src"]):
             input_permute = input.index_select(dim=0, index=_to_device_nonblocking(pair, input.device))
             # compute mask to match input shape
-            mask = bbox_to_mask(crop, width, height).bool().unsqueeze(dim=1).repeat(1, input.size(1), 1, 1)
+            mask = bbox_to_mask(crop, size=(height, width)).bool().unsqueeze(dim=1).repeat(1, input.size(1), 1, 1)
             out_inputs[mask] = input_permute[mask]
 
         return out_inputs

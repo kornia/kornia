@@ -100,10 +100,12 @@ jobs:
           CHANGED_FILES=$(git diff --name-only "$PREV_SHA" HEAD)
 
           # Skip only if every changed file is documentation. The export survey, its snapshot and the stability page
-          # live under docs/ but define what the ONNX and compile conformance jobs check (#5819).
+          # live under docs/ but define what the ONNX and compile conformance jobs check (#5819), and the
+          # support-statement generator renders the promise that tests/test_generate_export_support.py checks.
           SHOULD_SKIP="true"
           for file in $CHANGED_FILES; do
             if [[ "$file" =~ ^docs/export_support/ ]] || \
+               [[ "$file" == "docs/generate_export_support.py" ]] || \
                [[ "$file" == "docs/source/_data/export_support.json" ]] || \
                [[ "$file" == "docs/source/get-started/stability.rst" ]]; then
               SHOULD_SKIP="false"
@@ -134,7 +136,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Setup pixi
-        uses: prefix-dev/setup-pixi@v0.10.2
+        uses: prefix-dev/setup-pixi@v0.11.3
         with:
           pixi-version: v0.40.0
           cache: true
@@ -162,7 +164,15 @@ jobs:
       matrix:
         pytorch-dtype: ["float32", "float64"]
         python-version: ["3.11", "3.12", "3.13"]
-        pytorch-version: ["2.5.1", "2.6.0", "2.9.1", "2.14.0"]
+        pytorch-version: ["2.5.1", "2.6.0", "2.9.1", "2.15.0"]
+        include:
+        # The legs that run the ONNX tests (node ID contains "onnx"): one per torch release on Ubuntu, and
+        # torch 2.15.0 on Windows and macOS. These entries match an existing leg and only add `onnx`; the
+        # other legs pass skip-onnx, as in pr_test_cpu.yml.
+          - {pytorch-dtype: "float64", python-version: "3.12", pytorch-version: "2.5.1", onnx: true}
+          - {pytorch-dtype: "float32", python-version: "3.12", pytorch-version: "2.6.0", onnx: true}
+          - {pytorch-dtype: "float32", python-version: "3.12", pytorch-version: "2.9.1", onnx: true}
+          - {pytorch-dtype: "float32", python-version: "3.11", pytorch-version: "2.15.0", onnx: true}
 
     uses: ./.github/workflows/tests.yml
     with:
@@ -170,6 +180,7 @@ jobs:
       python-version: '["${{ matrix.python-version }}"]'
       pytorch-version: '["${{ matrix.pytorch-version }}"]'
       pytorch-dtype: ${{ matrix.pytorch-dtype }}
+      skip-onnx: ${{ matrix.onnx != true }}
       cache-path: weights/
       cache-key: model-weights-${{ needs.pre-tests.outputs.hash }}
       cache-restore-keys: |
@@ -187,7 +198,7 @@ jobs:
     with:
       os: ubuntu-latest
       python-version: '["3.11"]'
-      pytorch-version: '["2.14.0"]'
+      pytorch-version: '["2.15.0"]'
       pytorch-dtype: ${{ matrix.pytorch-dtype }}
       known-failure-profile: cpu-${{ matrix.pytorch-dtype }}
       # Same hang guard as the PR half-precision job (#5493).
@@ -198,7 +209,7 @@ jobs:
         model-weights-${{ needs.pre-tests.outputs.hash }}
         model-weights-
 
-  # ONNX conformance (#5819) of every promised operator on both enforced torch releases; the PR run covers 2.14.0
+  # ONNX conformance (#5819) of every promised operator on both enforced torch releases; the PR run covers 2.15.0
   # for the packages a change touches and the packages that import them.
   onnx-conformance:
     needs: [check-skip]
@@ -207,14 +218,14 @@ jobs:
     with:
       os: ubuntu-latest
       python-version: '["3.11"]'
-      pytorch-version: '["2.9.1", "2.14.0"]'
+      pytorch-version: '["2.9.1", "2.15.0"]'
       pytorch-dtype: float32
       test-path: tests/onnx/test_conformance.py
       # pytest-timeout fails a case that runs past 10 min and names it, rather than the job timeout ending the run
       pytest-extra: --onnx-conformance=all --timeout=600
 
   # torch.compile conformance (#5819) of every promised operator on both enforced torch releases; the PR run covers
-  # 2.14.0 for the packages a change touches and the packages that import them.
+  # 2.15.0 for the packages a change touches and the packages that import them.
   compile-conformance:
     needs: [check-skip]
     if: needs.check-skip.outputs.should-skip == 'false'
@@ -222,7 +233,7 @@ jobs:
     with:
       os: ubuntu-latest
       python-version: '["3.11"]'
-      pytorch-version: '["2.9.1", "2.14.0"]'
+      pytorch-version: '["2.9.1", "2.15.0"]'
       pytorch-dtype: float32
       test-path: tests/test_inductor_conformance.py
       # pytest-timeout fails a case that runs past 10 min and names it, rather than the job timeout ending the run
@@ -237,7 +248,7 @@ jobs:
         os: ["windows-latest"]
         pytorch-dtype: ["float32", "float64"]
         python-version: ["3.11", "3.12", "3.13"]
-        pytorch-version: ["2.5.1", "2.9.1", "2.14.0"]
+        pytorch-version: ["2.5.1", "2.9.1", "2.15.0"]
         exclude:
           # PyTorch 2.5.1 doesn't have wheels for Python 3.13 on Windows
           - python-version: "3.13"
@@ -263,6 +274,8 @@ jobs:
             pytorch-dtype: "float64"
             python-version: "3.12"
             pytorch-version: "2.5.1"
+          # Matches an existing leg and only adds `onnx`: the Windows leg that runs the ONNX tests.
+          - {os: "windows-latest", pytorch-dtype: "float64", python-version: "3.13", pytorch-version: "2.15.0", onnx: true}
 
     uses: ./.github/workflows/tests.yml
     with:
@@ -270,6 +283,7 @@ jobs:
       python-version: '["${{ matrix.python-version }}"]'
       pytorch-version: '["${{ matrix.pytorch-version }}"]'
       pytorch-dtype: ${{ matrix.pytorch-dtype }}
+      skip-onnx: ${{ matrix.onnx != true }}
       cache-path: weights/
       cache-key: model-weights-${{ needs.pre-tests.outputs.hash }}
       cache-restore-keys: |
@@ -284,13 +298,16 @@ jobs:
       matrix:
         pytorch-dtype: ["float32", "float64"]
         python-version: ["3.11", "3.12", "3.13"]
-        pytorch-version: ["2.5.1", "2.9.1", "2.14.0"]
+        pytorch-version: ["2.5.1", "2.9.1", "2.15.0"]
         exclude:
           # PyTorch 2.5.1 doesn't have wheels for Python 3.13 on macOS
           - python-version: "3.13"
             pytorch-version: "2.5.1"
           # macOS only runs float32 tests
           - pytorch-dtype: "float64"
+        include:
+          # Matches an existing leg and only adds `onnx`: the macOS leg that runs the ONNX tests.
+          - {pytorch-dtype: "float32", python-version: "3.13", pytorch-version: "2.15.0", onnx: true}
 
     uses: ./.github/workflows/tests.yml
     with:
@@ -298,6 +315,7 @@ jobs:
       python-version: '["${{ matrix.python-version }}"]'
       pytorch-version: '["${{ matrix.pytorch-version }}"]'
       pytorch-dtype: ${{ matrix.pytorch-dtype }}
+      skip-onnx: ${{ matrix.onnx != true }}
       cache-path: weights/
       cache-key: model-weights-${{ needs.pre-tests.outputs.hash }}
       cache-restore-keys: |

@@ -28,28 +28,34 @@ from kornia.geometry.transform import warp_perspective
 
 
 class ImageStitcher(nn.Module):
-    """Stitch images with overlapping fields of view.
+    """Stitch overlapping RGB images, ordered left to right, into one panorama by matched homographies.
+
+    ``stitcher = ImageStitcher(KF.LoFTR(pretrained="outdoor"))`` builds the stitcher.
+    ``panorama = stitcher(img_left, img_right, ...)`` takes RGB images ``(B, 3, H, W)`` of one height, ordered left to
+    right, and returns one ``(B, 3, H, W_pano)`` panorama in the first image's pixel frame. Each next image is matched
+    to the panorama so far, and warped onto it with the homography of those matches.
 
     Convention:
-        - The images are RGB, :math:`(B, 3, H, W)`, all of one height, ordered left to right. ``matcher`` is a
-          :class:`~kornia.feature.LoFTR` or a :class:`~kornia.feature.LocalFeatureMatcher`, which gets grayscale
-          copies; any other matcher raises ``NotImplementedError``.
-        - The panorama is in the first image's pixel frame and has its height: content that maps left of its first
-          column, or above or below its rows, is lost. Each next image is warped onto the panorama so far with a
-          homography from their matches; every sample needs 4 matches, or a ``RuntimeError`` names the sample.
+        - ``matcher`` is a :class:`~kornia.feature.LoFTR` or a :class:`~kornia.feature.LocalFeatureMatcher`, which gets
+          grayscale copies of the images; any other matcher raises ``NotImplementedError``.
+        - The panorama has the first image's height: content that maps left of its first column, or above or below
+          its rows, is lost. Every sample needs 4 matches, or a ``RuntimeError`` names the sample.
         - ``"naive"`` blending keeps the warped image wherever it covers a pixel completely, so in an overlap the right
           image replaces the left one; a pixel it covers only in part keeps the panorama's value.
-        - The result drops the empty trailing columns, those after the last column that any sample covers; an
-          uncovered column before it, the first one included, is kept. A batch shares one crop, so it is cropped to its
-          widest sample and a narrower sample keeps zero columns on its right.
-        - ``estimator="ransac"`` uses ``RANSAC("homography")`` (``inl_th=2.0``); ``"vanilla"`` fits every match with
-          iterated DLT.
+        - ``W_pano`` is at most the sum of the widths: the result drops the empty trailing columns, those after the
+          last column that any sample covers; an uncovered column before it, the first one included, is kept. A batch
+          shares one crop, so it is cropped to its widest sample and a narrower sample keeps zero columns on its
+          right.
+        - ``estimator="ransac"`` fits the inliers that :class:`~kornia.geometry.ransac.RANSAC` finds for
+          ``"homography"`` (``inl_th=2.0``). ``"vanilla"`` fits every match with
+          :func:`~kornia.geometry.homography.find_homography_dlt_iterated`, which down-weights matches by their
+          transfer error after the first fit.
 
     Args:
         matcher: image feature matching module, :class:`~kornia.feature.LoFTR` or
             :class:`~kornia.feature.LocalFeatureMatcher`.
-        estimator: method to compute homography, either "vanilla" or "ransac".
-            "ransac" is slower with a better accuracy.
+        estimator: method to compute homography, ``"ransac"`` or ``"vanilla"``; another value raises
+            ``NotImplementedError``.
         blending_method: method to blend two images together.
             Only "naive" is currently supported.
 
@@ -67,6 +73,14 @@ class ImageStitcher(nn.Module):
 
     See :doc:`/applications/image_stitching` for a complete example.
 
+    See Also:
+        - :class:`~kornia.geometry.transform.image_registrator.ImageRegistrator`: aligns one image to another by
+          optimising a homography on the pixels, without matches and without a panorama.
+        - :class:`~kornia.tracking.HomographyTracker`: returns a planar target's homography in each video frame,
+          starting from the previous frame's, and builds no panorama.
+        - :func:`~kornia.geometry.transform.warp_perspective`: warps one image by a homography you already have.
+        - :class:`~kornia.geometry.ransac.RANSAC`: the robust homography estimator of ``estimator="ransac"``.
+
     """
 
     def __init__(self, matcher: nn.Module, estimator: str = "ransac", blending_method: str = "naive") -> None:
@@ -83,8 +97,8 @@ class ImageStitcher(nn.Module):
         """Estimate homography by the matched keypoints.
 
         Args:
-            keypoints1: matched keypoint set from an image, shaped as :math:`(N, 2)`.
-            keypoints2: matched keypoint set from the other image, shaped as :math:`(N, 2)`.
+            keypoints1: matched keypoint set from an image, shaped as ``(N, 2)``.
+            keypoints2: matched keypoint set from the other image, shaped as ``(N, 2)``.
 
         """
         if self.estimator == "vanilla":
@@ -159,8 +173,7 @@ class ImageStitcher(nn.Module):
         """Crop redundant empty columns from a stitched panorama.
 
         Args:
-            image: Stitched image tensor, typically shaped
-                :math:`(B, C, H, W_{panorama})`, where ``W_{panorama}`` is the
+            image: Stitched image tensor, shaped ``(B, C, H, W_pano)``, where ``W_pano`` is the
                 panorama width after concatenation/warping.
             mask: Validity mask aligned with ``image`` where non-zero values mark
                 pixels covered by at least one input view.
@@ -201,9 +214,9 @@ class ImageStitcher(nn.Module):
         """Stitch two images into a shared panorama frame.
 
         Args:
-            images_left: Reference image tensor, shaped :math:`(B, C, H, W_l)`.
+            images_left: Reference image tensor, shaped ``(B, C, H, W_l)``.
             images_right: Image tensor to be warped onto the reference frame,
-                shaped :math:`(B, C, H, W_r)`.
+                shaped ``(B, C, H, W_r)``.
             mask_left: Optional validity mask for ``images_left`` with the same
                 shape as ``images_left``.
             mask_right: Optional validity mask for ``images_right`` with the same
@@ -258,7 +271,7 @@ class ImageStitcher(nn.Module):
         Args:
             *imgs: Ordered image tensors from left to right. Each tensor is expected
                 to share a common height and overlap with the next image.
-                Each tensor is RGB, :math:`(B, 3, H, W)`.
+                Each tensor is RGB, ``(B, 3, H, W)``.
 
         Returns:
             A single panorama tensor obtained by stitching all provided images

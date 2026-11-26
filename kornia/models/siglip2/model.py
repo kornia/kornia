@@ -257,8 +257,11 @@ class SigLip2Model(nn.Module):
                     text_embeds,
                     msg="return_loss pairs the i-th image with the i-th text, so it needs as many images as texts.",
                 )
-                eye = torch.eye(logits_per_text.shape[0], device=logits_per_text.device, dtype=logits_per_text.dtype)
-                loss = -F.logsigmoid((2 * eye - 1) * logits_per_text).sum(-1).mean()
+                # Negate nonmatching pairs, then restore the diagonal on this fresh tensor.
+                # This avoids a dense label matrix retained for multiplication backward.
+                signed_logits = -logits_per_text
+                signed_logits.diagonal().neg_()
+                loss = -F.logsigmoid(signed_logits).sum(-1).mean()
 
         return SigLip2Result(
             image_embeds=image_embeds,

@@ -22,7 +22,8 @@ Usage: python probe_compile.py <cases_module> <out.json> [names...]
 Per case records:
   export:  ok | fail | eager-fail | skipped         (torch.export.export, non-strict default)
   compile: ok | ok-breaks:N | ok-unverified | mismatch | fail | eager-fail | skipped
-           (torch.compile default inductor backend, fullgraph=False; N = dynamo graph breaks)
+           (torch.compile, default inductor backend: ok only for one graph, fullgraph=True; a case fullgraph=True
+           refuses is compiled with fullgraph=False, N = the graph breaks torch._dynamo.explain counts)
 plus the target's importable qualified name when it has one.
 
 ``run_case(c, export=False, fullgraph=True)`` is the compile step alone with ``torch.compile(..., fullgraph=True)``,
@@ -142,39 +143,58 @@ def export_step(wrap: nn.Module, inputs: list[torch.Tensor]) -> dict[str, Any]:
     return rec
 
 
+def _compiled_outputs(wrap: nn.Module, inputs: list[torch.Tensor], fullgraph: bool) -> list[torch.Tensor]:
+    compiled = torch.compile(copy.deepcopy(wrap), fullgraph=fullgraph)
+    torch.manual_seed(SEED)
+    with torch.no_grad():
+        return list(compiled(*copy.deepcopy(inputs)))
+
+
 def compile_step(
     c: dict[str, Any], wrap: nn.Module, inputs: list[torch.Tensor], ref: list[torch.Tensor], fullgraph: bool = False
 ) -> dict[str, Any]:
     """``torch.compile`` (default inductor backend) of the wrapper, compared with ``ref``: the ``compile`` fields.
 
-    With ``fullgraph=False`` (the survey) ``torch._dynamo.explain`` counts the graph breaks first; with
-    ``fullgraph=True`` a graph break fails the compile, so a passing case has none. Dynamo is reset before and after.
+    A case is ``ok`` only when ``torch.compile(..., fullgraph=True)`` captures it in one graph and the result matches
+    eager: ``torch._dynamo.explain`` can count no graph break for a call Dynamo runs partly or wholly in Python (#6194).
+    With ``fullgraph=True`` (the conformance test) that compile is the whole step, and a graph break fails the case.
+    The survey (``fullgraph=False``) goes on for a case ``fullgraph=True`` refuses: explain counts its graph breaks
+    and a default ``torch.compile`` is compared with eager, ``ok-breaks:N`` when it matches (``N`` may be 0, the
+    refusal then being the recorded break reason). Dynamo is reset before and after each compile.
     """
-    rec: dict[str, Any] = {}
+    rec: dict[str, Any] = {"graph_breaks": 0}
     t1 = time.time()
     _set_alarm(TIMEOUT)
     try:
         torch._dynamo.reset()
-        breaks = 0
-        if not fullgraph:
+        refusal: Exception | None = None
+        try:
+            out = _compiled_outputs(wrap, inputs, fullgraph=True)
+        except Timeout:
+            raise
+        except Exception as e:  # not BaseException: a test's outcome (pytest-timeout) ends the run
+            if fullgraph:
+                raise
+            refusal = e
+        # outside the except block, so that a failure below is not reported as the refusal it would be chained to
+        if refusal is not None:
+            torch._dynamo.reset()
             torch.manual_seed(SEED)
             with torch.no_grad():
                 ex = torch._dynamo.explain(copy.deepcopy(wrap))(*copy.deepcopy(inputs))
-            breaks = int(ex.graph_break_count)
+            # explain counts -1 when Dynamo captures no graph at all and runs the whole call in Python
+            rec["graph_breaks"] = max(int(ex.graph_break_count), 0)
+            reasons = sorted({str(r.reason)[:160] for r in ex.break_reasons})[:5]
+            rec["break_reasons"] = reasons or [f"fullgraph=True: {err_str(refusal)}"[:160]]
             torch._dynamo.reset()
-        rec["graph_breaks"] = breaks
-        if breaks:
-            rec["break_reasons"] = sorted({str(r.reason)[:160] for r in ex.break_reasons})[:5]
-        compiled = torch.compile(copy.deepcopy(wrap), fullgraph=fullgraph)
-        torch.manual_seed(SEED)
-        with torch.no_grad():
-            out = list(compiled(*copy.deepcopy(inputs)))
+            out = _compiled_outputs(wrap, inputs, fullgraph=False)
         if not c["check"]:
             why = shape_and_finite(ref, out)
             rec["compile"] = "ok-unverified" if why is None else "mismatch"
         else:
             why = _compare(ref, out, c)
-            rec["compile"] = ("ok" if breaks == 0 else f"ok-breaks:{breaks}") if why is None else "mismatch"
+            ok = "ok" if refusal is None else f"ok-breaks:{rec['graph_breaks']}"
+            rec["compile"] = ok if why is None else "mismatch"
         if why:
             rec["compile_error"] = why
     except Exception as e:  # the survey's own Timeout is one; a pytest outcome or KeyboardInterrupt is not

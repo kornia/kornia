@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import pytest
 import torch
 
 from kornia.color.utils import _apply_linear_transformation
@@ -23,18 +24,33 @@ from testing.base import BaseTester
 
 
 class TestApplyLinearTransformation(BaseTester):
+    @pytest.mark.device_agnostic
+    def test_cpu_channels_last_matches_flattened_matmul_exactly(self):
+        # The CUDA channel-innermost branch can differ by an ulp on CPU; preserve the original CPU contraction.
+        # Compare its own matmul: einsum can round differently with Apple's BLAS.
+        image = torch.rand(
+            (4, 3, 32, 32), generator=torch.Generator().manual_seed(0), device="cpu", dtype=torch.float32
+        ).contiguous(memory_format=torch.channels_last)
+        kernel = torch.tensor(
+            [[0.412453, 0.357580, 0.180423], [0.212671, 0.715160, 0.072169], [0.019334, 0.119193, 0.950227]],
+            device="cpu",
+            dtype=torch.float32,
+        )
+        expected = torch.matmul(kernel, image.reshape(4, 3, 32 * 32)).reshape(4, 3, 32, 32)
+
+        actual = _apply_linear_transformation(image, kernel)
+
+        self.assert_close(actual, expected, atol=0.0, rtol=0.0)
+
     def test_compute_operands(self, device):
         image = torch.tensor([1, 2, 3, 4, 5, 6], device=device, dtype=torch.int64).view(1, 3, 1, 2)
         kernel = torch.tensor([[1.0, 0.5, -0.25], [-0.5, 1.0, 0.0], [0.0, 0.25, 1.0]], dtype=torch.float64)
-        bias = torch.tensor([0.5, -1.0, 2.0], dtype=torch.float64)
 
         image_compute = image.float()
         kernel_compute = kernel.to(device=device, dtype=torch.float32)
-        bias_compute = bias.to(device=device, dtype=torch.float32)
         expected = torch.einsum("oi, ...ihw -> ...ohw", kernel_compute, image_compute)
-        expected = expected + bias_compute.view(-1, 1, 1)
 
-        actual = _apply_linear_transformation(image, kernel, bias)
+        actual = _apply_linear_transformation(image, kernel)
 
         assert actual.shape == image.shape
         assert actual.device == image.device
@@ -42,19 +58,67 @@ class TestApplyLinearTransformation(BaseTester):
         assert actual.is_contiguous()
         self.assert_close(actual, expected, atol=0.0, rtol=0.0)
 
+    @pytest.mark.parametrize("shape", [(1, 3, 224, 224), (2, 3, 48, 64), (8, 3, 64, 64)])
+    def test_float32_with_cudnn_tf32_enabled(self, device, shape):
+        # PyTorch's defaults: cuDNN TF32 on, matmul TF32 off (the test session sets both from --tf32).
+        # The transform must compute in float32 there: on CUDA the former 1x1 conv2d gave 3.6e-4 for
+        # (1, 3, 224, 224). That only discriminates with older cuDNN (torch 2.5.1's cuDNN 9.1); newer
+        # cuDNN kept that conv in float32 for these shapes, so on current torch this guards the floor.
+        generator = torch.Generator().manual_seed(0)
+        image = torch.rand(shape, generator=generator, dtype=torch.float64)
+        kernel = torch.tensor(
+            [[0.412453, 0.357580, 0.180423], [0.212671, 0.715160, 0.072169], [0.019334, 0.119193, 0.950227]],
+            dtype=torch.float64,
+        )
+        expected = torch.einsum("oi, ...ihw -> ...ohw", kernel, image).to(device=device, dtype=torch.float32)
+
+        cudnn, matmul = torch.backends.cudnn, torch.backends.cuda.matmul
+        matmul_tf32 = matmul.allow_tf32
+        matmul.allow_tf32 = False
+        try:
+            with cudnn.flags(
+                enabled=cudnn.enabled, benchmark=cudnn.benchmark, deterministic=cudnn.deterministic, allow_tf32=True
+            ):
+                actual = _apply_linear_transformation(image.to(device=device, dtype=torch.float32), kernel)
+        finally:
+            matmul.allow_tf32 = matmul_tf32
+
+        self.assert_close(actual, expected, atol=1e-6, rtol=1e-6)
+
+    @pytest.mark.parametrize("layout", ["channels_last", "nhwc_permuted", "hwc_permuted", "5d_channel_innermost"])
+    def test_channel_innermost_layouts(self, device, dtype, layout):
+        generator = torch.Generator().manual_seed(0)
+        if layout == "channels_last":
+            image = torch.rand(2, 3, 5, 7, generator=generator, dtype=torch.float64)
+            image = image.contiguous(memory_format=torch.channels_last)
+        elif layout == "nhwc_permuted":
+            image = torch.rand(2, 5, 7, 3, generator=generator, dtype=torch.float64).permute(0, 3, 1, 2)
+        elif layout == "hwc_permuted":
+            image = torch.rand(5, 7, 3, generator=generator, dtype=torch.float64).permute(2, 0, 1)
+        else:
+            image = torch.rand(2, 4, 5, 7, 3, generator=generator, dtype=torch.float64).movedim(-1, -3)
+        kernel = torch.tensor([[1.0, 0.5, -0.25], [-0.5, 1.0, 0.0], [0.0, 0.25, 1.0]], dtype=torch.float64)
+        expected = torch.einsum("oi, ...ihw -> ...ohw", kernel, image)
+
+        actual = _apply_linear_transformation(image.to(device=device, dtype=dtype), kernel)
+
+        assert actual.shape == image.shape
+        assert actual.dtype == dtype
+        self.assert_close(actual, expected.to(device=device, dtype=dtype))
+        if layout == "channels_last" and actual.device.type == "cuda":
+            # On CUDA a channels_last image stays channels_last, as the float32 conv2d this replaced kept it.
+            assert actual.is_contiguous(memory_format=torch.channels_last)
+
     def test_empty_input_autograd(self, device):
         for shape in ((0, 3, 4, 4), (2, 3, 0, 4), (2, 0, 3, 4, 4)):
             image = torch.zeros(shape, device=device, dtype=torch.float32, requires_grad=True)
             kernel = torch.eye(3, device=device, dtype=torch.float32, requires_grad=True)
-            bias = torch.zeros(3, device=device, dtype=torch.float32, requires_grad=True)
 
-            actual = _apply_linear_transformation(image, kernel, bias)
+            actual = _apply_linear_transformation(image, kernel)
             actual.sum().backward()
 
             assert actual.shape == image.shape
             assert actual.is_contiguous()
             assert image.grad is not None
             assert kernel.grad is not None
-            assert bias.grad is not None
             self.assert_close(kernel.grad, torch.zeros_like(kernel))
-            self.assert_close(bias.grad, torch.zeros_like(bias))

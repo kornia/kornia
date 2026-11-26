@@ -17,38 +17,40 @@
 
 """ONNX export tests for SAM (image encoder subgraph)."""
 
+import io
+
 import pytest
 import torch
 
 from kornia.core._compat import torch_version_ge, torch_version_lt
 from kornia.models.sam.architecture.common import LayerNorm
 from kornia.models.sam.architecture.image_encoder import ImageEncoderViT
+from kornia.models.sam.architecture.mask_decoder import MaskDecoder
+from kornia.models.sam.architecture.transformer import TwoWayTransformer
 from kornia.models.sam.model import Sam, SamConfig
 from kornia.models.tiny_vit import TinyViT
 
-from testing.base import assert_close
+from testing.base import assert_close, onnx_exporter_params
 
 # Every test in this module must stay device-free: the mark deselects the whole file on non-CPU devices.
 pytestmark = pytest.mark.device_agnostic
 
 
-def test_sam_has_to_onnx():
-    """Sam exposes a to_onnx() method via ONNXExportMixin."""
-    assert hasattr(Sam, "to_onnx")
+_EXPORTERS = onnx_exporter_params()
 
 
 @pytest.mark.timeout(120)
 @pytest.mark.xfail(
-    torch_version_ge(2, 14) and torch_version_lt(2, 15, 0),
+    torch_version_ge(2, 14) and torch_version_lt(2, 16, 0),
     reason=(
-        "torch 2.14's dynamo ONNX exporter cannot translate aten.mul.Scalar for this graph in the CPU "
-        "build (the CUDA build exports it): DispatchError 'No decompositions registered for the "
+        "the dynamo ONNX exporter of torch 2.14 and 2.15 cannot translate aten.mul.Scalar for this graph in "
+        "the CPU build (the 2.14 CUDA build exports it): DispatchError 'No decompositions registered for the "
         "real-valued input'; not yet reported upstream"
     ),
     raises=torch.onnx.OnnxExporterError,
-    # Strict on the CPU builds, where an upstream fix inside 2.14.x must announce itself as an XPASS failure rather
-    # than sit silently until the 2.15 bound expires. A CUDA build of 2.14.0 exports this graph (2.14.0+cu130 on
-    # Linux), so there the marker is not strict.
+    # Strict on the CPU builds, where an upstream fix inside 2.14.x or 2.15.x must announce itself as an XPASS failure
+    # rather than sit silently until the 2.16 bound expires. A CUDA build of 2.14.0 exports this graph (2.14.0+cu130
+    # on Linux), so there the marker is not strict.
     strict=torch.version.cuda is None,
 )
 def test_sam_encoder_to_onnx(tmp_path):
@@ -127,8 +129,20 @@ def test_vit_encoder_legacy_onnx_matches_eager_at_every_batch():
     _check_onnx_against_eager(op, model.image_encoder, (1, 2, 3), 64)
 
 
+def _mobile_sam_at_64_px() -> Sam:
+    """MobileSAM with its TinyViT encoder layout at 64 px instead of 1024 px, one block per stage.
+
+    TinyViT-5M stacks 2, 2, 6 and 2 blocks of the same kind per stage; one each exports the same kinds of nodes, in a
+    third of the time on the dynamo exporter.
+    """
+    torch.manual_seed(0)
+    model = Sam.from_name("mobile_sam")
+    model.image_encoder = TinyViT.from_config("5m", img_size=64, mobile_sam=True, depths=(1, 1, 1, 1))
+    return model.eval()
+
+
 @pytest.mark.timeout(120)
-@pytest.mark.parametrize("export_kwargs", [{}, {"dynamo": False}], ids=["default", "legacy"])
+@pytest.mark.parametrize("export_kwargs", _EXPORTERS)
 def test_tiny_vit_encoder_onnx_runs_at_the_batches_it_declares(export_kwargs):
     """A MobileSAM (TinyViT) encoder: a dynamic batch on the dynamo exporter, the pseudo batch on the legacy one.
 
@@ -140,11 +154,7 @@ def test_tiny_vit_encoder_onnx_runs_at_the_batches_it_declares(export_kwargs):
     legacy = not export_kwargs.get("dynamo", torch_version_ge(2, 9, 0))
     if not legacy:
         pytest.importorskip("onnxscript")
-    torch.manual_seed(0)
-    model = Sam.from_name("mobile_sam")
-    # The MobileSAM encoder layout at 64 px instead of 1024 px.
-    model.image_encoder = TinyViT.from_config("5m", img_size=64, mobile_sam=True)
-    model.eval()
+    model = _mobile_sam_at_64_px()
 
     op = model.to_onnx(save=False, pseudo_shape=[1, 3, 64, 64], **export_kwargs)
 
@@ -161,13 +171,44 @@ def test_tiny_vit_encoder_onnx_runs_at_the_batches_it_declares(export_kwargs):
 def test_tiny_vit_encoder_legacy_onnx_declares_the_pseudo_batch():
     """On the legacy exporter, a TinyViT encoder is traced at the pseudo shape's batch, here 3, and declares it."""
     pytest.importorskip("onnx")
-    torch.manual_seed(0)
-    model = Sam.from_name("mobile_sam")
-    model.image_encoder = TinyViT.from_config("5m", img_size=64, mobile_sam=True)
-    model.eval()
+    model = _mobile_sam_at_64_px()
 
     op = model.to_onnx(save=False, pseudo_shape=[3, 3, 64, 64], dynamo=False)
 
     assert _dims(op.graph.input[0]) == [3, 3, 64, 64]
     assert _dims(op.graph.output[0])[0] == 3
     _check_onnx_against_eager(op, model.image_encoder, (3,), 64)
+
+
+@pytest.mark.timeout(120)
+def test_mask_decoder_legacy_onnx_declares_a_dynamic_prompt_batch():
+    """The TorchScript exporter declares the masks' prompt batch dynamic, as the prompt embeddings' batch is."""
+    onnx = pytest.importorskip("onnx")
+    torch.manual_seed(0)
+    transformer = TwoWayTransformer(depth=1, embedding_dim=32, mlp_dim=64, num_heads=2)
+    decoder = MaskDecoder(transformer_dim=32, transformer=transformer).eval()
+    image = (torch.rand(1, 32, 8, 8), torch.rand(1, 32, 8, 8))
+    prompts = (torch.rand(2, 2, 32), torch.rand(2, 32, 8, 8))
+    buffer = io.BytesIO()
+    torch.onnx.export(
+        decoder,
+        (*image, *prompts, True),
+        buffer,
+        input_names=["image_embeddings", "image_pe", "sparse", "dense"],
+        output_names=["masks", "iou_pred"],
+        dynamic_axes={"sparse": {0: "prompts"}, "dense": {0: "prompts"}},
+        dynamo=False,
+    )
+    masks = onnx.load_from_string(buffer.getvalue()).graph.output[0]
+    assert masks.type.tensor_type.shape.dim[0].dim_param
+    # The graph also runs at other prompt batches and matches eager there.
+    ort = pytest.importorskip("onnxruntime")
+    session = ort.InferenceSession(buffer.getvalue(), providers=["CPUExecutionProvider"])
+    for batch in (1, 3):
+        sparse, dense = torch.rand(batch, 2, 32), torch.rand(batch, 32, 8, 8)
+        with torch.no_grad():
+            expected = decoder(*image, sparse, dense, True)
+        names = ["image_embeddings", "image_pe", "sparse", "dense"]
+        actual = session.run(None, {name: t.numpy() for name, t in zip(names, (*image, sparse, dense))})
+        for got, want in zip(actual, expected):
+            torch.testing.assert_close(torch.from_numpy(got), want, rtol=1e-4, atol=1e-5)

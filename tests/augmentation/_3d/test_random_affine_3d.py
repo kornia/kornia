@@ -15,7 +15,6 @@
 # limitations under the License.
 #
 
-import pytest
 import torch
 
 from kornia.augmentation import RandomAffine3D
@@ -25,10 +24,6 @@ from testing.base import BaseTester
 
 class TestRandomAffine3D(BaseTester):
     def test_batch_random_affine_3d(self, device, dtype):
-        # TODO(jian): cuda and fp64
-        if "cuda" in str(device) and dtype == torch.float64:
-            pytest.skip("AssertionError: assert tensor(False, device='cuda:0')")
-
         f = RandomAffine3D((0, 0, 0), p=1.0)  # No rotation
         tensor = torch.tensor(
             [[[[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]]]]], device=device, dtype=dtype
@@ -50,3 +45,13 @@ class TestRandomAffine3D(BaseTester):
 
         self.assert_close(f(tensor), expected)
         self.assert_close(f.transform_matrix, expected_transform)
+
+    def test_shear_only_keeps_center(self, device, dtype):
+        # A shear-only transform must not translate: the matrix maps its own center to itself (#6302).
+        torch.manual_seed(0)
+        aug = RandomAffine3D(degrees=0.0, shears=20.0, p=1.0)
+        aug(torch.rand(8, 1, 9, 17, 33, device=device, dtype=dtype))
+        center = aug._params["center"].to(device=device, dtype=dtype)
+        matrix = aug.transform_matrix
+        moved = (matrix[:, :3, :3] @ center[..., None])[..., 0] + matrix[:, :3, 3]
+        self.assert_close(moved, center)

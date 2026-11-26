@@ -22,7 +22,7 @@ from torch.distributions import Beta, Uniform
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _adapted_sampling, _common_param_check
-from kornia.core.utils import _extract_device_dtype
+from kornia.core.utils import _extract_device_dtype, _to_device_nonblocking
 
 __all__ = ["PatchMixGenerator"]
 
@@ -65,9 +65,11 @@ class PatchMixGenerator(RandomGeneratorBase):
         return f"alpha={self.alpha}, patch_size={self.patch_size}, p={self.p}"
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
+        # Beta draws through Dirichlet, which has no CPU half-precision kernel: draw in float32 for half precision.
+        beta_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
         self.beta_sampler = Beta(
-            torch.tensor(self.alpha, device=device, dtype=dtype),
-            torch.tensor(self.alpha, device=device, dtype=dtype),
+            torch.tensor(self.alpha, device=device, dtype=beta_dtype),
+            torch.tensor(self.alpha, device=device, dtype=beta_dtype),
         )
         # The draw is truncated to a patch start, so keep it in float32: half-precision
         # torch.rand on MPS can return exactly 1.0, which lands one past the last valid start (#4553).
@@ -101,13 +103,13 @@ class PatchMixGenerator(RandomGeneratorBase):
             # argsort to the identity, which pairs every image with itself and makes the whole
             # augmentation a no-op. `same_on_batch` shares the patch location below instead,
             # matching the convention that it does not equate batch-pairing indices.
-            mix_pairs: torch.Tensor = (
-                _adapted_sampling((batch_size,), self.pair_sampler, same_on_batch=False)
-                .to(device=_device, dtype=_dtype)
-                .argsort(dim=0)
-            )
+            mix_pairs: torch.Tensor = _to_device_nonblocking(
+                _adapted_sampling((batch_size,), self.pair_sampler, same_on_batch=False), _device, _dtype
+            ).argsort(dim=0)
             # Sample lam from beta distribution
-            lam = _adapted_sampling((batch_size,), self.beta_sampler, same_on_batch).to(device=_device, dtype=_dtype)
+            lam = _to_device_nonblocking(
+                _adapted_sampling((batch_size,), self.beta_sampler, same_on_batch), _device, _dtype
+            )
 
             # Sample patch coordinates
             # height - patch_size + 1

@@ -18,12 +18,12 @@
 """Support for the conformance tests of #5819: kornia's ONNX and torch.compile promises, checked with the survey's
 own cases.
 
-Two promises share this machinery, ``ONNX`` and ``COMPILE``. The promised cases of each are the records of the
-committed survey snapshot (``docs/source/_data/export_support.json``) whose status for it (field ``onnx`` or
-``compile``) is ``ok`` and whose package is in the stable core of ``docs/source/get-started/stability.rst``, minus
-everything built with pretrained weights (registry tag ``pretrained``): the stable core holds only the classical,
-non-pretrained parts of ``kornia.feature``. Each is run by case name through the survey's own code, so the tests and
-the survey page cannot drift apart:
+Two promises share this machinery, ``ONNX`` and ``COMPILE``, defined in ``testing/conformance_promise.py``: the
+promised cases of each are the records of the committed survey snapshot (``docs/source/_data/export_support.json``)
+whose status for it (field ``onnx`` or ``compile``) is ``ok`` and whose package is in the stable core of
+``docs/source/get-started/stability.rst``, minus everything built with pretrained weights (registry tag
+``pretrained``) and the promise's listed exclusions. Each is run by case name through the survey's own code, so the
+tests and the survey page cannot drift apart:
 
 - ``tests/onnx/test_conformance.py`` exports through ``docs/export_support/harness.py`` (``run_onnx_case``);
 - ``tests/test_inductor_conformance.py`` compiles through ``docs/export_support/probe_compile.py``
@@ -37,83 +37,37 @@ in ``testing/known_failure_xfails/<onnx|compile>_conformance_torch<major>.<minor
 
 from __future__ import annotations
 
-import ast
 import contextlib
 import functools
-import hashlib
 import importlib
 import io
-import json
 import logging
 import pickle
-import re
 import signal
 import sys
 import warnings
-from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
-from typing import Any, Iterable, Iterator, Sequence
+from typing import Any, Iterator, Sequence
 
 import pytest
 import torch
 
+# The promise itself (what is promised, left out, known to fail) is testing/conformance_promise.py, which the docs build
+# imports without pytest; this module runs it as pytest tests.
+from testing.conformance_promise import (
+    EXPORT_SUPPORT,
+    REGISTRIES,
+    STABLE_CORE,
+    Promise,
+    exclusion_problems,
+    known_failures,
+    manifest_path,
+    pretrained_cases,
+    promised_cases,
+    promised_digest,
+)
 from testing.known_failures import _EXCEPTION_TYPES, KnownFailureTracker
-
-REPO = Path(__file__).resolve().parents[1]
-EXPORT_SUPPORT = REPO / "docs" / "export_support"
-SNAPSHOT = REPO / "docs" / "source" / "_data" / "export_support.json"
-MANIFEST_DIR = Path(__file__).with_name("known_failure_xfails")
-
-
-@dataclass(frozen=True)
-class Promise:
-    """One conformance promise: the snapshot status it promises, how a run selects it, and where its tests live."""
-
-    name: str  # in messages: "ONNX", "torch.compile"
-    field: str  # the snapshot's status field, and the stem of the option, marker and manifests
-    test_file: str
-    case_tests: tuple[str, ...]  # the per-case tests, parametrized by case name
-
-    @property
-    def option(self) -> str:
-        return f"--{self.field}-conformance"
-
-    @property
-    def env_var(self) -> str:
-        return f"KORNIA_TEST_{self.field.upper()}_CONFORMANCE"
-
-    @property
-    def marker(self) -> str:
-        return f"{self.field}_conformance"
-
-
-ONNX = Promise(
-    "ONNX", "onnx", "tests/onnx/test_conformance.py", ("test_export_matches_eager", "test_legacy_export_is_not_wrong")
-)
-# The root conftest deselects tests whose name or id contains "compile" or "dynamo" unless KORNIA_TEST_OPTIMIZER is set,
-# so the compile promise's tests are named after inductor; only the option and the marker say "compile".
-COMPILE = Promise("torch.compile", "compile", "tests/test_inductor_conformance.py", ("test_inductor_matches_eager",))
-PROMISES = (ONNX, COMPILE)
-# The torch releases whose manifests the scheduled conformance jobs enforce (scheduled_test_cpu.yml).
-ENFORCED_TORCH_RELEASES = ("2.9", "2.14")
-
-# The stable core of docs/source/get-started/stability.rst, as the ``kornia.<package>`` names the snapshot records.
-# tests/scripts/test_conformance_packages.py checks it against that page and against the CI path mapping.
-STABLE_CORE = (
-    "geometry",
-    "augmentation",
-    "color",
-    "filters",
-    "enhance",
-    "losses",
-    "metrics",
-    "morphology",
-    "io",
-    "image",
-    "core",
-    "feature",
-)
 
 # The registries that hold each package's promised cases. ``cases_models.py`` is never imported: it builds the
 # pretrained models of ``kornia.models``, none of which is promised, and downloads their weights on a cold cache.
@@ -132,7 +86,6 @@ REGISTRIES_OF = {
     "core": (),
     "feature": ("cases_feature",),
 }
-REGISTRIES = ("cases_aug", "cases_feature", "cases_geomA", "cases_geomB", "cases_misc")
 
 # Legacy (TorchScript) export statuses that pass: the export worked and matched, or it failed loudly.
 LEGACY_PASSES = ("ok", "export-fail", "checker-fail", "ort-load-fail", "ort-run-fail")
@@ -192,47 +145,6 @@ def parse_selection(promise: Promise, value: str | None) -> tuple[str, ...]:
 def selection(config: pytest.Config, promise: Promise) -> tuple[str, ...]:
     """The packages the session selects for ``promise``."""
     return parse_selection(promise, config.getoption(promise.option))
-
-
-@functools.cache
-def pretrained_cases() -> frozenset[str]:
-    """Names of the registry cases tagged ``pretrained``, read from the registry sources without importing them."""
-    names: set[str] = set()
-    for registry in REGISTRIES:
-        path = EXPORT_SUPPORT / f"{registry}.py"
-        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"), filename=str(path))):
-            if not isinstance(node, ast.Call):
-                continue
-            tags = next((kw.value for kw in node.keywords if kw.arg == "tags"), None)
-            if not isinstance(tags, (ast.Tuple, ast.List)):
-                continue
-            if not any(isinstance(tag, ast.Constant) and tag.value == "pretrained" for tag in tags.elts):
-                continue
-            first = node.args[0] if node.args else None
-            if not (isinstance(first, ast.Constant) and isinstance(first.value, str)):
-                raise ValueError(f"{path}:{node.lineno}: a case tagged pretrained needs a literal name")
-            names.add(first.value)
-    return frozenset(names)
-
-
-@functools.cache
-def promised_cases(promise: Promise) -> dict[str, str]:
-    """Map every case ``promise`` covers to its package (``geometry``, ``color``, ...), in snapshot order."""
-    pretrained = pretrained_cases()
-    promised: dict[str, str] = {}
-    for record in json.loads(SNAPSHOT.read_text(encoding="utf-8"))["cases"]:
-        package = record["package"].removeprefix("kornia.")
-        if record[promise.field] != "ok" or package not in STABLE_CORE or record["name"] in pretrained:
-            continue
-        if package == "feature" and record["section"] == "models":
-            continue
-        promised[record["name"]] = package
-    return promised
-
-
-def promised_digest(names: Iterable[str]) -> str:
-    """SHA-256 of the sorted names, one per line: what ``test_promised_set_is_pinned`` compares."""
-    return hashlib.sha256("\n".join(sorted(names)).encode()).hexdigest()
 
 
 def selected_cases(promise: Promise, packages: Sequence[str]) -> list[str]:
@@ -343,7 +255,7 @@ def registration_problems(promise: Promise, packages: Sequence[str]) -> list[str
 
 
 def pin_problems(promise: Promise, count: int, digest: str) -> list[str]:
-    """How the promised set differs from the pinned ``count`` and ``digest``, or breaks the naming rules."""
+    """How the promised set differs from its pin (``count``, ``digest``), keeps a stale exclusion, or breaks a rule."""
     # The promise is read from the snapshot, so a regeneration that measured a case as failing would quietly drop it.
     # Pinning the names makes a change of the promised set a reviewed change of these two constants.
     promised = promised_cases(promise)
@@ -353,6 +265,7 @@ def pin_problems(promise: Promise, count: int, digest: str) -> list[str]:
             "the promised set changed; review the snapshot diff, then update PROMISED_COUNT and PROMISED_DIGEST"
             f" (now {len(promised)}, {promised_digest(promised)})"
         )
+    problems += exclusion_problems(promise)
     if outside := [name for name in promised if name.startswith(("models.", "contrib."))]:
         problems.append(f"promised cases outside the stable core: {outside}")
     if pretrained := sorted(promised.keys() & pretrained_cases()):
@@ -521,36 +434,13 @@ def state_changes(before: dict[str, Any], after: dict[str, Any]) -> list[str]:
     return sorted(changes)
 
 
-def manifest_path(promise: Promise, version: str | None = None) -> Path:
-    """A promise's known-failure manifest of a torch release (default: the running one).
-
-    For example ``onnx_conformance_torch2.14.txt``.
-    """
-    major, minor = (version or torch.__version__).split("+")[0].split(".")[:2]
-    return MANIFEST_DIR / f"{promise.marker}_torch{major}.{minor}.txt"
-
-
 def load_known_failures(promise: Promise, path: Path) -> dict[str, type[BaseException]]:
-    """Read ``<exception type>\\t<node ID>`` lines; every node ID must name a per-case test of a promised case."""
-    node = re.compile(rf"^{re.escape(promise.test_file)}::(?P<test>\w+)\[(?P<case>.+)\]$")
+    """Read a promise's manifest (``conformance_promise.known_failures``): node ID -> the exception type it names."""
     failures: dict[str, type[BaseException]] = {}
-    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
-        if not line or line.startswith("#"):
-            continue
-        try:
-            exception_name, nodeid = line.split("\t", maxsplit=1)
-        except ValueError as error:
-            raise ValueError(f"{path}:{number}: expected '<exception>\\t<node ID>'") from error
-        if exception_name not in _EXCEPTION_TYPES:
-            raise ValueError(f"{path}:{number}: unknown exception type: {exception_name}")
-        match = node.match(nodeid)
-        if match is None or match["test"] not in promise.case_tests:
-            raise ValueError(f"{path}:{number}: not a per-case node of {promise.test_file}: {nodeid}")
-        if match["case"] not in promised_cases(promise):
-            raise ValueError(f"{path}:{number}: {match['case']!r} is not a promised case (renamed or dropped?)")
-        if nodeid in failures:
-            raise ValueError(f"{path}:{number}: duplicate node ID: {nodeid}")
-        failures[nodeid] = _EXCEPTION_TYPES[exception_name]
+    for entry in known_failures(promise, path):
+        if entry.exception not in _EXCEPTION_TYPES:
+            raise ValueError(f"{path}:{entry.line}: unknown exception type: {entry.exception}")
+        failures[entry.nodeid] = _EXCEPTION_TYPES[entry.exception]
     return failures
 
 

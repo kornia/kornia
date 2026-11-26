@@ -21,12 +21,16 @@ import torch
 
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.augmentation.random_generator._2d import ChannelDropoutGenerator
+from kornia.augmentation.utils.helpers import _exact_in_float64
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
 from kornia.core.utils import _to_device_nonblocking
 
 
 class RandomChannelDropout(IntensityAugmentationBase2D):
-    r"""Apply random channel dropout to a batch of images.
+    r"""Set random channels to ``fill_value`` (channel dropout) per sample with probability ``p`` (default 0.5).
+
+    ``output = RandomChannelDropout(num_drop_channels, fill_value, ...)(input)`` replaces selected channels of each
+    selected image ``(B, C, H, W)`` with a constant.
 
     .. image:: _static/img/RandomChannelDropout.png
 
@@ -36,13 +40,13 @@ class RandomChannelDropout(IntensityAugmentationBase2D):
         num_drop_channels: Number of channels to drop randomly. Default is 1.
         fill_value: Value to fill the dropped channels with. Default is 0.0.
         same_on_batch: Apply the same transformation across the batch. Defaults to False.
-        p: Probability of applying the transformation. Defaults to 0.5.
+        p: Probability of applying the transformation to each sample. Defaults to 0.5.
         keepdim: Whether to keep the output shape the same as input ``True`` or broadcast it
             to the batch form ``False``. Defaults to False.
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
-        - Output: :math:`(C, H, W)` or :math:`(B, C, H, W)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``
+        - Output: ``(C, H, W)`` or ``(B, C, H, W)``
 
     Convention:
         - this operation is range-independent: it does not clamp the input into ``[0, 1]``.
@@ -51,7 +55,8 @@ class RandomChannelDropout(IntensityAugmentationBase2D):
           came in, so the input's value range is carried through.
         - ``num_drop_channels`` is checked against the input's channel count on the forward pass.
         - ``fill_value`` is held in a non-persistent buffer, so ``.to(...)`` moves and casts it while
-          ``state_dict()`` gains no key for it.
+          ``state_dict()`` gains no key for it. A float64 image is filled with the number ``fill_value`` itself
+          rather than the buffer's float32 rounding of it, unless the buffer has been changed since construction.
 
     .. note::
         If `num_drop_channels` is set to 1, it means that for each image in the batch,
@@ -60,6 +65,10 @@ class RandomChannelDropout(IntensityAugmentationBase2D):
             we will randomly choose two channels to drop.
         If num_drop_channels is set to 3, it means that for each image in the batch,
             we will randomly choose three channels to drop (all image).
+
+    See Also:
+        - :class:`RandomChannelShuffle`: permutes channels instead of replacing them.
+        - :class:`RandomGrayscale`: computes grayscale instead of removing channels.
 
     Examples:
         >>> rng = torch.manual_seed(1)
@@ -108,6 +117,8 @@ class RandomChannelDropout(IntensityAugmentationBase2D):
         # unchanged, same rationale/convention as #4079/#4319.
         # float() keeps an int fill_value from registering an int64 buffer, which `.half()` would not cast.
         self.register_buffer("fill_value", torch.tensor(float(fill_value)), persistent=False)
+        # The number itself, for a float64 image: the buffer holds it rounded to float32.
+        self._fill_numbers = [float(fill_value)]
 
         KORNIA_CHECK_TYPE(num_drop_channels, int, f"`num_drop_channels` must be an int. Got: {type(num_drop_channels)}")
         KORNIA_CHECK(
@@ -134,6 +145,9 @@ class RandomChannelDropout(IntensityAugmentationBase2D):
         out = input.clone()
         batch_idx = _to_device_nonblocking(params["batch_idx"], input.device)
         channel_idx = _to_device_nonblocking(params["channel_idx"], input.device)
-        out[batch_idx, channel_idx, ...] = _to_device_nonblocking(self.fill_value, input.device, input.dtype)
+        fill = self.fill_value
+        if input.dtype == torch.float64:  # the number is absent from an older pickle
+            fill = _exact_in_float64(fill, self.__dict__.get("_fill_numbers"), input.device)
+        out[batch_idx, channel_idx, ...] = _to_device_nonblocking(fill, input.device, input.dtype)
 
         return out

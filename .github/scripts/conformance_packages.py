@@ -54,7 +54,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 
-# The stable core of docs/source/get-started/stability.rst; the same tuple as testing/conformance.py, which
+# The stable core of docs/source/get-started/stability.rst; the same tuple as testing/conformance_promise.py, which
 # tests/scripts/test_conformance_packages.py checks.
 STABLE_CORE = (
     "geometry",
@@ -90,7 +90,7 @@ ALL_FILES = (
     "pyproject.toml",
     "uv.lock",
 )
-# Each promise's own test, by the snapshot field it promises (testing/conformance.py PROMISES).
+# Each promise's own test, by the snapshot field it promises (testing/conformance_promise.py PROMISES).
 TEST_FILES = {
     "onnx": "tests/onnx/test_conformance.py",
     "compile": "tests/test_inductor_conformance.py",

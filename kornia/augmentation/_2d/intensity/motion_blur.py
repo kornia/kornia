@@ -27,14 +27,17 @@ from kornia.filters import motion_blur
 
 
 class RandomMotionBlur(IntensityAugmentationBase2D):
-    r"""Perform motion blur on 2D images (4D torch.Tensor).
+    r"""Blur images with a random motion-blur kernel, applied per sample with probability ``p`` (default 0.5).
+
+    ``output = RandomMotionBlur(kernel_size, angle, direction, ...)(input)`` convolves selected ``(B, C, H, W)``
+    images with a sampled directional kernel.
 
     .. image:: _static/img/RandomMotionBlur.png
 
     See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
 
     Args:
-        p: probability of applying the transformation.
+        p: probability of applying the transformation to each sample.
         kernel_size: motion kernel size (odd and positive).
             If int, the kernel will have a fixed size.
             If Tuple[int, int] or a two-element list, it will randomly generate one odd value from the closed
@@ -55,8 +58,8 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
                  to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``, Optional: ``(B, 3, 3)``
+        - Output: ``(B, C, H, W)``
 
     Convention:
         - this operation is range-independent: it does not clamp the input into ``[0, 1]``.
@@ -86,13 +89,18 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
           :class:`RandomGaussianBlur` do.
 
     Note:
-        This function accepts another transformation torch.Tensor (:math:`(B, 3, 3)`), then the
+        This function accepts another transformation torch.Tensor (``(B, 3, 3)``), then the
         applied transformation will be merged int to the input transformation torch.Tensor and returned.
 
         Please set ``resample`` to ``'bilinear'`` if more meaningful gradients wanted.
 
     .. note::
         This function internally uses :func:`kornia.filters.motion_blur`.
+
+    See Also:
+        - :class:`RandomMotionBlur3D`: applies a directional kernel to volumes.
+        - :class:`RandomGaussianBlur`: applies isotropic Gaussian smoothing.
+        - :class:`RandomBoxBlur`: applies uniform, non-directional smoothing.
 
     Examples:
         >>> rng = torch.manual_seed(0)

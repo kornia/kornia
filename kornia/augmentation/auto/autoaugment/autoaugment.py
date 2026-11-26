@@ -115,7 +115,12 @@ svhn_policy: List[SUBPOLICY_CONFIG] = [
 
 
 class AutoAugment(PolicyAugmentBase):
-    """Apply AutoAugment :cite:`cubuk2018autoaugment` searched strategies.
+    """Sample a searched AutoAugment sub-policy for a named image dataset.
+
+    ``output = AutoAugment(policy)(input)`` selects one fixed two-operation sub-policy for ``imagenet``, ``cifar10``
+    or ``svhn`` from :cite:`cubuk2018autoaugment` and applies its probability gates to a floating image batch
+    ``(B, C, H, W)``. Use :class:`~kornia.augmentation.auto.RandAugment` to sample operation choices instead of
+    choosing from a searched list.
 
     See the Convention block on :class:`~kornia.augmentation.auto.PolicyAugmentBase`.
 
@@ -127,8 +132,8 @@ class AutoAugment(PolicyAugmentBase):
           value. The wrapped operation samples a value inside its selected interval for every batch row;
           ``posterize`` then rounds to the nearest integer number of bits (so bin ``1``, spanning ``4.4`` to
           ``4.8``, produces ``4`` or ``5``), ``translate_x`` / ``translate_y`` multiply it by the image size in
-          pixels, and ``shear_x`` / ``shear_y``, whose scale is a shear fraction from ``-0.3`` to ``0.3``, multiply
-          it by ``180`` to give degrees.
+          pixels, and ``shear_x`` / ``shear_y``, whose scale is a shear factor from ``-0.3`` to ``0.3``, map
+          it to degrees with ``rad2deg(atan(x))``, as torchvision does.
 
     Args:
         policy: a customized policy config or presets of "imagenet", "cifar10", and "svhn".
@@ -139,6 +144,10 @@ class AutoAugment(PolicyAugmentBase):
                                     If `rigid`, the result is the same for a policy: every operation wrapper
                                     contributes a matrix (an intensity operation the identity), so none is rejected.
                                     If `skip`, transformation matrix will be totally ignored.
+
+    See Also:
+        - :class:`~kornia.augmentation.auto.RandAugment`: samples operations with one global magnitude.
+        - :class:`~kornia.augmentation.auto.TrivialAugment`: samples exactly one operation.
 
     Examples:
         >>> import torch

@@ -1,0 +1,1 @@
+`triangulate_points` now forms its constraints and divides homogeneous coordinates in float32 for float16 and bfloat16 inputs. Its default eigensolver also forms and solves the normal equations in float64 on devices that support it, reducing depth errors when the world origin is far from the cameras.

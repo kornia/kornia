@@ -6,7 +6,8 @@ kornia.geometry.solvers
 
 .. currentmodule:: kornia.geometry.solvers
 
-Affine, polynomial and homogeneous linear solvers used by the geometric estimators.
+Solvers that the geometric estimators build on: a weighted affine fit, the null vector of a rank-3 matrix without an
+SVD, and the real roots of quadratic, cubic and quartic polynomials.
 
 Affine estimation
 -----------------
@@ -22,6 +23,9 @@ weighted least-squares fitting and returns a source-to-target homogeneous
 Homogeneous Solvers
 -------------------
 
+:func:`null_vector_3x4` returns the null vector of a rank-3 ``(*, 3, 4)`` matrix from its ``3 x 3`` cofactors,
+unnormalized, without a LAPACK or cuSOLVER call; a matrix of lower rank gives the zero vector.
+
 .. autofunction:: null_vector_3x4
 
 Polynomial Solvers
@@ -36,7 +40,9 @@ is defined by the represented coefficients. See each function's precision and
 gradient conventions. Under ``torch.compile`` with Inductor on CUDA, fused
 multiply-adds can lose exact double roots; this known limitation is not planned
 to be fixed, and the notes on :func:`solve_cubic` and :func:`solve_quartic` give
-the rates and a workaround.
+the rates and a workaround. :func:`multiply_deg_one_poly`, :func:`multiply_deg_two_one_poly` and
+:func:`determinant_to_polynomial` are steps of Nister's five-point solver, which
+:func:`~kornia.geometry.epipolar.find_essential` runs whole.
 
 .. autofunction:: solve_quadratic
 .. autofunction:: solve_cubic

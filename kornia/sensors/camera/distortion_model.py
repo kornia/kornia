@@ -26,18 +26,44 @@ from kornia.geometry.camera.distortion_kannala_brandt import (
 from kornia.geometry.vector import Vector2
 
 
-class AffineTransform:
-    """Apply an affine transformation to a set of 2D points.
+def _per_camera(params: torch.Tensor, points: Vector2) -> torch.Tensor:
+    """Insert point axes after the camera axes of batched ``params``, so camera ``b`` applies to ``points[b]``.
 
-    This class handles the scaling and shifting of coordinates, typically used
-    to map normalized coordinates to pixel coordinates.
+    ``(P,)`` params apply to every point and ``(B, P)`` params with ``(B, 2)`` points are already aligned; ``(B, P)``
+    params with ``(B, N, 2)`` points become ``(B, 1, P)``.
+    """
+    extra = (points.data.ndim - 1) - (params.ndim - 1)
+    if params.ndim > 1 and extra > 0:
+        return params.reshape(*params.shape[:-1], *([1] * extra), params.shape[-1])
+    return params
+
+
+class AffineTransform:
+    """Map image-plane ``Vector2`` points to pixels with ``[fx, fy, cx, cy]`` alone, with no lens distortion.
+
+    ``uv = AffineTransform().distort(params, points)`` takes ``params`` that start with ``[fx, fy, cx, cy]`` and a
+    :class:`~kornia.geometry.vector.Vector2` of image-plane points, and returns the ``Vector2`` of pixels
+    ``(fx * x + cx, fy * y + cy)``. :meth:`undistort` inverts it in closed form.
+    :class:`~kornia.sensors.camera.PinholeModel` feeds it normalized ``z = 1`` points and
+    :class:`~kornia.sensors.camera.Orthographic` the camera-frame ``(x, y)``.
+
+    See Also:
+        - :class:`BrownConradyTransform`: adds OpenCV's radial and tangential lens distortion before the intrinsics.
+        - :class:`KannalaBrandtK3Transform`: adds a fisheye distortion of the ray angle before the intrinsics.
+        - :func:`~kornia.geometry.camera.distort_points_affine`: the same map on plain tensors; per-camera
+          ``params`` for ``(B, N, 2)`` points are ``(B, 1, 4)`` there.
+        - :func:`~kornia.geometry.camera.undistort_points_affine`: the same inverse on plain tensors, with the same
+          ``(B, 1, 4)`` per-camera ``params``.
+
     """
 
     def distort(self, params: torch.Tensor, points: Vector2) -> Vector2:
         """Distort one or more Vector2 points using the affine transform.
 
         Convention:
-            - ``points`` is on the **normalized** :math:`z = 1` plane and the result is in **pixels**:
+            - ``points`` is on the image plane (normalized :math:`z = 1` points for
+              :class:`~kornia.sensors.camera.PinholeModel`, camera-frame ``(x, y)`` for
+              :class:`~kornia.sensors.camera.Orthographic`) and the result is in **pixels**:
               ``u = fx * x + cx`` and ``v = fy * y + cy``, with ``params`` laid out as ``[fx, fy, cx, cy]``;
               the ``Vector2`` counterpart of :func:`~kornia.geometry.camera.distort_points_affine`.
             - :meth:`undistort` is the closed-form inverse.
@@ -57,6 +83,7 @@ class AffineTransform:
             y: 8.0
 
         """
+        params = _per_camera(params, points)
         fx, fy, cx, cy = params[..., 0], params[..., 1], params[..., 2], params[..., 3]
         u = points.x * fx + cx
         v = points.y * fy + cy
@@ -66,7 +93,7 @@ class AffineTransform:
         """Undistort one or more Vector2 points using the affine transform.
 
         Convention:
-            - ``points`` is in **pixels** and the result is on the normalized :math:`z = 1` plane:
+            - ``points`` is in **pixels** and the result is on the image plane of :meth:`distort`:
               ``x = (u - cx) / fx`` and ``y = (v - cy) / fy``, the closed-form inverse of :meth:`distort`
               with the same ``params`` layout -- see the Convention block there.
 
@@ -85,6 +112,7 @@ class AffineTransform:
             y: -1.0
 
         """
+        params = _per_camera(params, points)
         fx, fy, cx, cy = params[..., 0], params[..., 1], params[..., 2], params[..., 3]
         x = (points.x - cx) / fx
         y = (points.y - cy) / fy
@@ -92,20 +120,21 @@ class AffineTransform:
 
 
 class BrownConradyTransform:
-    """Implement the Brown-Conrady model for lens distortion and undistortion.
+    """Map normalized ``z = 1`` ``Vector2`` points to pixels with OpenCV's Brown-Conrady lens distortion, and back.
 
-    The model accounts for radial distortion (due to lens shape) and tangential
-    distortion (due to lens misalignment). It is commonly used to transform
-    points between ideal pinhole projections and distorted image coordinates.
+    ``uv = BrownConradyTransform().distort(params, points)`` takes the 12-value vector
+    ``[fx, fy, cx, cy, k1, k2, p1, p2, k3, k4, k5, k6]`` and a :class:`~kornia.geometry.vector.Vector2` of normalized
+    points, and returns the ``Vector2`` of distorted pixels. :meth:`undistort` maps distorted pixels back to normalized
+    points by fixed-point iteration. It is the distortion of :class:`~kornia.sensors.camera.BrownConradyModel`.
 
-    The transform expects a 12-value parameter vector ordered as
-    :math:`(fx, fy, cx, cy, k1, k2, p1, p2, k3, k4, k5, k6)`. The first four
-    values are camera intrinsics and the trailing eight values are the
-    Brown-Conrady distortion coefficients.
+    See Also:
+        - :class:`KannalaBrandtK3Transform`: a fisheye distortion of the ray angle instead of the normalized radius.
+        - :class:`AffineTransform`: the intrinsics alone, with no distortion.
+        - :func:`~kornia.geometry.calibration.distort_points`: the same distortion on pixel tensors, with a ``3x3``
+          ``K`` and every OpenCV coefficient layout; :meth:`distort` calls it with the identity as ``new_K``.
+        - :func:`~kornia.geometry.calibration.undistort_points`: its inverse on pixel tensors; :meth:`undistort`
+          runs its five default fixed-point steps.
 
-    :meth:`distort` maps normalized :math:`z = 1` image-plane coordinates to
-    distorted pixel coordinates, while :meth:`undistort` maps distorted pixel
-    coordinates back to normalized :math:`z = 1` coordinates.
     """
 
     def distort(self, params: torch.Tensor, points: Vector2) -> Vector2:
@@ -215,38 +244,46 @@ class BrownConradyTransform:
 
 
 class KannalaBrandtK3Transform:
-    """Apply the Kannala-Brandt (K3) distortion model.
+    """Map normalized ``z = 1`` ``Vector2`` points to fisheye pixels with the Kannala-Brandt K3 model, and back.
 
-    This model is specifically designed for fisheye lenses with significant
-    radial distortion, using a polynomial approximation for the projection.
+    ``uv = KannalaBrandtK3Transform().distort(params, points)`` takes the ``(..., 8)`` vector
+    ``[fx, fy, cx, cy, k0, k1, k2, k3]`` and a :class:`~kornia.geometry.vector.Vector2` of normalized points, and
+    returns the ``Vector2`` of fisheye pixels; :meth:`undistort` inverts it iteratively. It is the distortion of
+    :class:`~kornia.sensors.camera.KannalaBrandtK3`.
+
+    See Also:
+        - :class:`BrownConradyTransform`: OpenCV's distortion of the normalized radius, with tangential terms.
+        - :class:`AffineTransform`: the intrinsics alone, with no distortion.
+        - :func:`~kornia.geometry.camera.distort_points_kannala_brandt`: the same map on plain tensors; per-camera
+          ``params`` for ``(B, N, 2)`` points are ``(B, 1, 8)`` there.
+        - :func:`~kornia.geometry.camera.undistort_points_kannala_brandt`: its inverse on plain tensors, with the
+          same ``(B, 1, 8)`` per-camera ``params``.
 
     """
 
     def distort(self, params: torch.Tensor, points: Vector2) -> Vector2:
-        """Apply Kannala-Brandt K3 fisheye distortion to normalized points.
+        """Distort normalized points to fisheye pixels with the Kannala-Brandt K3 model.
 
         Args:
-            params: Fisheye distortion coefficients for the K3 polynomial model.
-            points: Ideal two-dimensional normalized points before fisheye
-                distortion is applied.
+            params: ``(..., 8)`` vector ``[fx, fy, cx, cy, k0, k1, k2, k3]``; another last dimension raises
+                ``ShapeError``.
+            points: ``Vector2`` of points on the normalized :math:`z = 1` plane.
 
         Returns:
-            Distorted two-dimensional points following the K3 fisheye model.
+            ``Vector2`` of the distorted pixels.
 
         """
-        return Vector2(distort_points_kannala_brandt(points.data, params))
+        return Vector2(distort_points_kannala_brandt(points.data, _per_camera(params, points)))
 
     def undistort(self, params: torch.Tensor, points: Vector2) -> Vector2:
-        """Remove Kannala-Brandt K3 fisheye distortion from observed points.
+        """Undistort fisheye pixels to normalized points with the Kannala-Brandt K3 model.
 
         Args:
-            params: Fisheye distortion coefficients matching the K3 model used
-                for distortion.
-            points: Distorted two-dimensional fisheye points.
+            params: ``(..., 8)`` vector ``[fx, fy, cx, cy, k0, k1, k2, k3]``, as in :meth:`distort`.
+            points: ``Vector2`` of distorted pixels.
 
         Returns:
-            Undistorted normalized points that approximate ideal pinhole
-            coordinates.
+            ``Vector2`` of points on the normalized :math:`z = 1` plane.
 
         """
-        return Vector2(undistort_points_kannala_brandt(points.data, params))
+        return Vector2(undistort_points_kannala_brandt(points.data, _per_camera(params, points)))

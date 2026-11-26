@@ -1,0 +1,1 @@
+`warp_affine` and `warp_perspective` with `padding_mode="fill"` sample one coverage mask per image and broadcast it across channels, reducing temporary storage and sampling work for multichannel images.

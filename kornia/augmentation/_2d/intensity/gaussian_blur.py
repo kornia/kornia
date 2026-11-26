@@ -29,11 +29,19 @@ from kornia.filters.kernels import _check_kernel_size, _unpack_2d_ks
 
 
 class RandomGaussianBlur(_PicklableCompileMixin, IntensityAugmentationBase2D):
-    r"""Apply gaussian blur given tensor image or a batch of tensor images randomly.
+    r"""Blur images with a Gaussian kernel of random sigma, applied per sample with probability ``p`` (default 0.5).
+
+    ``output = RandomGaussianBlur(kernel_size, sigma, ...)(input)`` convolves each selected ``(B, C, H, W)`` image
+    with separable Gaussian weights.
 
     The standard deviation is sampled for each instance.
 
     .. image:: _static/img/RandomGaussianBlur.png
+
+    .. note::
+        Unlike torchvision's ``GaussianBlur``, which blurs every image, this class blurs each sample with probability
+        ``p``, 0.5 by default; with ``same_on_batch=True`` one draw decides for the whole batch. Pass ``p=1.0`` to blur
+        every sample.
 
     See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
 
@@ -44,13 +52,13 @@ class RandomGaussianBlur(_PicklableCompileMixin, IntensityAugmentationBase2D):
           The expected modes are: ``constant``, ``reflect``, ``replicate`` or ``circular``.
         separable: run as composition of two 1d-convolutions.
         same_on_batch: apply the same transformation across the batch.
-        p: probability of applying the transformation.
+        p: probability of applying the transformation to each sample.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``, Optional: ``(B, 3, 3)``
+        - Output: ``(B, C, H, W)``
 
     Convention:
         - this operation is range-independent: it does not clamp the input into ``[0, 1]``.
@@ -72,6 +80,11 @@ class RandomGaussianBlur(_PicklableCompileMixin, IntensityAugmentationBase2D):
 
     .. note::
         This function internally uses :func:`kornia.filters.gaussian_blur2d`.
+
+    See Also:
+        - :class:`RandomBoxBlur`: uses uniform box-filter weights.
+        - :class:`RandomMedianBlur`: uses the median rather than a weighted average.
+        - :class:`RandomMotionBlur`: uses a directional motion kernel.
 
     Examples:
         >>> rng = torch.manual_seed(0)

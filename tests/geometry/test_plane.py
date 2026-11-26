@@ -19,11 +19,11 @@ import pytest
 import torch
 
 from kornia.core.check import are_checks_enabled, disable_checks, enable_checks
-from kornia.core.exceptions import BaseError, ValueCheckError
+from kornia.core.exceptions import BaseError, ShapeError, ValueCheckError
 from kornia.geometry.plane import Hyperplane, fit_plane
 from kornia.geometry.vector import Scalar, Vector3
 
-from testing.base import BaseTester
+from testing.base import BaseTester, assert_deepcopy_copies_state_as_leaves
 
 
 # TODO: implement the rest of methods
@@ -39,22 +39,6 @@ class TestFitPlane(BaseTester):
         assert isinstance(plane, Hyperplane)
         assert plane.offset.shape == ()
         assert plane.normal.shape == (D,)
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_cardinality(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_jit(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_exception(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_module(self, device, dtype):
-        pass
 
     def test_gradcheck(self, device):
         t = torch.linspace(-1.0, 1.0, 6, device=device, dtype=torch.float64)
@@ -318,11 +302,46 @@ class TestHyperplane(BaseTester):
         with pytest.raises(BaseError, match="requires three points"):
             Hyperplane.through(p0, p1)
 
+    def test_through_mismatched_shapes_raises(self, device, dtype):
+        p0 = torch.rand(2, 3, device=device, dtype=dtype)
+        p2 = torch.rand(1, 3, device=device, dtype=dtype)
+        with pytest.raises(
+            BaseError, match=r"p0, p1 and p2 must have the same shape, got \[2, 3\], \[2, 3\] and \[1, 3\]"
+        ):
+            Hyperplane.through(p0, p0, p2)
+
+    def test_signed_distance_rejects_non_point(self, device, dtype):
+        plane = Hyperplane.through(
+            torch.tensor([0.0, 0.0, 0.0], device=device, dtype=dtype),
+            torch.tensor([1.0, 0.0, 0.0], device=device, dtype=dtype),
+            torch.tensor([0.0, 1.0, 0.0], device=device, dtype=dtype),
+        )
+        with pytest.raises(BaseError, match="p must be a Vector3 or a Tensor, got list"):
+            plane.signed_distance([0.0, 0.0, 1.0])
+
+    @pytest.mark.parametrize("method", ["signed_distance", "abs_distance", "projection"])
+    @pytest.mark.parametrize("shape", [(1,), (2,), (4, 1), (2, 4)])
+    def test_rejects_point_without_three_coordinates_6902(self, device, dtype, method, shape):
+        # A plain tensor ending in 1 used to broadcast against the normal and pass for (p, p, p),
+        # where the same tensor wrapped in a Vector3 raises.
+        normal = torch.tensor([0.0, 0.0, 1.0], device=device, dtype=dtype)
+        plane = Hyperplane(Vector3(normal), Scalar(normal.new_tensor(0.0)))
+        p = torch.full(shape, 7.0, device=device, dtype=dtype)
+        with pytest.raises(ShapeError, match=r"p must be points of shape \(\.\.\., 3\)"):
+            getattr(plane, method)(p)
+
     @pytest.mark.parametrize("shape", [None, (1,), (2, 1)])
     def test_through_three(self, device, dtype, shape):
-        v0 = Vector3.random(shape, device, dtype)
-        v1 = Vector3.random(shape, device, dtype)
-        v2 = Vector3.random(shape, device, dtype)
+        # Fixed, well-separated points: random ones made the test flaky, since about 2% of random bfloat16 triples
+        # fall within Hyperplane.through's collinearity check (8 eps) and are rightly rejected.
+        lead = shape if shape is not None else ()
+
+        def point(xyz):
+            return Vector3(torch.tensor(xyz, device=device, dtype=dtype).expand(*lead, 3).clone())
+
+        v0 = point([0.25, 0.5, 0.0])
+        v1 = point([1.0, 0.0, 0.5])
+        v2 = point([0.0, 1.0, 0.75])
         # TODO: improve api so that we can accept Vector too
         p0 = Hyperplane.through(v0, v1, v2)
         assert p0.normal.shape == ((*shape, 3) if shape is not None else (3,))
@@ -432,7 +451,7 @@ class TestHyperplane(BaseTester):
 
     def test_dynamo_skips_degenerate_checks(self, device, dtype, torch_optimizer):
         # The degeneracy checks depend on tensor values, so they are skipped under torch.compile: a compiled call
-        # on collinear points returns what an eager call returns with checks disabled.
+        # on collinear points returns a normal, like an eager call with checks disabled, instead of raising.
         a = torch.tensor([1.0, 1.0, 1.0], device=device, dtype=dtype)
         b = torch.tensor([2.0, 3.0, 4.0], device=device, dtype=dtype)
         c = 2 * b - a
@@ -449,7 +468,12 @@ class TestHyperplane(BaseTester):
             if checks_were_enabled:
                 enable_checks()
         self.assert_close(actual[0], expected[0])
-        self.assert_close(actual[1], expected[1])
+        # Every unit vector orthogonal to the line fits collinear points equally well, so fit_plane's normal is
+        # whichever one the decomposition returns: on CUDA the compiled and eager calls return different ones.
+        line = (b - a) / (b - a).norm()
+        for normal in (actual[1], expected[1]):
+            self.assert_close(normal.norm(), torch.ones((), device=device, dtype=dtype))
+            self.assert_close(normal @ line, torch.zeros((), device=device, dtype=dtype))
 
     def test_thin_valid_triangle_still_fits(self, device, dtype):
         # The collinearity tolerance scales with the dtype: a sliver whose height is 64 machine epsilons of its
@@ -547,22 +571,6 @@ class TestHyperplane(BaseTester):
         assert projected.data.shape == point.data.shape
         self.assert_close(projected.data, expected)
         self.assert_close(plane.signed_distance(projected).data, torch.zeros(2, 1, device=device, dtype=dtype))
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_cardinality(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_jit(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_exception(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_module(self, device, dtype):
-        pass
 
     def test_gradcheck(self, device):
         # A tilted triangle whose edges are neither orthogonal nor of equal length, so the SVD fallback
@@ -670,6 +678,18 @@ class TestHyperplane(BaseTester):
         finally:
             if checks_were_enabled:
                 enable_checks()
+
+    def test_deepcopy_with_autograd_history_4923(self, device, dtype):
+        # A plane built from tensors with a grad_fn holds them in buffers, which torch cannot deep-copy; the copy
+        # holds them as new leaves.
+        n = torch.tensor([0.0, 0.6, 0.8], device=device, dtype=dtype, requires_grad=True)
+        plane = Hyperplane.from_vector(
+            Vector3(n * 1), Vector3(torch.tensor([1.0, 2.0, 0.5], device=device, dtype=dtype))
+        )
+        copied = assert_deepcopy_copies_state_as_leaves(plane)
+        self.assert_close(copied.normal.data.detach(), plane.normal.data.detach(), rtol=0, atol=0)
+        plane.offset.data.sum().backward()
+        assert n.grad is not None
 
 
 class TestConventionsHyperplane(BaseTester):
@@ -785,3 +805,163 @@ class TestConventionsFitPlane(BaseTester):
         for wrong in (points[:, :2], torch.cat([points, points[:, :1]], -1)):
             with pytest.raises(TypeError, match=r"vector must be \(\*, 3\)"):
                 fit_plane(wrong)
+
+
+def _board_6213(rows, cols, device, dtype=torch.float64, posed=True):
+    """Corners of a planar ``rows`` x ``cols`` checkerboard, optionally posed in front of a camera."""
+    ys, xs = torch.meshgrid(torch.arange(rows, dtype=dtype), torch.arange(cols, dtype=dtype), indexing="ij")
+    corners = torch.stack([xs.flatten(), ys.flatten(), torch.zeros(rows * cols, dtype=dtype)], -1) * 0.025
+    if posed:
+        from kornia.geometry.conversions import axis_angle_to_rotation_matrix
+
+        rotation = axis_angle_to_rotation_matrix(torch.tensor([[0.3, -0.4, 0.2]], dtype=dtype))[0]
+        corners = corners @ rotation.T + torch.tensor([0.1, 0.2, 2.0], dtype=dtype)
+    return corners.to(device)
+
+
+def _plane_with_fixed_sign_6213(points, reference):
+    # The normal's sign is unspecified; fix it against a reference so that central differences are meaningful.
+    plane = fit_plane(Vector3(points))
+    normal, offset = plane.normal.data, plane.offset.data.reshape(*plane.normal.data.shape[:-1], 1)
+    sign = torch.where((normal.detach() * reference).sum(-1, keepdim=True) < 0, -1.0, 1.0)
+    return torch.cat([normal * sign, offset * sign], -1)
+
+
+class TestFitPlaneGradient(BaseTester):
+    """``fit_plane``'s gradient is finite when the two in-plane singular values are equal (#6213)."""
+
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS has no float64")
+    @pytest.mark.parametrize(
+        "rows, cols, posed, noise",
+        [(5, 5, True, 0.0), (7, 7, True, 0.0), (2, 2, False, 0.0), (3, 3, False, 0.0), (4, 6, True, 0.0)]
+        + [(5, 5, True, 1e-3), (7, 7, True, 1e-2)],
+    )
+    def test_square_boards_have_the_central_difference_gradient_6213(self, device, rows, cols, posed, noise):
+        # torch's SVD backward divides by s_i^2 - s_j^2 for every pair, so the bit-equal in-plane singular values of
+        # these square boards made every entry of the gradient NaN, although the normal is well defined. Which boards
+        # tie exactly depends on the SVD backend. With noise, s_min is not zero.
+        points = _board_6213(rows, cols, device, posed=posed)
+        if noise:
+            g = torch.Generator().manual_seed(0)
+            points = points + noise * torch.randn(points.shape, generator=g, dtype=points.dtype).to(device)
+        reference = fit_plane(Vector3(points)).normal.data.detach()
+        jac = torch.autograd.functional.jacobian(lambda p: _plane_with_fixed_sign_6213(p, reference), points)
+        jac = jac.reshape(4, -1)
+        assert torch.isfinite(jac).all()
+        eps = 1e-7
+        columns = []
+        for i in range(points.numel()):
+            step = torch.zeros(points.numel(), device=device, dtype=points.dtype)
+            step[i] = eps
+            step = step.view_as(points)
+            columns.append(
+                (
+                    _plane_with_fixed_sign_6213(points + step, reference)
+                    - _plane_with_fixed_sign_6213(points - step, reference)
+                ).reshape(-1)
+                / (2 * eps)
+            )
+        self.assert_close(jac, torch.stack(columns, -1), atol=1e-6, rtol=1e-6)
+
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS has no float64")
+    def test_axis_aligned_in_plane_pair_has_first_and_second_derivatives_6213(self, device):
+        # (+-1, 0, 0), (0, +-1, 0) make the in-plane singular values equal by construction, on every SVD backend.
+        points = torch.tensor([[1.0, 0.0, 0.0], [-1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, -1.0, 0.0]], device=device)
+        points = points.to(torch.float64)
+        reference = fit_plane(Vector3(points)).normal.data.detach()
+        self.gradcheck(lambda p: _plane_with_fixed_sign_6213(p, reference), (points,), fast_mode=False)
+        p = points.clone().requires_grad_(True)
+        assert torch.autograd.gradgradcheck(lambda p: _plane_with_fixed_sign_6213(p, reference), (p,))
+
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS has no float64")
+    def test_batched_square_boards_6213(self, device):
+        board = _board_6213(5, 5, device)
+        points = torch.stack([board, board * 2, board + 1.0, board.flip(0)]).requires_grad_(True)
+        plane = fit_plane(Vector3(points))
+        (plane.normal.data.sum() + plane.offset.data.sum()).backward()
+        assert torch.isfinite(points.grad).all()
+
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS has no float64")
+    @pytest.mark.parametrize(
+        "points_dtype, scale",
+        [(torch.float32, 1e-20), (torch.float32, 1e22), (torch.float64, 1e-160), (torch.float64, 1e160)],
+    )
+    def test_extreme_coordinates_keep_the_normal_and_a_finite_gradient_6213(self, device, points_dtype, scale):
+        # X^T X overflows or underflows near the square root of the dtype's range, where the SVD still works: the
+        # gradient path must not turn the normal into NaN, and its gradient must stay right.
+        board = _board_6213(5, 5, device, dtype=points_dtype)
+        points = (board * scale).requires_grad_(True)
+        plane = fit_plane(Vector3(points))
+        expected = fit_plane(Vector3(board)).normal.data
+        assert torch.isfinite(plane.normal.data).all()
+        self.assert_close(
+            (plane.normal.data * expected).sum(-1).abs(),
+            torch.ones((), device=device, dtype=points_dtype),
+            atol=1e-5,
+            rtol=0,
+        )
+        # The normal is scale-invariant, so its gradient at scale s is the unit-scale gradient divided by s.
+        weights = torch.tensor([0.3, -0.7, 1.1], device=device, dtype=points_dtype)
+        (_plane_with_fixed_sign_6213(points, expected)[..., :3] * weights).sum().backward()
+        unit = board.clone().requires_grad_(True)
+        (_plane_with_fixed_sign_6213(unit, expected)[..., :3] * weights).sum().backward()
+        assert torch.isfinite(points.grad).all()
+        self.assert_close(points.grad * scale, unit.grad, rtol=1e-4, atol=1e-4 * unit.grad.abs().max().item())
+
+    def test_value_is_the_svd_normal_6213(self, device, dtype):
+        # The gradient path does not touch the value: the normal is still the SVD's third right singular vector.
+        points = _board_6213(4, 6, device, dtype=torch.float32).to(dtype)
+        work = points.float() if dtype in (torch.float16, torch.bfloat16) else points
+        centered = work - work.mean(-2, keepdim=True)
+        expected = torch.linalg.svd(
+            centered.double() if centered.dtype == torch.float32 and device.type != "mps" else centered
+        )[2][-1]
+        normal = fit_plane(Vector3(points.clone().requires_grad_(True))).normal.data
+        assert (normal.detach().to(expected.dtype) * expected).sum().abs() > 1 - 1e-3
+        # A call that requires grad returns exactly what a call without autograd returns.
+        plane = fit_plane(Vector3(points))
+        plane_grad = fit_plane(Vector3(points.clone().requires_grad_(True)))
+        self.assert_close(plane_grad.normal.data.detach(), plane.normal.data, rtol=0, atol=0)
+        self.assert_close(plane_grad.offset.data.detach(), plane.offset.data, rtol=0, atol=0)
+
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS has no float64")
+    def test_float32_gradient_of_a_thin_strip_keeps_the_float64_accuracy_6213(self, device):
+        # X^T X squares the condition number of the centred points: the gradient is computed in the SVD's float64,
+        # where float32 would leave this 2 m x 1 mm strip's gradient 2e-1 off instead of 4e-5.
+        from kornia.geometry.conversions import axis_angle_to_rotation_matrix
+
+        g = torch.Generator().manual_seed(0)
+        n = 200
+        strip = torch.stack(
+            [
+                torch.linspace(0.0, 2.0, n, dtype=torch.float64),
+                1e-3 * torch.rand(n, generator=g, dtype=torch.float64),
+                1e-6 * torch.randn(n, generator=g, dtype=torch.float64),
+            ],
+            -1,
+        )
+        rotation = axis_angle_to_rotation_matrix(torch.tensor([[0.4, 0.1, 0.9]], dtype=torch.float64))[0]
+        strip = strip @ rotation.T + torch.tensor([0.0, 1.0, 4.0], dtype=torch.float64)
+        points = strip.float().to(device)  # the float64 reference below sees the same, float32-rounded, points
+        reference = fit_plane(Vector3(points.double())).normal.data.detach()
+        jac64 = torch.autograd.functional.jacobian(lambda p: _plane_with_fixed_sign_6213(p, reference), points.double())
+        jac32 = torch.autograd.functional.jacobian(lambda p: _plane_with_fixed_sign_6213(p, reference.float()), points)
+        self.assert_close(jac32.double(), jac64, rtol=0, atol=1e-3 * jac64.abs().max().item())
+
+    def test_dynamo_gradient_matches_eager_6213(self, device, dtype, torch_optimizer):
+        # The kept vector's own gap is excluded by position: CUDA Inductor evaluated (S / scale)^2 differently at its
+        # two reads, a gap of 1e-20 instead of 0, and the compiled gradient was 1e18 times too large.
+        g = torch.Generator().manual_seed(0)
+        points = torch.randn(2, 30, 3, generator=g, dtype=torch.float64) * torch.tensor([1.0, 0.5, 0.01]).double()
+        points = points.to(device, dtype)
+        weights = torch.randn(2, 4, generator=g, dtype=torch.float64).to(device, dtype)
+
+        def op(p):
+            plane = fit_plane(Vector3(p))
+            return torch.cat([plane.normal.data, plane.offset.data[..., None]], -1)
+
+        p_eager = points.clone().requires_grad_(True)
+        p_compiled = points.clone().requires_grad_(True)
+        (expected,) = torch.autograd.grad((op(p_eager) * weights).sum(), p_eager)
+        (actual,) = torch.autograd.grad((torch_optimizer(op)(p_compiled) * weights).sum(), p_compiled)
+        self.assert_close(actual, expected)

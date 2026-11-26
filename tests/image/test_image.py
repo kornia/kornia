@@ -21,7 +21,6 @@ import numpy as np
 import pytest
 import torch
 
-from kornia.core._compat import torch_version_le
 from kornia.core.exceptions import ShapeError, ValueCheckError
 from kornia.image import ColorSpace
 from kornia.image.base import KORNIA_CHECK_IMAGE_LAYOUT, ChannelsOrder, ImageLayout, ImageSize, PixelFormat
@@ -33,6 +32,47 @@ from testing.base import BaseTester
 
 
 class TestImage(BaseTester):
+    @pytest.mark.parametrize("channels,color_space", [(1, ColorSpace.GRAY), (3, ColorSpace.RGB)])
+    @pytest.mark.parametrize("order", [ChannelsOrder.CHANNELS_FIRST, ChannelsOrder.CHANNELS_LAST])
+    def test_to_numpy_preserves_layout_and_values(self, device, dtype, channels, color_space, order):
+        """Preserve layout and metadata while bfloat16 exports use independent float32 storage."""
+        data = torch.arange(channels * 6, device=device, dtype=dtype).reshape(channels, 2, 3)
+        if order == ChannelsOrder.CHANNELS_LAST:
+            data = data.permute(1, 2, 0)
+        data.requires_grad_()
+        image = make_image(data, color_space, order)
+        stored_data = image.data
+
+        actual = image.to_numpy()
+
+        expected = data.detach().cpu()
+        if dtype == torch.bfloat16:
+            expected = expected.float()
+        self.assert_close(torch.from_numpy(actual), expected)
+        assert image.data is stored_data
+        assert image.dtype == dtype
+        assert image.channels_order == order
+        assert image.pixel_format.color_space == color_space
+        if dtype == torch.bfloat16:
+            actual.fill(-1)
+            assert (image.data >= 0).all()
+
+    @pytest.mark.parametrize("array_dtype", [np.uint8, np.float32, np.float64])
+    @pytest.mark.parametrize("order", [ChannelsOrder.CHANNELS_FIRST, ChannelsOrder.CHANNELS_LAST])
+    def test_to_numpy_keeps_supported_cpu_dtypes_shared(self, array_dtype, order):
+        """Keep supported CPU dtypes and their shared-memory NumPy view."""
+        data = np.arange(18, dtype=array_dtype).reshape(3, 2, 3)
+        if order == ChannelsOrder.CHANNELS_LAST:
+            data = data.transpose(1, 2, 0)
+        image = Image.from_numpy(data, channels_order=order)
+
+        actual = image.to_numpy()
+
+        assert actual.dtype == data.dtype
+        assert np.shares_memory(actual, data)
+        actual[0, 0, 0] = 42
+        assert data[0, 0, 0] == 42
+
     def test_smoke(self, device):
         data = torch.randint(0, 255, (3, 4, 5), device=device, dtype=torch.uint8)
         pixel_format = PixelFormat(color_space=ColorSpace.RGB, bit_depth=8)
@@ -78,123 +118,60 @@ class TestImage(BaseTester):
         assert img3.dtype == torch.uint8
         assert img3.device == device
 
-    def test_dlpack(self, device, dtype):
-        data = torch.rand((3, 4, 5), device=device, dtype=dtype)
-        pixel_format = PixelFormat(color_space=ColorSpace.RGB, bit_depth=data.element_size() * 8)
-        layout = ImageLayout(image_size=ImageSize(4, 5), channels=3, channels_order=ChannelsOrder.CHANNELS_FIRST)
-        img = Image(data, pixel_format=pixel_format, layout=layout)
-        self.assert_close(data, Image.from_dlpack(img.to_dlpack()).data)
+    @staticmethod
+    def _pixel(values, order, device, dtype):
+        """Build a one-pixel image tensor in the given channels order."""
+        data = torch.tensor(values, device=device, dtype=dtype)
+        return data.view(3, 1, 1) if order == ChannelsOrder.CHANNELS_FIRST else data.view(1, 1, 3)
 
-    # Channel first
-    def test_rgb_gray_rgb_channels_first(self):
-        rgb_val = torch.tensor([0.5, 0.2, 0.1], dtype=torch.float32)
-        rgb_data = rgb_val.view(3, 1, 1)
+    # BT.601 luma of RGB (0.5, 0.2, 0.1): 0.299 * 0.5 + 0.587 * 0.2 + 0.114 * 0.1. Reading the BGR pixel
+    # (0.1, 0.2, 0.5) as RGB would give 0.2043 instead.
+    _GRAY = 0.2783
 
-        img_rgb = make_image(rgb_data, ColorSpace.RGB, ChannelsOrder.CHANNELS_FIRST)
-
-        gray = img_rgb.to_gray()
-        rgb_back = gray.to_rgb()
-
-        expected_gray = img_rgb.to_gray().data.squeeze()
-        self.assert_close(gray.data.squeeze(), expected_gray)
-
-        # RGB reconstructed from gray should repeat luminance across channels
-        expected_rgb = expected_gray.repeat(3)
-        self.assert_close(rgb_back.data.squeeze(), expected_rgb)
-
-    def test_bgr_gray_bgr_channels_first(self):
-        rgb_val = torch.tensor([0.5, 0.2, 0.1], dtype=torch.float32)
-        bgr_val = rgb_val.flip(0)
-        bgr_data = bgr_val.view(3, 1, 1)
-
-        img_bgr = make_image(bgr_data, ColorSpace.BGR, ChannelsOrder.CHANNELS_FIRST)
-
-        gray = img_bgr.to_gray()
-        bgr_back = gray.to_bgr()
-
-        expected_gray = img_bgr.to_gray().data.squeeze()
-        self.assert_close(gray.data.squeeze(), expected_gray)
-
-        expected_bgr = expected_gray.repeat(3).flip(0)
-        self.assert_close(bgr_back.data.squeeze(), expected_bgr)
-
-    def test_rgb_bgr_swap_channels_first(self):
-        rgb_val = torch.tensor([0.5, 0.2, 0.1], dtype=torch.float32)
-        bgr_val = rgb_val.flip(0)
-
-        rgb_data = rgb_val.view(3, 1, 1)
-        bgr_data = bgr_val.view(3, 1, 1)
-
-        img_rgb = make_image(rgb_data, ColorSpace.RGB, ChannelsOrder.CHANNELS_FIRST)
-        img_bgr = make_image(bgr_data, ColorSpace.BGR, ChannelsOrder.CHANNELS_FIRST)
-
-        self.assert_close(img_rgb.to_bgr().data.squeeze(), bgr_val)
-        self.assert_close(img_bgr.to_rgb().data.squeeze(), rgb_val)
-
-    # Channel last
-    def test_rgb_gray_rgb_channels_last(self):
-        rgb_val = torch.tensor([0.5, 0.2, 0.1], dtype=torch.float32)
-        rgb_data = rgb_val.view(1, 1, 3)
-
-        img_rgb = make_image(rgb_data, ColorSpace.RGB, ChannelsOrder.CHANNELS_LAST)
+    @pytest.mark.parametrize("order", [ChannelsOrder.CHANNELS_FIRST, ChannelsOrder.CHANNELS_LAST])
+    def test_rgb_gray_rgb(self, order, device, dtype):
+        img_rgb = make_image(self._pixel([0.5, 0.2, 0.1], order, device, dtype), ColorSpace.RGB, order)
 
         gray = img_rgb.to_gray()
         rgb_back = gray.to_rgb()
 
-        expected_gray = img_rgb.to_gray().data.squeeze()
-        self.assert_close(gray.data.squeeze(), expected_gray)
+        self.assert_close(gray.data.squeeze(), torch.tensor(self._GRAY, device=device, dtype=dtype))
+        # RGB reconstructed from gray repeats the luminance across channels
+        self.assert_close(rgb_back.data.squeeze(), torch.full((3,), self._GRAY, device=device, dtype=dtype))
 
-        # RGB reconstructed from gray should repeat luminance across channels
-        expected_rgb = expected_gray.repeat(3)
-        self.assert_close(rgb_back.data.squeeze(), expected_rgb)
-
-    def test_bgr_gray_bgr_channels_last(self):
-        rgb_val = torch.tensor([0.5, 0.2, 0.1], dtype=torch.float32)
-        bgr_val = rgb_val.flip(0)
-        bgr_data = bgr_val.view(1, 1, 3)
-
-        img_bgr = make_image(bgr_data, ColorSpace.BGR, ChannelsOrder.CHANNELS_LAST)
+    @pytest.mark.parametrize("order", [ChannelsOrder.CHANNELS_FIRST, ChannelsOrder.CHANNELS_LAST])
+    def test_bgr_gray_bgr(self, order, device, dtype):
+        img_bgr = make_image(self._pixel([0.1, 0.2, 0.5], order, device, dtype), ColorSpace.BGR, order)
 
         gray = img_bgr.to_gray()
         bgr_back = gray.to_bgr()
 
-        expected_gray = img_bgr.to_gray().data.squeeze()
-        self.assert_close(gray.data.squeeze(), expected_gray)
+        self.assert_close(gray.data.squeeze(), torch.tensor(self._GRAY, device=device, dtype=dtype))
+        self.assert_close(bgr_back.data.squeeze(), torch.full((3,), self._GRAY, device=device, dtype=dtype))
 
-        expected_bgr = expected_gray.repeat(3).flip(0)
-        self.assert_close(bgr_back.data.squeeze(), expected_bgr)
-
-    def test_rgb_bgr_swap_channels_last(self):
-        rgb_val = torch.tensor([0.5, 0.2, 0.1], dtype=torch.float32)
+    @pytest.mark.parametrize("order", [ChannelsOrder.CHANNELS_FIRST, ChannelsOrder.CHANNELS_LAST])
+    def test_rgb_bgr_swap(self, order, device, dtype):
+        rgb_val = torch.tensor([0.5, 0.2, 0.1], device=device, dtype=dtype)
         bgr_val = rgb_val.flip(0)
 
-        rgb_data = rgb_val.view(1, 1, 3)
-        bgr_data = bgr_val.view(1, 1, 3)
-
-        img_rgb = make_image(rgb_data, ColorSpace.RGB, ChannelsOrder.CHANNELS_LAST)
-        img_bgr = make_image(bgr_data, ColorSpace.BGR, ChannelsOrder.CHANNELS_LAST)
+        img_rgb = make_image(self._pixel(rgb_val.tolist(), order, device, dtype), ColorSpace.RGB, order)
+        img_bgr = make_image(self._pixel(bgr_val.tolist(), order, device, dtype), ColorSpace.BGR, order)
 
         self.assert_close(img_rgb.to_bgr().data.squeeze(), bgr_val)
         self.assert_close(img_bgr.to_rgb().data.squeeze(), rgb_val)
 
-    @pytest.mark.skipif(torch_version_le(1, 9, 1), reason="dlpack is broken in torch<=1.9.1")
-    @pytest.mark.xfail(reason="This may fail some time due to jpeg compression assertion")
     def test_load_write(self, tmp_path: Path) -> None:
+        # PNG is lossless, so the channels-first image comes back bit for bit.
         data = torch.randint(0, 255, (3, 4, 5), dtype=torch.uint8)
         img = Image.from_numpy(data.numpy(), channels_order=ChannelsOrder.CHANNELS_FIRST)
 
-        file_name = tmp_path / "image.jpg"
+        file_name = tmp_path / "image.png"
 
         img.write(file_name)
         img2 = Image.from_file(file_name)
 
-        # NOTE: the tolerance is high due to the jpeg compression
-        assert (img.float().data - img2.float().data).pow(2).mean() <= 0.75
-
-    def test_write_first_channel(self, tmp_path: Path) -> None:
-        data = np.ones((4, 5, 3), dtype=np.uint8)
-        img = Image.from_numpy(data, color_space=ColorSpace.RGB, channels_order=ChannelsOrder.CHANNELS_LAST)
-        img.write(tmp_path / "image.jpg")
+        assert img2.channels_order == ChannelsOrder.CHANNELS_FIRST
+        assert torch.equal(img2.data, data)
 
     def test_to_returns_a_new_image_and_leaves_the_original(self, device):
         img = Image.from_numpy(np.zeros((4, 5, 3), dtype=np.uint8))
@@ -387,18 +364,64 @@ class TestCheckImageLayout(BaseTester):
         layout = ImageLayout(ImageSize(10, 10), 3, ChannelsOrder.CHANNELS_FIRST)
         assert not KORNIA_CHECK_IMAGE_LAYOUT(data, layout, raises=False)
 
+    # The sizes are compared as numbers. A tensor or float size whose str() is not all digits used to be skipped
+    # like a dimension name, so a 4 x 5 image was accepted against any such height and width (#6244).
+    @pytest.mark.parametrize(
+        "size",
+        [ImageSize(torch.tensor(9), torch.tensor(9)), ImageSize(9.0, 9.0), ImageSize(4.5, 5.0)],
+        ids=["tensor", "float", "fractional"],
+    )
+    @pytest.mark.parametrize("order", [ChannelsOrder.CHANNELS_FIRST, ChannelsOrder.CHANNELS_LAST])
+    def test_mismatched_tensor_or_float_size_raises_6244(self, size, order, device):
+        data = torch.rand((3, 4, 5) if order == ChannelsOrder.CHANNELS_FIRST else (4, 5, 3), device=device)
+        layout = ImageLayout(size, 3, order)
+        with pytest.raises(ShapeError):
+            Image(data, PixelFormat(ColorSpace.RGB, 32), layout)
+        assert not KORNIA_CHECK_IMAGE_LAYOUT(data, layout, raises=False)
+
+    @pytest.mark.parametrize(
+        "size",
+        [
+            ImageSize(4, 5),
+            ImageSize(4.0, 5.0),
+            ImageSize(torch.tensor(4), torch.tensor(5)),
+            ImageSize(torch.tensor(4.0), torch.tensor(5.0)),
+        ],
+        ids=["int", "float", "int_tensor", "float_tensor"],
+    )
+    def test_matching_size_of_any_type_is_accepted_6244(self, size, device):
+        data = torch.rand(3, 4, 5, device=device)
+        image = Image(data, PixelFormat(ColorSpace.RGB, 32), ImageLayout(size, 3, ChannelsOrder.CHANNELS_FIRST))
+        assert (image.height, image.width) == (4, 5)
+
+    def test_dynamo_layout_check_does_not_stringify_sizes_6244(self, device, torch_optimizer):
+        # Turning a symbolic size into a string cannot be traced: under fullgraph=True with dynamic shapes, building
+        # an Image raised torch._dynamo.exc.Unsupported (tp_repr_impl) instead of compiling one graph.
+        from torch._dynamo.testing import CompileCounter
+
+        def op(x):
+            layout = ImageLayout(ImageSize(x.shape[1], x.shape[2]), 3, ChannelsOrder.CHANNELS_FIRST)
+            return Image(x, PixelFormat(ColorSpace.RGB, 32), layout).to_gray().data
+
+        counter = CompileCounter()
+        compiled = torch_optimizer(op, backend=counter, fullgraph=True, dynamic=True)
+        for height, width in ((4, 5), (6, 7)):
+            data = torch.rand(3, height, width, device=device)
+            self.assert_close(compiled(data), op(data))
+        assert counter.frame_count == 1
+
 
 class TestConventionsImage(BaseTester):
     """Pins for the unbatched layout, same-space conversions and NumPy aliasing of ``Image``."""
 
     def test_convention_image_is_unbatched(self):
         # Image holds one (H, W, C) or (C, H, W) image; a batched 4-D tensor is rejected by its dimension count.
-        # Image.from_numpy of a 4-D array raises the same ShapeError.
+        # Image.from_numpy of a 4-D array raises ShapeError too.
         batched = torch.zeros(2, 4, 5, 3, dtype=torch.uint8)
         layout = ImageLayout(ImageSize(4, 5), 3, ChannelsOrder.CHANNELS_LAST)
-        with pytest.raises(ShapeError, match="expected 3 dimensions, got 4"):
+        with pytest.raises(ShapeError, match=r"expected \(4, 5, 3\), got \[2, 4, 5, 3\]"):
             Image(batched, PixelFormat(ColorSpace.RGB, 8), layout)
-        with pytest.raises(ShapeError, match="expected 3 dimensions, got 4"):
+        with pytest.raises(ShapeError, match=r"got \[2, 4, 5, 3\]"):
             Image.from_numpy(np.zeros((2, 4, 5, 3), np.uint8))
 
     @pytest.mark.parametrize(

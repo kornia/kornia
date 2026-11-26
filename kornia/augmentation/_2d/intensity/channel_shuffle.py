@@ -25,15 +25,23 @@ from kornia.core.utils import _to_device_nonblocking
 
 
 class RandomChannelShuffle(IntensityAugmentationBase2D):
-    r"""Shuffle the channels of a batch of multi-dimensional images.
+    r"""Randomly permute the channels of images, applied per sample with probability ``p`` (default 0.5).
+
+    ``output = RandomChannelShuffle(...)(input)`` reorders the channels of every selected image ``(B, C, H, W)``
+    without changing its values.
 
     .. image:: _static/img/RandomChannelShuffle.png
+
+    .. note::
+        Unlike torchvision's ``RandomChannelPermutation``, which permutes the channels of every image, this class
+        permutes the channels of each sample with probability ``p``, 0.5 by default; with ``same_on_batch=True`` one
+        draw decides for the whole batch. Pass ``p=1.0`` to permute every sample.
 
     See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
 
     Args:
         same_on_batch: apply the same transformation across the batch.
-        p: probability of applying the transformation.
+        p: probability of applying the transformation to each sample.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
           to the batch form ``False``.
 
@@ -44,6 +52,9 @@ class RandomChannelShuffle(IntensityAugmentationBase2D):
         - the permutation is drawn independently per sample; ``same_on_batch=True`` shares one
           permutation across the batch.
         - values are only reordered, never recomputed, so the input's value range is carried through.
+
+    See Also:
+        - :class:`RandomChannelDropout`: replaces channels instead of permuting them.
 
     Examples:
         >>> rng = torch.manual_seed(0)

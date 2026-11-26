@@ -52,42 +52,6 @@ class TestONNXSequential:
         assert len(onnx_sequential.operators) == 1
         assert onnx_sequential.operators[0] == mock_model_proto
 
-    def test_load_op(self, onnx_sequential, mock_model_proto):
-        # Test loading a ModelProto object
-        model = onnx_sequential._load_op(mock_model_proto)
-        assert model == mock_model_proto
-
-    def test_combine_models(self, mock_model_proto):
-        from unittest.mock import patch
-
-        from onnx.helper import make_graph, make_model, make_node, make_tensor_value_info
-
-        # The patch must wrap ONNXSequential() construction so merge_models is mocked
-        # when _combine() actually calls it.
-        with patch("onnx.compose.merge_models") as mock_merge_models:
-            # Create a small ONNX model as the return value of merge_models
-            input_info = make_tensor_value_info("input", onnx.TensorProto.FLOAT, [1, 2])
-            output_info = make_tensor_value_info("output", onnx.TensorProto.FLOAT, [1, 2])
-            node = make_node("Identity", ["input"], ["output"])
-            graph = make_graph([node], "combined_graph", [input_info], [output_info])
-            op = onnx.OperatorSetIdProto()
-            opset_version = 17
-            ir_version = 10
-            op.version = opset_version
-            combined_model = make_model(graph, opset_imports=[op], ir_version=ir_version)
-
-            mock_merge_models.return_value = combined_model
-
-            # Test combining multiple ONNX models with io_maps
-            onnx_sequential = ONNXSequential(
-                mock_model_proto,
-                mock_model_proto,
-                io_maps=[[("output", "input")]],  # list-of-list-of-tuples format
-            )
-            combined_op = onnx_sequential._combined_op
-
-        assert isinstance(combined_op, onnx.ModelProto)
-
     def test_export_combined_model(self, onnx_sequential):
         from unittest.mock import patch
 

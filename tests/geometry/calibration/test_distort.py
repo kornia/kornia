@@ -22,7 +22,7 @@ from kornia.geometry.calibration.distort import distort_points, tilt_projection
 from kornia.geometry.calibration.undistort import undistort_points
 from kornia.geometry.camera.distortion_affine import distort_points_affine
 
-from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available, skip_unsupported_autocast
 from testing.geometry.linalg import euler_angles_to_rotation_matrix
 
 
@@ -142,6 +142,35 @@ class TestZeroTiltGradients(BaseTester):
         self.assert_close(compiled_gradient[..., 12:], expected)
 
 
+@pytest.mark.parametrize("op", [distort_points, undistort_points])
+class TestTiltAutocast(BaseTester):
+    @pytest.mark.parametrize("amp_dtype", ["float16", "bfloat16"])
+    def test_tilt_keeps_float32_accuracy_in_a_caller_region(self, op, device, amp_dtype):
+        skip_unsupported_autocast(device, amp_dtype)
+
+        K = torch.tensor(
+            [[650.0, 0.0, 320.0], [0.0, 625.0, 240.0], [0.0, 0.0, 1.0]], device=device, dtype=torch.float32
+        )
+        ideal = torch.tensor([[32.0, 40.0], [599.0, 428.0], [180.0, 396.0]], device=device, dtype=torch.float32)
+        dist = torch.tensor(
+            [0.025, -0.015, 0.001, -0.002, 0.005, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.10, 0.04],
+            device=device,
+            dtype=torch.float32,
+            requires_grad=True,
+        )
+        # OpenCV 4.12 projectPoints on the rays K^-1 @ [u, v, 1], with zero rotation and translation.
+        measured = ideal.new_tensor([[33.358949, 41.662335], [603.883117, 431.421759], [174.264740, 403.544651]])
+        points, expected = (ideal, measured) if op is distort_points else (measured, ideal)
+
+        reference = op(points, K, dist)
+        with torch.autocast(device.type, dtype=getattr(torch, amp_dtype)):
+            actual = op(points, K, dist)
+
+        self.assert_close(actual, expected, atol=2e-4, rtol=0)
+        self.assert_close(actual, reference, atol=0, rtol=0)
+        self.assert_close(torch.autograd.grad(actual.sum(), dist)[0], torch.autograd.grad(reference.sum(), dist)[0])
+
+
 class TestDistortPoints(BaseTester):
     def test_smoke(self, device, dtype):
         points = torch.rand(1, 2, device=device, dtype=dtype)
@@ -256,6 +285,21 @@ class TestDistortPoints(BaseTester):
         assert not torch.allclose(distort_points(points, K, short).float(), points.float())
         assert torch.equal(distort_points(points, K, short), distort_points(points, K, padded))
 
+    def test_exception_rejects_points_whose_trailing_size_is_not_2(
+        self, device: torch.device, dtype: torch.dtype
+    ) -> None:
+        # The points must be (*, N, 2), as in undistort_points: a third column used to be dropped silently
+        # and an unbatched (2,) point used to come back as (1, 2).
+        from kornia.core.exceptions import ShapeError
+
+        K = torch.eye(3, device=device, dtype=dtype)
+        dist = torch.zeros(4, device=device, dtype=dtype)
+        for shape in ((5, 3), (1, 5, 3), (5, 1), (2,)):
+            points = torch.rand(shape, device=device, dtype=dtype)
+            with pytest.raises(ShapeError):
+                distort_points(points, K, dist)
+        assert distort_points(torch.rand(5, 2, device=device, dtype=dtype), K, dist).shape == (5, 2)
+
     def test_convention_zero_coefficients_are_a_no_op_at_dtype_tolerance(self, device, dtype):
         # With every coefficient zero, distort_points normalizes with new_K (= K here) and denormalizes with K,
         # so it is a no-op to roundoff. The points sit half a focal length off the principal point.
@@ -350,3 +394,32 @@ class TestDistortPoints(BaseTester):
         op = distort_points
         op_jit = torch.jit.script(op)
         self.assert_close(op(*inputs), op_jit(*inputs))
+
+    @pytest.mark.applies_to(dtypes=("float16", "bfloat16"), reason="a half-precision accuracy check")
+    def test_half_precision_rounds_once(self, device, dtype):
+        # f = 1000 px and 64 x 100 points over a 1280 x 720 image. Distorted in float32 and rounded once, every
+        # coordinate is within half a unit in the last place (ulp) of the float64 result of the same rounded inputs,
+        # plus about 2e-4 px of float32 arithmetic (1e-3 px allowed). Distorting in half precision leaves the result off
+        # by up to 1.5 px in float16 and 10.5 px in bfloat16, where half an ulp is at most 0.5 px and 4 px.
+        generator = torch.Generator().manual_seed(0)
+        image = torch.tensor([1280.0, 720.0], dtype=torch.float64)
+        points = (torch.rand(64, 100, 2, generator=generator, dtype=torch.float64) * image).to(dtype)
+        K = torch.tensor([[1000.0, 0.0, 640.0], [0.0, 1000.0, 360.0], [0.0, 0.0, 1.0]], dtype=dtype).expand(64, 3, 3)
+        dist = torch.tensor([-0.2, 0.05, 1e-3, -1e-3, 0.01], dtype=dtype).expand(64, 5)
+        expected = distort_points(points.double(), K.double(), dist.double())
+        actual = distort_points(points.to(device), K.to(device), dist.to(device))
+        assert actual.dtype == dtype
+        _, exponent = torch.frexp(expected)
+        half_ulp = 0.5 * torch.finfo(dtype).eps * torch.exp2(exponent.double() - 1)
+        assert ((actual.cpu().double() - expected).abs() <= half_ulp + 1e-3).all()
+
+    def test_integer_input_returns_float32(self, device):
+        # torch promotes integer pixels and intrinsics to float32 in the division, and the result is not cast back.
+        points = torch.tensor([[1, 3]], device=device)
+        K = torch.eye(3, dtype=torch.int64, device=device)
+        new_K = torch.tensor([[2, 0, 0], [0, 2, 0], [0, 0, 1]], device=device)
+        dist = torch.zeros(4, dtype=torch.int64, device=device)
+        distorted = distort_points(points, K, dist, new_K)
+        assert distorted.dtype == torch.float32
+        # Normalized by new_K to (0.5, 1.5), undistorted by zero coefficients, and K is the identity.
+        self.assert_close(distorted, torch.tensor([[0.5, 1.5]], device=device))

@@ -15,9 +15,16 @@
 # limitations under the License.
 #
 
-"""Kornia Feature DeDoDe Transformer — Transformer backbones for DeDoDe feature detector.
+"""Vision transformer backbones for DeDoDe: the frozen DINOv2 ViT-L of its G descriptor.
 
-This subpackage provides transformer models for DeDoDe feature extraction.
+The backbone takes images ``(B, 3, H, W)`` whose ``H`` and ``W`` are multiples of its patch size, 14 for the DINOv2
+weights, and none of its parameters requires gradients.
+
+Which function to use:
+
+- The DINOv2 ViT-L/14 architecture, to load the ``dinov2_vitl14_pretrain.pth`` weights into: :func:`vit_large`,
+  with the keyword arguments its docstring gives. For keypoints and their descriptions, use
+  :class:`~kornia.feature.DeDoDe`, which builds and loads it for its ``G`` descriptor.
 """
 
 from .dinov2 import vit_large

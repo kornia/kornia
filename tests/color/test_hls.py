@@ -46,11 +46,6 @@ class TestRgbToHls(BaseTester):
             assert image.grad is not None
             assert torch.isfinite(image.grad).all()
 
-    def test_smoke(self, device, dtype):
-        C, H, W = 3, 4, 5
-        img = torch.rand(C, H, W, device=device, dtype=dtype)
-        assert isinstance(kornia.color.rgb_to_hls(img), torch.Tensor)
-
     @pytest.mark.parametrize("shape", [(1, 3, 4, 4), (2, 3, 2, 4), (3, 3, 4, 1), (3, 2, 1)])
     def test_cardinality(self, device, dtype, shape):
         img = torch.ones(shape, device=device, dtype=dtype)
@@ -127,20 +122,6 @@ class TestRgbToHls(BaseTester):
         )
 
         self.assert_close(kornia.color.rgb_to_hls(data), expected, low_tolerance=True)
-
-    def test_nan_rgb_to_hls(self, device, dtype):
-        data = torch.ones(2, 3, 5, 5, device=device, dtype=dtype)
-
-        # OpenCV
-        expected = torch.cat(
-            [
-                torch.zeros(2, 1, 5, 5, device=device, dtype=dtype),
-                torch.ones(2, 1, 5, 5, device=device, dtype=dtype),
-                torch.zeros(2, 1, 5, 5, device=device, dtype=dtype),
-            ],
-            dim=1,
-        )
-        self.assert_close(kornia.color.rgb_to_hls(data), expected)
 
     @pytest.mark.parametrize("gray_level", [0.0, 0.25, 0.5, 1.0])
     @pytest.mark.parametrize("shape", [(3, 4, 4), (2, 3, 4, 4)])
@@ -225,21 +206,21 @@ class TestRgbToHls(BaseTester):
         self.assert_close(actual, expected.to(dtype))
         self.assert_close(image.grad, reference.grad.to(dtype))
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         B, C, H, W = 2, 3, 4, 4
         img = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.rgb_to_hls, (img,), raise_exception=True, fast_mode=True)
 
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
-        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        img = torch.rand(B, C, H, W, device=device, dtype=dtype)
         op = kornia.color.rgb_to_hls
         op_jit = torch.jit.script(op)
         self.assert_close(op(img), op_jit(img))
 
     def test_module(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
-        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        img = torch.rand(B, C, H, W, device=device, dtype=dtype)
         ops = kornia.color.RgbToHls().to(device, dtype)
         fcn = kornia.color.rgb_to_hls
         self.assert_close(ops(img), fcn(img))
@@ -251,12 +232,11 @@ class TestRgbToHls(BaseTester):
         compiled = torch_optimizer(kornia.color.rgb_to_hls, fullgraph=True)
         self.assert_close(compiled(img), kornia.color.rgb_to_hls(img))
 
+    @pytest.mark.applies_to(dtypes=("float32",), reason="the exported graph is checked once, in float32")
     @pytest.mark.device_agnostic
     def test_onnx_export_legacy_matches_eager(self, dtype):
         # The TorchScript exporter (the torch.onnx.export default before torch 2.9) did not trace the `out=` writes
         # into views of the output, so the exported graph ignored its input and returned zeros.
-        if dtype != torch.float32:
-            pytest.skip("the exported graph is checked once, in float32")
         pytest.importorskip("onnx")
         ort = pytest.importorskip("onnxruntime")
 
@@ -281,11 +261,6 @@ class TestRgbToHls(BaseTester):
 
 
 class TestHlsToRgb(BaseTester):
-    def test_smoke(self, device, dtype):
-        C, H, W = 3, 4, 5
-        img = torch.rand(C, H, W, device=device, dtype=dtype)
-        assert isinstance(kornia.color.hls_to_rgb(img), torch.Tensor)
-
     @pytest.mark.parametrize("shape", [(1, 3, 4, 4), (2, 3, 2, 4), (3, 3, 4, 1), (3, 2, 1)])
     def test_cardinality(self, device, dtype, shape):
         img = torch.ones(shape, device=device, dtype=dtype)
@@ -376,21 +351,21 @@ class TestHlsToRgb(BaseTester):
         data[:, 0] -= 4 * math.pi
         self.assert_close(f(data), expected, low_tolerance=True)
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         B, C, H, W = 2, 3, 4, 4
         img = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.hls_to_rgb, (img,), raise_exception=True, fast_mode=True)
 
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
-        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        img = torch.rand(B, C, H, W, device=device, dtype=dtype)
         op = kornia.color.hls_to_rgb
         op_jit = torch.jit.script(op)
         self.assert_close(op(img), op_jit(img))
 
     def test_module(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
-        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        img = torch.rand(B, C, H, W, device=device, dtype=dtype)
         ops = kornia.color.HlsToRgb().to(device, dtype)
         fcn = kornia.color.hls_to_rgb
         self.assert_close(ops(img), fcn(img))

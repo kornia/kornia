@@ -63,7 +63,7 @@ class VGG(nn.Module):
         r"""Run this DeDoDe module forward.
 
         Args:
-            x: Input image tensor with shape :math:`(B, 3, H, W)`.
+            x: Input image tensor with shape ``(B, 3, H, W)``.
 
         Returns:
             Classification logits with shape :math:`(B, \text{num\_classes})`.

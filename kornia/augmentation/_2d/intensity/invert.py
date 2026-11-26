@@ -27,7 +27,9 @@ from kornia.enhance import invert
 
 
 class RandomInvert(IntensityAugmentationBase2D):
-    r"""Invert the tensor images values randomly.
+    r"""Invert image values as ``max_val - x``, applied per sample with probability ``p`` (default 0.5).
+
+    ``output = RandomInvert(max_val, ...)(input)`` subtracts selected image values from a chosen maximum.
 
     .. image:: _static/img/RandomInvert.png
 
@@ -37,7 +39,7 @@ class RandomInvert(IntensityAugmentationBase2D):
         max_val: The expected maximum value in the input tensor. The shape has to
           according to the input tensor shape, or at least has to work with broadcasting.
         same_on_batch: apply the same transformation across the batch.
-        p: probability of applying the transformation.
+        p: probability of applying the transformation to each sample.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
 
@@ -49,6 +51,9 @@ class RandomInvert(IntensityAugmentationBase2D):
 
     .. note::
         This function internally uses :func:`kornia.enhance.invert`.
+
+    See Also:
+        - :class:`RandomSolarize`: inverts only values above a sampled threshold.
 
     Examples:
         >>> rng = torch.manual_seed(0)

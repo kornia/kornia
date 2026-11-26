@@ -110,7 +110,8 @@ spec = importlib.util.spec_from_file_location("generate_export_support", "../gen
 generate_export_support = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(generate_export_support)
 
-# Pre-generate the ONNX / torch.compile / torch.export survey page from the committed snapshot
+# Pre-generate the ONNX / torch.compile / torch.export support page: the promise from testing/conformance_promise.py
+# and the conformance manifests, the survey from the committed snapshot
 generate_export_support.main()
 
 

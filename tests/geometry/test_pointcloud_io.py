@@ -19,6 +19,7 @@ import os
 import struct
 from pathlib import Path
 
+import numpy as np
 import pytest
 import torch
 
@@ -186,7 +187,11 @@ def filename_type(request, pathlike_type):
 )
 class TestPointCloudFilenames(BaseTester):
     @pytest.mark.parametrize("extension", [".ply", ".PLY"])
-    @pytest.mark.parametrize("operation", ["save", "load"])
+    @pytest.mark.parametrize(
+        ("filename_type", "operation"),
+        [("str", "save"), ("pathlib", "save"), ("pathlib", "load"), ("pathlike", "save"), ("pathlike", "load")],
+        indirect=["filename_type"],
+    )
     @pytest.mark.parametrize("shape", [(2, 3), (1, 2, 3), (2, 1, 3)])
     def test_pathlike_filename_5072(
         self, tmp_path, device, dtype, saver, loader, filename_type, extension, operation, shape
@@ -537,3 +542,124 @@ class TestConventionsPointCloudPly(BaseTester):
             self.assert_close(getattr(kornia.geometry, function)(str(path)), points)
             with pytest.raises(TypeError):
                 getattr(kornia.geometry, function)(str(wrong_suffix))
+
+
+class TestBinaryPointCloudBuffer(BaseTester):
+    @pytest.mark.parametrize("strided", [False, True])
+    def test_binary_payload_matches_little_endian_literals(self, tmp_path, device, dtype, strided):
+        values = torch.tensor([[1.25, -2.5, 3.75], [4.5, -0.0, -6.25]], device=device, dtype=dtype)
+        if strided:
+            storage = torch.zeros(2, 6, device=device, dtype=dtype)
+            storage[:, ::2] = values
+            points = storage[:, ::2]
+            assert not points.is_contiguous()
+        else:
+            points = values
+        points.requires_grad_()
+        original = points.detach().clone()
+        filename = tmp_path / "buffer.ply"
+        kornia.geometry.save_pointcloud_ply_binary(filename, points)
+        payload = filename.read_bytes().split(b"end_header\n", 1)[1]
+        assert payload == struct.pack("<6d", 1.25, -2.5, 3.75, 4.5, -0.0, -6.25)
+        self.assert_close(points, original)
+        assert points.grad is None
+
+    def test_binary_writer_accepts_negative_view(self, tmp_path):
+        # Taking the imaginary part of a conjugated tensor creates a negative view.
+        source = torch.tensor([[complex(0, -1.25), complex(0, 2.5), complex(0, -3.75)]], dtype=torch.complex128)
+        points = source.conj().imag
+        assert points.is_neg()
+        filename = tmp_path / "negative_view.ply"
+        kornia.geometry.save_pointcloud_ply_binary(filename, points)
+        payload = filename.read_bytes().split(b"end_header\n", 1)[1]
+        assert payload == struct.pack("<3d", 1.25, -2.5, 3.75)
+
+
+class TestMixedBinaryPointCloudBuffer(BaseTester):
+    @pytest.mark.parametrize("endian, fmt", [("<", "binary_little_endian"), (">", "binary_big_endian")])
+    def test_mixed_float64_underflow_ignores_caller_numpy_policy(self, tmp_path, endian, fmt):
+        filename = tmp_path / "mixed_underflow.ply"
+        props = "property double x\nproperty uchar red\nproperty double y\nproperty double z\n"
+        filename.write_bytes(_ply_header(fmt, 1, props) + struct.pack(endian + "dBdd", 1e-300, 128, -1e-300, 1.0))
+        # Float64 values below float32's range round to zero, as in the torch conversion path.
+        expected = torch.tensor([[0.0, -0.0, 1.0]], dtype=torch.float32)
+        with np.errstate(under="raise"):
+            actual = kornia.geometry.load_pointcloud_ply_binary(filename)
+            assert np.geterr()["under"] == "raise"
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("endian, fmt", [("<", "binary_little_endian"), (">", "binary_big_endian")])
+    @pytest.mark.parametrize(
+        "scalar, code, first, second",
+        [
+            ("char", "b", -7, 13),
+            ("uchar", "B", 7, 255),
+            ("short", "h", -123, 456),
+            ("ushort", "H", 123, 65535),
+            ("int", "i", -100000, 100000),
+            ("uint", "I", 0, 4294967295),
+            ("float", "f", 1.25, -2.5),
+            ("double", "d", 1.25, -2.5),
+        ],
+    )
+    def test_mixed_scalar_columns_keep_order_and_owned_output(self, tmp_path, endian, fmt, scalar, code, first, second):
+        filename = tmp_path / "mixed_scalars.ply"
+        # Reordered coordinates and repeated unrelated property names are legal.
+        props = f"property double z\nproperty uchar red\nproperty {scalar} x\nproperty uchar red\nproperty float y\n"
+        payload = struct.pack(endian + f"dB{code}Bf", 1.5, 128, first, 64, -2.5)
+        payload += struct.pack(endian + f"dB{code}Bf", -3.5, 0, second, 255, 4.5)
+        filename.write_bytes(_ply_header(fmt, 2, props) + payload)
+        expected = torch.tensor([[first, -2.5, 1.5], [second, 4.5, -3.5]], dtype=torch.float32)
+        actual = kornia.geometry.load_pointcloud_ply_binary(filename)
+        assert actual.device.type == "cpu"
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, rtol=0, atol=0)
+        actual.zero_()
+        # The result owns writable storage independent of the source file.
+        self.assert_close(kornia.geometry.load_pointcloud_ply_binary(filename), expected, rtol=0, atol=0)
+
+    def test_mixed_float64_nonfinite_conversion(self, tmp_path):
+        filename = tmp_path / "mixed_nonfinite.ply"
+        props = "property double x\nproperty uchar red\nproperty double y\nproperty double z\n"
+        payload = struct.pack("<dBdd", float("nan"), 128, float("inf"), -float("inf"))
+        filename.write_bytes(_ply_header("binary_little_endian", 1, props) + payload)
+        actual = kornia.geometry.load_pointcloud_ply_binary(filename)
+        expected = torch.tensor([[float("nan"), float("inf"), -float("inf")]])
+        assert torch.isnan(actual[0, 0])
+        self.assert_close(actual[:, 1:], expected[:, 1:])
+
+
+class TestPointCloudCPUOutput(BaseTester):
+    @pytest.mark.parametrize("binary", [False, True])
+    @pytest.mark.parametrize("count", [0, 2])
+    def test_loaders_keep_cpu_contract_with_default_device(self, tmp_path, binary, count):
+        # The loaders promise host tensors for both empty and populated files.
+        # A meta default exercises allocation dispatch without requiring a GPU.
+        filename = tmp_path / "default_device.ply"
+        if binary:
+            header = (
+                "ply\nformat binary_little_endian 1.0\n"
+                f"element vertex {count}\n"
+                "property float x\nproperty uchar red\n"
+                "property double y\nproperty short z\nend_header\n"
+            )
+            payload = b"".join(
+                struct.pack("<fBdh", x, 128, y, z) for x, y, z in [(1.5, -2.25, 3), (4.5, 6.25, -7)][:count]
+            )
+            filename.write_bytes(header.encode("ascii") + payload)
+            loader = kornia.geometry.load_pointcloud_ply_binary
+        else:
+            filename.write_text(
+                "ply\nformat ascii 1.0\n"
+                f"element vertex {count}\n"
+                "property float x\nproperty float y\nproperty float z\nend_header\n"
+                + "1.5 -2.25 3\n4.5 6.25 -7\n"
+                * bool(count),
+                encoding="ascii",
+            )
+            loader = kornia.geometry.load_pointcloud_ply
+        with torch.device("meta"):
+            actual = loader(filename)
+        assert actual.device.type == "cpu"
+        expected = torch.tensor([[1.5, -2.25, 3.0], [4.5, 6.25, -7.0]], dtype=torch.float32)[:count]
+        self.assert_close(actual, expected)

@@ -24,27 +24,18 @@ from testing.base import BaseTester, supports_reflect_padding
 
 
 class Testunsharp(BaseTester):
-    @pytest.mark.parametrize("shape", [(1, 4, 8, 15), (2, 3, 11, 7)])
     @pytest.mark.parametrize("kernel_size", [3, (5, 3)])
-    @pytest.mark.parametrize("sigma", [(3.0, 1.0), (0.5, 0.1)])
     @pytest.mark.parametrize("params_as_tensor", [True, False])
-    def test_smoke(self, shape, kernel_size, sigma, params_as_tensor, device, dtype):
+    def test_smoke(self, kernel_size, params_as_tensor, device, dtype):
+        shape = (2, 3, 11, 7)
+        sigma = (3.0, 1.0)
         if params_as_tensor is True:
             sigma = torch.tensor([sigma], device=device, dtype=dtype).repeat(shape[0], 1)
 
-        data = torch.ones(shape, device=device, dtype=dtype)
+        # random: a constant image is its own unsharp mask whatever the kernel size and sigma
+        data = torch.rand(shape, device=device, dtype=dtype)
         actual = unsharp_mask(data, kernel_size, sigma, "replicate")
-        assert isinstance(actual, torch.Tensor)
-        assert actual.shape == shape
-
-    @pytest.mark.parametrize("shape", [(1, 4, 8, 15), (2, 3, 11, 7)])
-    def test_cardinality(self, shape, device, dtype):
-        kernel_size = (5, 7)
-        sigma = (1.5, 2.1)
-
-        data = torch.ones(shape, device=device, dtype=dtype)
-        actual = unsharp_mask(data, kernel_size, sigma, "replicate")
-        assert actual.shape == shape
+        self.assert_close(actual, 2 * data - gaussian_blur2d(data, kernel_size, sigma, "replicate"))
 
     @pytest.mark.parametrize("input_dtype", [torch.uint8, torch.int16, torch.bool])
     def test_integer_input_matches_float32_5155(self, input_dtype: torch.dtype, device: torch.device) -> None:
@@ -61,9 +52,6 @@ class Testunsharp(BaseTester):
         assert actual.device == data.device
         self.assert_close(actual, expected)
         self.assert_close(UnsharpMask((5, 5), (1.5, 1.5))(data), expected)
-
-    @pytest.mark.skip(reason="nothing to test")
-    def test_exception(self): ...
 
     def test_noncontiguous(self, device, dtype):
         batch_size = 3
@@ -84,21 +72,13 @@ class Testunsharp(BaseTester):
         data = torch.rand(shape, device=device, dtype=torch.float64)
         self.gradcheck(unsharp_mask, (data, kernel_size, sigma, "replicate"))
 
-    def test_module(self, device, dtype):
-        params = [(3, 3), (1.5, 1.5)]
-        op = unsharp_mask
-        op_module = UnsharpMask(*params)
-
-        img = torch.ones(1, 3, 5, 5, device=device, dtype=dtype)
-        self.assert_close(op(img, *params), op_module(img))
-
     @pytest.mark.parametrize("sigma", [(3.0, 1.0), (0.5, 0.1)])
     @pytest.mark.parametrize("params_as_tensor", [True, False])
     def test_dynamo(self, sigma, params_as_tensor, device, dtype, torch_optimizer):
         if params_as_tensor is True:
             sigma = torch.tensor([sigma], device=device, dtype=dtype)
 
-        data = torch.ones(1, 3, 10, 10, device=device, dtype=dtype)
+        data = torch.rand(1, 3, 10, 10, device=device, dtype=dtype)
         op = UnsharpMask(3, sigma)
         op_optimized = torch_optimizer(op)
 
@@ -136,10 +116,12 @@ class TestConventionsUnsharpMask(BaseTester):
         assert out.max() > 1.3
 
 
+MIXED_PRECISION_DEVICES = pytest.mark.applies_to(devices=("cpu", "cuda", "mps"), reason="CPU, CUDA and MPS autocast")
+
+
 def _mixed_precision_region_6182(device):
-    # MPS autocasts to float16, and so does a CUDA device without bfloat16, where bfloat16 autocast raises.
-    if device.type not in ("cpu", "cuda", "mps"):
-        pytest.skip("CPU, CUDA and MPS autocast")
+    # MPS autocasts to float16, and so does a CUDA device without bfloat16, where bfloat16 autocast raises. Callers are
+    # marked MIXED_PRECISION_DEVICES.
     bfloat16_ok = device.type == "cpu" or (device.type == "cuda" and torch.cuda.is_bf16_supported())
     return torch.bfloat16 if bfloat16_ok else torch.float16
 
@@ -150,6 +132,7 @@ class TestUnsharpMaskMixedPrecision(BaseTester):
     No "autocast" in the test names: the repository conftest skips those on MPS.
     """
 
+    @MIXED_PRECISION_DEVICES
     @pytest.mark.parametrize("as_module", [False, True])
     def test_a_mixed_precision_region_keeps_the_image_dtype_6182(self, device, as_module):
         # The blur, a convolution, came back in the autocast dtype and met the float32 image in torch.lerp, which raised
@@ -166,16 +149,16 @@ class TestUnsharpMaskMixedPrecision(BaseTester):
         self.assert_close(actual, torch.lerp(blur.float(), image, weight=2.0), atol=0, rtol=0)
         self.assert_close(actual, unsharp_mask(image, (5, 5), (1.5, 1.5)), atol=5e-2, rtol=0)
 
+    @pytest.mark.applies_to(devices=("cpu",), reason="measured on the CPU")
     def test_half_precision_image_in_the_other_half_precision_region_6182(self, device):
         # A float16 image inside a bfloat16 region also raised; it now keeps float16.
-        if device.type != "cpu":
-            pytest.skip("measured on the CPU")
         image = torch.rand(1, 3, 12, 12, generator=torch.Generator().manual_seed(6182)).to(device, torch.float16)
         with torch.autocast(device.type, dtype=torch.bfloat16):
             out = unsharp_mask(image, (3, 3), (1.0, 1.0))
         assert out.dtype == torch.float16
         self.assert_close(out.float(), unsharp_mask(image.float(), (3, 3), (1.0, 1.0)), atol=5e-2, rtol=0)
 
+    @MIXED_PRECISION_DEVICES
     def test_gradient_in_a_mixed_precision_region_6182(self, device):
         region_dtype = _mixed_precision_region_6182(device)
         image = torch.rand(1, 3, 12, 12, device=device, requires_grad=True)

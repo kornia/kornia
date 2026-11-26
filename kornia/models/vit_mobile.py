@@ -112,7 +112,7 @@ class Attention(nn.Module):
         """Apply multi-head self-attention to MobileViT tokens.
 
         Args:
-            x: Token tensor with shape :math:`(B, P, N, D)`, where
+            x: Token tensor with shape ``(B, P, N, D)``, where
                 :math:`B` is batch size, :math:`P` is patch area,
                 :math:`N` is number of patches, and :math:`D` is embedding
                 dimension.
@@ -166,7 +166,7 @@ class Transformer(nn.Module):
         """Run stacked attention and feed-forward residual layers.
 
         Args:
-            x: Token tensor with shape :math:`(B, P, N, D)`.
+            x: Token tensor with shape ``(B, P, N, D)``.
 
         Returns:
             Tensor with the same shape as ``x`` after all transformer layers.
@@ -277,7 +277,7 @@ class MobileViTBlock(nn.Module):
         """Fuse local convolutions with global transformer context.
 
         Args:
-            x: Feature map tensor with shape :math:`(B, C, H, W)`.
+            x: Feature map tensor with shape ``(B, C, H, W)``.
 
         Returns:
             Feature map tensor with the same spatial size as ``x``. Local
@@ -388,13 +388,13 @@ class MobileViT(nn.Module):
         r"""Run the MobileViT backbone and return final feature maps.
 
         Args:
-            x: Image tensor with shape :math:`(B, C, H, W)`, where :math:`C`
+            x: Image tensor with shape ``(B, C, H, W)``, where :math:`C`
                 matches the configured input channel count.
 
         Returns:
             Feature tensor from the final MobileViT stage. For the default
             configuration, a :math:`256 \times 256` input produces
-            :math:`(B, 320, 8, 8)`.
+            ``(B, 320, 8, 8)``.
         """
         x = self.conv1(x)
         x = self.mv2[0](x)

@@ -20,12 +20,33 @@ import torch
 
 import kornia
 import kornia.geometry.epipolar as epi
+from kornia.core.exceptions import BaseError
 from kornia.geometry.conversions import convert_points_to_homogeneous
 from kornia.geometry.epipolar.essential import _refine_essential_lm
 
-from testing.base import BaseTester
+from testing.base import BaseTester, skip_unsupported_autocast
 from testing.geometry.create import generate_two_view_random_scene
-from testing.two_view import calibrated_two_view_scene, two_view_scene
+from testing.two_view import (
+    ONE_ROUNDING_EPS,
+    calibrated_two_view_scene,
+    max_relative_error,
+    pixel_two_view_batch,
+    two_view_scene,
+)
+
+_HALF_LABELS = (
+    "the closed-form and the SVD decompositions of the rounded half-precision E label the two rotations differently"
+)
+_HALF_POSE = "the pins compare poses at 1e-4, below the half-precision rounding of the rotation and the translation"
+_HALF_SCALES = "a scale of 1e6 overflows float16, and the 1e-3 comparison is below the resolution of bfloat16"
+_NO_HALF_FIND_ESSENTIAL = (
+    "find_essential solves in float64, but float16/bfloat16 correspondences are too coarse for these tolerances and "
+    "the reference helpers call torch.linalg.inv, which has no half kernel"
+)
+_HALF_PIXEL_F = (
+    "a pixel-unit F spans eight decades (entries down to ~1e-8): float16 flushes the small entries to zero and "
+    "bfloat16's 8-bit mantissa cannot resolve the epipolar residual, which kornia evaluates in the input dtype"
+)
 
 
 def test_generate_two_view_random_scene_is_deterministic():
@@ -119,10 +140,12 @@ class TestFindEssential(BaseTester):
         E = E.to(finite)
         return float(torch.minimum((finite - E).flatten(1).norm(dim=1), (finite + E).flatten(1).norm(dim=1)).min())
 
+    @pytest.mark.applies_to(
+        when=lambda p: not ((p["device_name"] == "mps") and (p["input_dtype"] == torch.float64)),
+        reason="MPS does not support float64",
+    )
     @pytest.mark.parametrize("input_dtype", [torch.float32, torch.float64])
     def test_exact_five_point_sample_recovers_the_true_e_4884(self, device, input_dtype):
-        if device.type == "mps" and input_dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         # #4884: in float32 an exact five-point sample missed the true E; the solve now runs in float64, on the host
         # for MPS inputs.
         misses = 0
@@ -132,10 +155,12 @@ class TestFindEssential(BaseTester):
             misses += self._true_e_error(epi.find_essential(points1, points2)[0], scene["E"]) > 1e-4
         assert misses == 0
 
+    @pytest.mark.applies_to(
+        when=lambda p: not ((p["device_name"] == "mps") and (p["input_dtype"] == torch.float64)),
+        reason="MPS does not support float64",
+    )
     @pytest.mark.parametrize("input_dtype", [torch.float32, torch.float64])
     def test_no_parallax_backward_is_finite_4903_4952(self, device, input_dtype):
-        if device.type == "mps" and input_dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         # With p1 == p2 the essential matrix is not determined. About one such sample in 300 has a multiple root at
         # z = 0, where the backward of torch.linalg.eigvals raised for the whole batch (#4903), and in float32 about
         # one in ten gave an all-NaN gradient (#4952). The roots now come from a detached solve, differentiated by a
@@ -156,9 +181,8 @@ class TestFindEssential(BaseTester):
         epi.find_essential(points, points).nan_to_num().sum().backward()
         assert torch.isfinite(points.grad).all()
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="MPS does not support float64")
     def test_true_e_is_recovered_on_random_motions(self, device):
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64")
         # 2000 exact minimal samples of random scenes, rotations and translation directions. The previous solver
         # missed E by more than 1e-3 on two of them, this one on none (worst about 1e-4, depending on the BLAS); with
         # the LU null-space basis in place of the Householder one it missed seven.
@@ -184,8 +208,8 @@ class TestFindEssential(BaseTester):
         assert best.max() < 1e-3
         assert torch.quantile(best, 0.99) < 1e-6
 
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason=_NO_HALF_FIND_ESSENTIAL)
     def test_degenerate_sample_does_not_affect_the_batch(self, device, dtype):
-        _skip_find_essential(device, dtype)
         scene = calibrated_two_view_scene(5, 0.0, 8)
         degenerate1, degenerate2 = scene["x1"].clone(), scene["x2"].clone()
         degenerate1[1], degenerate2[1] = degenerate1[0], degenerate2[0]  # a repeated correspondence
@@ -199,10 +223,9 @@ class TestFindEssential(BaseTester):
         assert torch.equal(torch.isfinite(candidates[0]), torch.isfinite(alone))
         self.assert_close(candidates[0].nan_to_num(7.0), alone.nan_to_num(7.0), atol=1e-6, rtol=0)
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="MPS does not support float64")
     @pytest.mark.parametrize("case", ["repeat-1-2", "repeat-2-4", "repeat-3-1", "repeat-0-3", "collinear"])
     def test_rank_deficient_sample_has_no_candidates(self, device, case):
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64")
         # Five constraints of rank four leave a null space of five dimensions: E is not determined. Rounding usually
         # leaves a tiny pivot rather than an exact zero, which must not pass for a regular sample.
         if case == "collinear":  # collinear in both images
@@ -220,10 +243,9 @@ class TestFindEssential(BaseTester):
         candidates.nan_to_num().sum().backward()
         assert (points1.grad == 0).all()
 
+    @pytest.mark.applies_to(devices=("mps",), reason="compares an MPS input with the same input on the CPU")
     @pytest.mark.parametrize("num_points", [5, 7])
     def test_mps_input_is_solved_on_the_host(self, device, num_points):
-        if device.type != "mps":
-            pytest.skip("compares an MPS input with the same input on the CPU")
         # MPS has no float64: its samples are solved on the host in float64 and the candidates copied back, so they
         # match a CPU solve of the same float32 input and still carry a gradient to the MPS input.
         scene = calibrated_two_view_scene(num_points, 0.0, 8)
@@ -325,6 +347,11 @@ class TestFindEssential(BaseTester):
         )
         best = torch.nan_to_num(err, nan=1.0).min(dim=-1).values
         tol, at_least = (1e-8, 60) if dtype == torch.float64 else (1e-3, 48)
+        if dtype in (torch.float16, torch.bfloat16):
+            # The five-point solve amplifies the rounding of the coordinates about 30-fold, in float32 as well: the
+            # 48th best of these samples is 28 eps off in float32, 28 eps in float16 and 25 eps in bfloat16, the same
+            # as the float64 solve of the rounded points. In half precision eps itself is that coarse.
+            tol = 64 * torch.finfo(dtype).eps
         assert int((best < tol).sum()) >= at_least
 
         # The roots of a polynomial do not depend on its sign or scale, and IEEE division makes that exact
@@ -356,12 +383,11 @@ class TestFindEssential(BaseTester):
 
         self.gradcheck(proxy, (points1, points2))
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="MPS does not support float64")
     def test_null_space_gradient_of_a_discarded_sample(self, device):
         # Points all at the origin give a rank-1 design matrix, so the null space the solver uses is not
         # unique and its derivative has no gap to divide by. A sample like that has its candidates
         # discarded, so no gradient reaches its basis, and it must contribute zero rather than 0 / 0.
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64")
         design = torch.zeros(1, 5, 9, device=device, dtype=torch.float64)
         design[..., 8] = 1.0
         design.requires_grad_()
@@ -381,11 +407,10 @@ class TestFindEssential(BaseTester):
         usable = torch.isfinite(design.grad) & (design.grad.abs() < 1 / torch.finfo(design.dtype).eps)
         assert not usable.all()
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="MPS does not support float64")
     def test_torch_func_grad(self, device):
         # torch.func transforms accept an autograd.Function only if it defines setup_context. With 5
         # points every null-space vector goes through it, so torch.func.grad must agree with autograd.
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64")
         g = torch.Generator().manual_seed(0)
         points1 = torch.rand(1, 5, 2, generator=g, dtype=torch.float64).to(device)
         points2 = torch.rand(1, 5, 2, generator=g, dtype=torch.float64).to(device)
@@ -563,6 +588,17 @@ class TestEssentialFromFundamental(BaseTester):
         F_hat_norm = epi.normalize_transformation(F_hat)
         self.assert_close(F_mat_norm, F_hat_norm)
 
+    @pytest.mark.applies_to(dtypes=("float16", "bfloat16"), reason="a half-precision accuracy check")
+    def test_half_precision_rounds_once(self, device, dtype):
+        # 256 scenes with focal lengths near 1000 px. Multiplying in half precision rounds K2^T F as well, and leaves
+        # E off by 0.81 eps of its largest entry in float16 and 0.88 eps in bfloat16.
+        scene = pixel_two_view_batch(256, 100, seed=0)
+        F_mat, K1, K2 = (scene[key].to(dtype) for key in ("F", "K1", "K2"))
+        expected = epi.essential_from_fundamental(F_mat.double(), K1.double(), K2.double())
+        actual = epi.essential_from_fundamental(F_mat.to(device), K1.to(device), K2.to(device))
+        assert actual.dtype == dtype
+        assert max_relative_error(actual, expected) <= ONE_ROUNDING_EPS * torch.finfo(dtype).eps
+
     def test_gradcheck(self, device):
         F_mat = torch.rand(1, 3, 3, device=device, dtype=torch.float64, requires_grad=True)
         K1 = torch.rand(1, 3, 3, device=device, dtype=torch.float64)
@@ -571,6 +607,60 @@ class TestEssentialFromFundamental(BaseTester):
 
 
 class TestRelativeCameraMotion(BaseTester):
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="CPU and CUDA autocast")
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    @pytest.mark.parametrize("mixed_rotations", [False, True])
+    def test_pose_cancellation_uses_float32_under_autocast(self, device, autocast_dtype, mixed_rotations):
+        skip_unsupported_autocast(device, autocast_dtype)
+        # The first camera is rotated 90 degrees. R2 @ R1.T sends t1 to
+        # (99.53125, -399.125, 10.25390625); the small difference from t2 is the baseline.
+        R1 = torch.tensor([[[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]]], device=device)
+        R2 = torch.eye(3, device=device)[None]
+        if mixed_rotations:
+            R1 = R1.to(getattr(torch, autocast_dtype))
+        t1 = torch.tensor([[[399.125], [99.53125], [10.25390625]]], device=device)
+        t2 = torch.tensor([[[100.0], [-399.0], [10.5]]], device=device)
+        expected_R = R1.float().mT
+        expected_t = torch.tensor([[[0.46875], [0.125], [0.24609375]]], device=device)
+        expected_E = torch.tensor(
+            [[[0.24609375, 0.0, 0.125], [0.0, 0.24609375, -0.46875], [-0.46875, -0.125, 0.0]]],
+            device=device,
+        )
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            R, t = epi.relative_camera_motion(R1, t1, R2, t2)
+            E = epi.essential_from_Rt(R1, t1, R2, t2)
+        for actual, expected in ((R, expected_R), (t, expected_t), (E, expected_E)):
+            self.assert_close(actual, expected, rtol=0.0, atol=0.0)
+
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="CPU and CUDA autocast")
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_mixed_rotations_with_float64_second_translation_under_autocast(self, device, autocast_dtype):
+        skip_unsupported_autocast(device, autocast_dtype)
+        R1 = torch.eye(3, device=device, dtype=getattr(torch, autocast_dtype))[None]
+        R2 = torch.eye(3, device=device, dtype=torch.float32)[None]
+        t1 = torch.tensor([[[399.125], [99.53125], [10.25390625]]], device=device, dtype=torch.float32)
+        # The extra bit checks that the translation keeps float64 precision after the pose products.
+        t2 = torch.tensor([[[399.25 + 2**-30], [100.0], [10.5]]], device=device, dtype=torch.float64)
+        expected_t = torch.tensor([[[0.125 + 2**-30], [0.46875], [0.24609375]]], device=device, dtype=torch.float64)
+
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            R, t = epi.relative_camera_motion(R1, t1, R2, t2)
+        self.assert_close(R, R2, rtol=0.0, atol=0.0)
+        self.assert_close(t, expected_t, rtol=0.0, atol=0.0)
+
+    @pytest.mark.applies_to(devices=("cpu",), reason="CPU autocast applies a dtype policy to torch.stack")
+    @pytest.mark.parametrize("autocast_dtype, pose_dtype", [("float16", "bfloat16"), ("bfloat16", "float16")])
+    def test_essential_with_pose_in_other_half_dtype_under_autocast(self, device, autocast_dtype, pose_dtype):
+        skip_unsupported_autocast(device, autocast_dtype)
+        dtype = getattr(torch, pose_dtype)
+        R = torch.eye(3, device=device, dtype=dtype)[None]
+        t1 = torch.zeros(1, 3, 1, device=device, dtype=dtype)
+        t2 = torch.tensor([[[1.0], [2.0], [3.0]]], device=device, dtype=dtype)
+        expected = torch.tensor([[[0.0, -3.0, 2.0], [3.0, 0.0, -1.0], [-2.0, 1.0, 0.0]]], device=device, dtype=dtype)
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            E = epi.essential_from_Rt(R, t1, R, t2)
+        self.assert_close(E, expected, rtol=0.0, atol=0.0)
+
     def test_smoke(self, device, dtype):
         R1 = torch.rand(1, 3, 3, device=device, dtype=dtype)
         t1 = torch.rand(1, 3, 1, device=device, dtype=dtype)
@@ -837,8 +927,8 @@ class TestDecomposeEssentialMatrixNoSVD(BaseTester):
             epi.essential_from_Rt(R1_1, t_1, R2_1, -t_1), epi.essential_from_Rt(R1, t, R2, -t), rtol=1e-3, atol=1e-3
         )
 
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason=_HALF_LABELS)
     def test_consistency(self, device, dtype):
-        _skip_half(dtype, _NO_HALF_LU.format("decompose_essential_matrix"))
         scene = generate_two_view_random_scene(device, dtype)
 
         R1, t1 = scene["R1"], scene["t1"]
@@ -900,6 +990,9 @@ class TestMotionFromEssential(BaseTester):
         vec_error = (ts - t).abs().sum(-1)
 
         rtol: float = 1e-4
+        if dtype in (torch.float16, torch.bfloat16):
+            # E and the reference R each round to the dtype: the summed difference is one eps on this scene.
+            rtol = 4 * torch.finfo(dtype).eps
         assert (rot_error < rtol).any() & (vec_error < rtol).any()
 
     def test_gradcheck(self, device):
@@ -927,6 +1020,20 @@ class TestMotionFromEssentialChooseSolution(BaseTester):
         assert t.shape == (1, 3, 1)
         assert X.shape == (1, 1, 3)
 
+    def test_exception(self, device, dtype):
+        E_mat = torch.rand(3, 3, device=device, dtype=dtype)
+        K = torch.rand(1, 3, 3, device=device, dtype=dtype)
+        x = torch.rand(1, 5, 2, device=device, dtype=dtype)
+        with pytest.raises(
+            BaseError,
+            match=r"E_mat, K1 and K2 must have the same number of batch dimensions, got shapes \[3, 3\], \[1, 3, 3\]",
+        ):
+            epi.motion_from_essential_choose_solution(E_mat, K, K, x, x)
+
+        mask = torch.ones(1, 4, dtype=torch.bool, device=device)
+        with pytest.raises(BaseError, match=r"mask must have shape \[1, 5\], .* got \[1, 4\]"):
+            epi.motion_from_essential_choose_solution(E_mat[None], K, K, x, x, mask=mask)
+
     @pytest.mark.parametrize("batch_size, num_points", [(1, 3), (2, 3), (2, 8), (3, 2)])
     def test_shape(self, batch_size, num_points, device, dtype):
         B, N = batch_size, num_points
@@ -941,15 +1048,22 @@ class TestMotionFromEssentialChooseSolution(BaseTester):
         assert X.shape == (B, N, 3)
 
     def test_masking(self, device, dtype):
-        E_mat = torch.rand(2, 3, 3, device=device, dtype=dtype)
-        K1 = torch.rand(2, 3, 3, device=device, dtype=dtype)
-        K2 = torch.rand(2, 3, 3, device=device, dtype=dtype)
-        x1 = torch.rand(2, 10, 2, device=device, dtype=dtype)
-        x2 = torch.rand(2, 10, 2, device=device, dtype=dtype)
+        # A seeded CPU generator gives every device the same batch; the suite seeds only the CPU default generator,
+        # so draws on CUDA were unseeded. Triangulated in half precision, some of these points come back NaN and the
+        # masked and unmasked calls disagree (in both half dtypes on CPU and CUDA at this seed, bfloat16 at most
+        # seeds); the choice runs in float32 instead and agrees.
+        generator = torch.Generator().manual_seed(3)
+
+        def draw(*shape: int) -> torch.Tensor:
+            return torch.rand(*shape, generator=generator, dtype=dtype).to(device)
+
+        B = 64
+        E_mat, K1, K2 = draw(B, 3, 3), draw(B, 3, 3), draw(B, 3, 3)
+        x1, x2 = draw(B, 10, 2), draw(B, 10, 2)
 
         R, t, X, _ = epi.motion_from_essential_choose_solution(E_mat, K1, K2, x1[:, 1:-1, :], x2[:, 1:-1, :])
 
-        mask = torch.zeros(2, 10, dtype=torch.bool, device=device)
+        mask = torch.zeros(B, 10, dtype=torch.bool, device=device)
         mask[:, 1:-1] = True
         Rm, tm, Xm, _ = epi.motion_from_essential_choose_solution(E_mat, K1, K2, x1, x2, mask=mask)
 
@@ -995,7 +1109,9 @@ class TestMotionFromEssentialChooseSolution(BaseTester):
         )
 
         self.assert_close(t, t_hat)
-        self.assert_close(R, R_hat, rtol=1e-4, atol=1e-4)
+        # In half precision E and the reference R each round to the dtype: compared at the dtype's tolerance.
+        tol = {} if dtype in (torch.float16, torch.bfloat16) else {"rtol": 1e-4, "atol": 1e-4}
+        self.assert_close(R, R_hat, **tol)
 
     def test_gradcheck(self, device):
         E_mat = torch.rand(1, 3, 3, device=device, dtype=torch.float64, requires_grad=True)
@@ -1010,16 +1126,6 @@ class TestMotionFromEssentialChooseSolution(BaseTester):
             requires_grad=(True, False, False, False, False),
         )
 
-
-_NO_HALF_LU = "{} calls torch.det (LU), which has no float16/bfloat16 kernel"
-_NO_HALF_FIND_ESSENTIAL = (
-    "find_essential solves in float64, but float16/bfloat16 correspondences are too coarse for these tolerances and "
-    "the reference helpers call torch.linalg.inv, which has no half kernel"
-)
-_HALF_PIXEL_F = (
-    "a pixel-unit F spans eight decades (entries down to ~1e-8): float16 flushes the small entries to zero and "
-    "bfloat16's 8-bit mantissa cannot resolve the epipolar residual, which kornia evaluates in the input dtype"
-)
 
 # A five-point sample of normalised coordinates with no real root (recipe in the #4883 pin).
 _NO_REAL_ROOT_P1 = [
@@ -1036,15 +1142,6 @@ _NO_REAL_ROOT_P2 = [
     [-0.8380815108891836, 0.2981499818513886],
     [-0.8246696433582323, 0.08361235498654443],
 ]
-
-
-def _skip_half(dtype: torch.dtype, reason: str) -> None:
-    if dtype in (torch.float16, torch.bfloat16):
-        pytest.skip(reason)
-
-
-def _skip_find_essential(device: torch.device, dtype: torch.dtype) -> None:
-    _skip_half(dtype, _NO_HALF_FIND_ESSENTIAL)
 
 
 def _hom(p: torch.Tensor) -> torch.Tensor:
@@ -1076,9 +1173,9 @@ def _first_camera(device, dtype):
 
 
 class TestConventionEssential(BaseTester):
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason=_NO_HALF_FIND_ESSENTIAL)
     def test_convention_find_essential_returns_ten_candidates(self, device, dtype):
         two_view = two_view_scene(device, dtype)
-        _skip_find_essential(device, dtype)
         n1, n2 = _normalized(two_view["K1"], two_view["x1"]), _normalized(two_view["K2"], two_view["x2"])
         real = {}
         for num_points in (5, 12):
@@ -1122,9 +1219,9 @@ class TestConventionEssential(BaseTester):
         self.assert_close(E_swapped, E.transpose(-2, -1), low_tolerance=True)
         assert (E - E.transpose(-2, -1)).abs().max() > 0.5
 
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason=_HALF_PIXEL_F)
     def test_convention_essential_from_fundamental_K_sides(self, device, dtype):
         two_view = two_view_scene(device, dtype)
-        _skip_half(dtype, _HALF_PIXEL_F)
         K1, K2 = two_view["K1"], two_view["K2"]
         E_gt = _gt_essential(two_view)
         F = epi.fundamental_from_essential(E_gt, K1, K2)
@@ -1137,9 +1234,9 @@ class TestConventionEssential(BaseTester):
         resid = _epipolar_residual(E / E.norm(), n1, n2).max()
         assert resid < 1e-3 * _epipolar_residual(E_swapped / E_swapped.norm(), n1, n2).max()
 
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason=_HALF_POSE)
     def test_convention_motion_from_essential_candidate_order(self, device, dtype):
         two_view = two_view_scene(device, dtype)
-        _skip_half(dtype, _NO_HALF_LU.format("motion_from_essential"))
         R, t = two_view["R"], two_view["t"]
         t_unit = t / t.norm(dim=-2, keepdim=True)
         E = _gt_essential(two_view)
@@ -1182,9 +1279,9 @@ class TestConventionEssential(BaseTester):
                 match = (Rs_k - Rs0[i]).abs().amax(dim=(-2, -1)) + (ts_k - ts0[i]).abs().amax(dim=(-2, -1))
                 assert match.min() < 1e-4
 
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason=_HALF_POSE)
     def test_convention_choose_solution_recovers_relative_motion(self, device, dtype):
         two_view = two_view_scene(device, dtype)
-        _skip_half(dtype, _NO_HALF_LU.format("motion_from_essential_choose_solution"))
         R, t, X = two_view["R"], two_view["t"], two_view["X"]
         K1, K2, x1, x2 = two_view["K1"], two_view["K2"], two_view["x1"], two_view["x2"]
         t_norm = t.norm(dim=-2, keepdim=True)
@@ -1221,9 +1318,9 @@ class TestConventionEssential(BaseTester):
         assert (R_sw - R).abs().max() > 0.1
         assert (t_sw - t).abs().max() > 0.5
 
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason=_NO_HALF_FIND_ESSENTIAL)
     def test_convention_find_essential_ignores_weights_4876(self, device, dtype):
         two_view = two_view_scene(device, dtype)
-        _skip_find_essential(device, dtype)
         # #4876: weights are intentionally ignored for compatibility, including for this non-minimal sample:
         # an outlier with weight 0, all-zero weights and all-one weights give the same output (NaN slots compared as 0).
         n1, n2 = _normalized(two_view["K1"], two_view["x1"]), _normalized(two_view["K2"], two_view["x2"])
@@ -1246,7 +1343,6 @@ class TestConventionEssential(BaseTester):
 
     def test_decompose_unbatched_keeps_input_dims_4878(self, device, dtype):
         two_view = two_view_scene(device, dtype)
-        _skip_half(dtype, _NO_HALF_LU.format("decompose_essential_matrix"))
         # #4878 (fixed): the constant W was built with a batch dim, so a (3, 3) input returned rotations of shape
         # (1, 3, 3) next to t of shape (3, 1). All outputs now keep the leading dims of the input.
         E = _gt_essential(two_view)
@@ -1254,9 +1350,12 @@ class TestConventionEssential(BaseTester):
         assert R1.shape == (3, 3)
         assert R2.shape == (3, 3)
         assert t.shape == (3, 1)
+        # A half-precision E is decomposed in float32 and the factors are returned in its dtype.
+        assert R1.dtype == R2.dtype == t.dtype == dtype
         Rs, ts = epi.motion_from_essential(E[0])
         assert Rs.shape == (4, 3, 3)
         assert ts.shape == (4, 3, 1)
+        assert Rs.dtype == ts.dtype == dtype
         R1b, R2b, tb = epi.decompose_essential_matrix(E)
         self.assert_close(R1, R1b[0])
         self.assert_close(R2, R2b[0])
@@ -1265,9 +1364,9 @@ class TestConventionEssential(BaseTester):
         assert Rsb.shape == (2, 1, 4, 3, 3)
         assert tsb.shape == (2, 1, 4, 3, 1)
 
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason=_HALF_POSE)
     def test_convention_choose_solution_reports_valid_count_4879(self, device, dtype):
         two_view = two_view_scene(device, dtype)
-        _skip_half(dtype, _NO_HALF_LU.format("motion_from_essential_choose_solution"))
         K1, K2, x1, x2 = two_view["K1"], two_view["K2"], two_view["x1"], two_view["x2"]
         R, t = two_view["R"], two_view["t"]
         E = _gt_essential(two_view)
@@ -1316,9 +1415,9 @@ class TestConventionEssential(BaseTester):
             self.assert_close(R2b, R2.expand_as(R2b))
             self.assert_close(tb, t.expand_as(tb))
 
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason=_HALF_POSE)
     def test_convention_choose_solution_batch_independent_2198(self, device, dtype):
         two_view = two_view_scene(device, dtype)
-        _skip_half(dtype, _NO_HALF_LU.format("motion_from_essential_choose_solution"))
         K1, K2, x1, x2 = two_view["K1"], two_view["K2"], two_view["x1"], two_view["x2"]
         R, t = two_view["R"], two_view["t"]
         t_unit = t / t.norm(dim=-2, keepdim=True)
@@ -1431,12 +1530,13 @@ class TestRefineEssentialLM(BaseTester):
         self.assert_close(together, alone, atol=1e-12, rtol=0)
 
 
+# A bfloat16 autocast region raises on a CUDA device without bfloat16 support, and other devices are not covered.
+CPU_CUDA_AUTOCAST = pytest.mark.applies_to(devices=("cpu", "cuda"), reason="CPU and CUDA autocast")
+
+
 def _skip_without_bfloat16_autocast(device):
-    # A bfloat16 autocast region raises on a CUDA device without bfloat16 support, and other devices are not covered.
     if device.type == "cuda" and not torch.cuda.is_bf16_supported():
         pytest.skip("this CUDA device does not support bfloat16")
-    if device.type not in ("cpu", "cuda"):
-        pytest.skip("CPU and CUDA autocast")
 
 
 def _autocast_scene(device):
@@ -1467,6 +1567,7 @@ _AUTOCAST_CALLS = {
 class TestEssentialDecompositionAutocast(BaseTester):
     """A caller's autocast region does not reach the essential-matrix decompositions (#6146), as for #6072's solvers."""
 
+    @CPU_CUDA_AUTOCAST
     @pytest.mark.parametrize("name", list(_AUTOCAST_CALLS))
     def test_autocast_does_not_change_the_result_6146(self, device, name):
         # Under bfloat16 autocast, a float32 essential matrix was decomposed with bfloat16 matrix products: bfloat16
@@ -1483,6 +1584,7 @@ class TestEssentialDecompositionAutocast(BaseTester):
             assert out.dtype == ref.dtype
             self.assert_close(out, ref, atol=0, rtol=0)
 
+    @CPU_CUDA_AUTOCAST
     def test_chosen_rotation_stays_a_rotation_under_autocast_6146(self, device):
         _skip_without_bfloat16_autocast(device)
         E_mat, K, x1, x2, R = _autocast_scene(device)
@@ -1493,6 +1595,7 @@ class TestEssentialDecompositionAutocast(BaseTester):
         self.assert_close(R_out, R, atol=1e-5, rtol=0)
         self.assert_close(R_out @ R_out.mT, torch.eye(3, device=device).expand_as(R_out), atol=1e-5, rtol=0)
 
+    @CPU_CUDA_AUTOCAST
     def test_half_precision_intrinsics_under_autocast_6146(self, device):
         # Autocast used to cast bfloat16 intrinsics and a float32 essential matrix to one dtype. With autocast off
         # inside, the intrinsics are cast to the matrix's dtype, so the call still runs and gives the float32 result.
@@ -1526,8 +1629,6 @@ class TestEssentialDecompositionAutocast(BaseTester):
             ),
             torch.tensor([[[0.5], [0.1], [0.0]]], device=device, dtype=dtype),
         )
-        if dtype in (torch.float16, torch.bfloat16) and fn is not epi.decompose_essential_matrix_no_svd:
-            pytest.skip("calls torch.det or torch.linalg.svd, which have no half-precision CPU kernel")
         scripted = torch.jit.script(fn)
         expected = fn(E_mat)
         actual = scripted(E_mat)
@@ -1535,3 +1636,358 @@ class TestEssentialDecompositionAutocast(BaseTester):
         actual = actual if isinstance(actual, tuple) else (actual,)
         for out, ref in zip(actual, expected):
             self.assert_close(out, ref)
+
+
+# Its two nonzero singular values are equal by construction, on every SVD backend: this is [e_z]_x.
+_AXIS_ALIGNED_ESSENTIAL_6251 = [[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 0.0]]
+_SVD_DECOMPOSITIONS_6251 = {
+    "decompose_essential_matrix": epi.decompose_essential_matrix,
+    "motion_from_essential": epi.motion_from_essential,
+    "project_to_essential": epi.project_to_essential,
+}
+
+
+def _exact_essential_6251(pose, device, dtype=torch.float64):
+    """An exact essential matrix ``(1, 3, 3)``: the axis-aligned one for ``pose=None``, else that of a seeded pose."""
+    if pose is None:
+        return torch.tensor([_AXIS_ALIGNED_ESSENTIAL_6251], device=device, dtype=dtype)
+    generator = torch.Generator().manual_seed(pose)
+    R = kornia.geometry.conversions.axis_angle_to_rotation_matrix(
+        0.5 * torch.randn(1, 3, generator=generator, dtype=torch.float64)
+    )
+    t = torch.randn(1, 3, 1, generator=generator, dtype=torch.float64)
+    identity = torch.eye(3, dtype=torch.float64)[None]
+    E_mat = epi.essential_from_Rt(identity, torch.zeros(1, 3, 1, dtype=torch.float64), R, t)
+    return E_mat.to(device=device, dtype=dtype)
+
+
+def _candidates_on_branch_6251(E_mat, reference):
+    """The candidates of ``E_mat``, labeled as in ``reference``, the candidates of a nearby matrix.
+
+    The signs of the SVD and the order of the two largest singular values choose which rotation is ``R1`` and the sign
+    of ``t``. A rounding-level step away from an exact essential matrix can flip that choice, so central differences of
+    :func:`decompose_essential_matrix` itself step from one labeling to the other. Each labeling is smooth, and a
+    derivative is of one of them.
+    """
+    R1, R2, t = epi.decompose_essential_matrix(E_mat)
+    swap = ((R1.detach() - reference[0]) ** 2).sum((-2, -1)) > ((R2.detach() - reference[0]) ** 2).sum((-2, -1))
+    flip = (t.detach() * reference[2]).sum((-2, -1)) < 0
+    swap, flip = swap[..., None, None], flip[..., None, None]
+    return torch.where(swap, R2, R1), torch.where(swap, R1, R2), torch.where(flip, -t, t)
+
+
+def _svd_backward_candidates_6251(E_mat):
+    """``(R1, R2, t, projection)`` flattened, differentiated by ``torch.linalg.svd``'s own backward: the reference."""
+    U, S, Vh = torch.linalg.svd(E_mat)
+    mean = 0.5 * (S[..., 0] + S[..., 1])
+    projection = mean[..., None, None] * (U[..., :2] @ Vh[..., :2, :])
+    U = torch.cat([U[..., :2], U[..., 2:] * torch.linalg.det(U.detach())[..., None, None]], -1)
+    Vh = torch.cat([Vh[..., :2, :], Vh[..., 2:, :] * torch.linalg.det(Vh.detach())[..., None, None]], -2)
+    W = torch.tensor([[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]], device=E_mat.device, dtype=E_mat.dtype)
+    return torch.cat([(U @ W @ Vh).flatten(), (U @ W.mT @ Vh).flatten(), U[..., 2:].flatten(), projection.flatten()])
+
+
+class TestEssentialGradientAtEqualSingularValues(BaseTester):
+    """The derivatives of the SVD decompositions exist where the two largest singular values are equal (#6251)."""
+
+    @pytest.mark.parametrize("name", list(_SVD_DECOMPOSITIONS_6251))
+    def test_backward_is_finite_6251(self, device, dtype, name):
+        # torch.linalg.svd's backward divides by the difference of the squares of those two values, here exactly 0.
+        E_mat = _exact_essential_6251(None, device, dtype).requires_grad_()
+        outputs = _SVD_DECOMPOSITIONS_6251[name](E_mat)
+        outputs = outputs if isinstance(outputs, tuple) else (outputs,)
+        (grad,) = torch.autograd.grad(sum(output.sum() for output in outputs), E_mat)
+        assert torch.isfinite(grad).all()
+
+    @pytest.mark.parametrize("pose", [None, *range(8)])
+    def test_gradcheck_decompose_at_exact_essential_6251(self, device, pose):
+        E_mat = _exact_essential_6251(pose, device)
+        reference = tuple(out.detach() for out in epi.decompose_essential_matrix(E_mat))
+        self.gradcheck(lambda E: _candidates_on_branch_6251(E, reference), (E_mat,), fast_mode=False)
+
+    @pytest.mark.parametrize("pose", [None, *range(8)])
+    def test_gradcheck_project_at_exact_essential_6251(self, device, pose):
+        self.gradcheck(epi.project_to_essential, (_exact_essential_6251(pose, device),), fast_mode=False)
+
+    def test_gradcheck_choose_solution_at_exact_essential_6251(self, device):
+        # The cheirality test makes the result independent of the labeling, so no branch needs fixing here.
+        E_mat = _exact_essential_6251(3, device)
+        Rs, ts = epi.motion_from_essential(E_mat)
+        K = torch.eye(3, device=device, dtype=torch.float64)[None]
+        generator = torch.Generator().manual_seed(6251)
+        X = torch.randn(1, 8, 3, generator=generator, dtype=torch.float64).to(device)
+        X = X + torch.tensor([0.0, 0.0, 6.0], device=device, dtype=torch.float64)
+        # The scene of the candidate closest to no rotation, whatever its label: in front of both cameras.
+        k = int(Rs.diagonal(dim1=-2, dim2=-1).sum(-1).argmax())
+        X2 = X @ Rs[:, k].mT + ts[:, k].mT
+        x1, x2 = X[..., :2] / X[..., 2:], X2[..., :2] / X2[..., 2:]
+
+        def pose_and_points(E):
+            return epi.motion_from_essential_choose_solution(E, K, K, x1, x2)[:3]
+
+        assert int(epi.motion_from_essential_choose_solution(E_mat, K, K, x1, x2)[3]) == 8
+        self.gradcheck(pose_and_points, (E_mat,), fast_mode=False)
+
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="MPS has no float64")
+    @pytest.mark.parametrize("pose", [None, 4])
+    def test_second_derivatives_at_exact_essential_6251(self, device, pose):
+        E_mat = _exact_essential_6251(pose, device).requires_grad_()
+        reference = tuple(out.detach() for out in epi.decompose_essential_matrix(E_mat))
+        assert torch.autograd.gradgradcheck(lambda E: _candidates_on_branch_6251(E, reference), (E_mat,))
+        assert torch.autograd.gradgradcheck(epi.project_to_essential, (E_mat,))
+
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="MPS has no float64")
+    @pytest.mark.parametrize("seed", range(4))
+    def test_same_derivatives_as_the_svd_backward_off_the_manifold_6251(self, device, seed):
+        # Where the singular values are distinct torch's own backward is right, and the first and second derivatives
+        # must not move.
+        generator = torch.Generator().manual_seed(seed)
+        E_mat = torch.randn(1, 3, 3, generator=generator, dtype=torch.float64).to(device)
+        weights = torch.randn(30, generator=generator, dtype=torch.float64).to(device)
+
+        def outputs(E):
+            R1, R2, t = epi.decompose_essential_matrix(E)
+            return torch.cat([R1.flatten(), R2.flatten(), t.flatten(), epi.project_to_essential(E).flatten()])
+
+        expected = torch.autograd.functional.jacobian(_svd_backward_candidates_6251, E_mat)
+        self.assert_close(torch.autograd.functional.jacobian(outputs, E_mat), expected, atol=1e-10, rtol=1e-10)
+        expected = torch.autograd.functional.hessian(
+            lambda E: (_svd_backward_candidates_6251(E) * weights).sum(), E_mat
+        )
+        actual = torch.autograd.functional.hessian(lambda E: (outputs(E) * weights).sum(), E_mat)
+        self.assert_close(actual, expected, atol=1e-9, rtol=1e-9)
+
+    def _pipeline_gradient(self, num_points, noise, seed, device):
+        # The reproduction of #6251.
+        g = torch.Generator().manual_seed(100 + seed)
+        X = torch.randn(1, num_points, 3, generator=g, dtype=torch.float64) + torch.tensor(
+            [0.0, 0.0, 5.0], dtype=torch.float64
+        )
+        R = kornia.geometry.conversions.axis_angle_to_rotation_matrix(
+            0.2 * torch.randn(1, 3, generator=g, dtype=torch.float64)
+        )
+        t = torch.randn(1, 3, 1, generator=g, dtype=torch.float64)
+        X2 = X @ R.mT + t.mT
+        x1 = X[..., :2] / X[..., 2:] + noise * torch.randn(1, num_points, 2, generator=g, dtype=torch.float64)
+        x2 = X2[..., :2] / X2[..., 2:] + noise * torch.randn(1, num_points, 2, generator=g, dtype=torch.float64)
+        x1 = x1.to(device).requires_grad_()
+        candidates = epi.find_essential(x1, x2.to(device))[0]
+        usable = torch.isfinite(candidates).flatten(1).all(1) & (candidates.detach().flatten(1).norm(dim=1) > 1e-6)
+        if not usable.any():
+            return None
+        k = int(usable.nonzero()[0])
+        Rs, ts = epi.motion_from_essential(candidates[k : k + 1])
+        (grad,) = torch.autograd.grad(Rs.sum() + ts.sum(), x1)
+        return grad
+
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="MPS has no float64")
+    @pytest.mark.parametrize("num_points, noise", [(5, 0.0), (8, 1e-3), (20, 1e-3)])
+    def test_find_essential_pipeline_has_finite_gradients_6251(self, device, num_points, noise):
+        grads = [self._pipeline_gradient(num_points, noise, seed, device) for seed in range(60)]
+        grads = [grad for grad in grads if grad is not None]
+        assert len(grads) > 30
+        assert sum(int(not torch.isfinite(grad).all()) for grad in grads) == 0
+
+    @pytest.mark.parametrize("name", list(_SVD_DECOMPOSITIONS_6251))
+    @pytest.mark.parametrize("pose", [None, 4, "generic"])
+    def test_requires_grad_leaves_the_value_bitwise_unchanged_6251(self, device, dtype, name, pose):
+        if pose == "generic":
+            generator = torch.Generator().manual_seed(6251)
+            E_mat = torch.randn(1, 3, 3, generator=generator, dtype=torch.float64).to(device=device, dtype=dtype)
+        else:
+            E_mat = _exact_essential_6251(pose, device, dtype)
+        fn = _SVD_DECOMPOSITIONS_6251[name]
+        expected = fn(E_mat)
+        actual = fn(E_mat.clone().requires_grad_())
+        expected = expected if isinstance(expected, tuple) else (expected,)
+        actual = actual if isinstance(actual, tuple) else (actual,)
+        for out, ref in zip(actual, expected):
+            assert out.requires_grad
+            assert out.dtype == ref.dtype
+            assert torch.equal(out, ref)
+            assert torch.equal(out.signbit(), ref.signbit())
+
+    def test_value_keeps_a_negative_zero_6251(self, device, dtype):
+        from kornia.geometry.epipolar.essential import _with_derivatives_of
+
+        value = torch.tensor([-0.0, 0.0, -1.0], device=device, dtype=dtype)
+        smooth = torch.ones(3, device=device, dtype=dtype, requires_grad=True)
+        out = _with_derivatives_of(value, smooth)
+        assert torch.equal(out, value)
+        assert torch.equal(out.signbit(), value.signbit())
+
+    def test_no_grad_call_records_nothing_6251(self, device, dtype):
+        E_mat = _exact_essential_6251(4, device, dtype).requires_grad_()
+        with torch.no_grad():
+            assert not epi.project_to_essential(E_mat).requires_grad
+
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="float64 is unavailable on MPS")
+    @pytest.mark.parametrize("name", list(_SVD_DECOMPOSITIONS_6251))
+    @pytest.mark.parametrize("entry", [1e308, 0.9 * torch.finfo(torch.float64).max])
+    def test_near_maximum_matrix_keeps_its_value_6251(self, device, name, entry):
+        # The sum of the two largest singular values overflows here, though the matrix and its rotations are finite. A
+        # recorded derivative must not change the value: the projection itself overflows with or without one.
+        E_mat = torch.diag(torch.tensor([entry, entry, 0.0], device=device, dtype=torch.float64))[None]
+        expected = _SVD_DECOMPOSITIONS_6251[name](E_mat)
+        expected = expected if isinstance(expected, tuple) else (expected,)
+        actual = _SVD_DECOMPOSITIONS_6251[name](E_mat.clone().requires_grad_())
+        actual = actual if isinstance(actual, tuple) else (actual,)
+        for out, ref in zip(actual, expected):
+            assert torch.equal(out.detach().nan_to_num(7.0), ref.nan_to_num(7.0))
+            if name != "project_to_essential":
+                assert torch.isfinite(ref).all()
+
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="float64 is unavailable on MPS")
+    @pytest.mark.parametrize("name", list(_SVD_DECOMPOSITIONS_6251))
+    def test_gradient_of_unbatched_and_nested_batches_6251(self, device, name):
+        fn = _SVD_DECOMPOSITIONS_6251[name]
+
+        def gradient(E_mat):
+            E_mat = E_mat.clone().requires_grad_()
+            outputs = fn(E_mat)
+            outputs = outputs if isinstance(outputs, tuple) else (outputs,)
+            return torch.autograd.grad(sum(output.sum() for output in outputs), E_mat)[0]
+
+        flat = torch.cat([_exact_essential_6251(pose, device) for pose in range(6)])
+        expected = gradient(flat)
+        assert torch.isfinite(expected).all()
+        self.assert_close(gradient(flat.view(2, 3, 3, 3)), expected.view(2, 3, 3, 3))
+        self.assert_close(gradient(flat[0]), expected[0])
+
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="MPS has no float64")
+    def test_rows_of_a_batch_are_independent_6251(self, device):
+        # Only some rows are degenerate: a zero matrix and a rank-one matrix have no derivative, but must not touch the
+        # gradient of any other row, and stay finite themselves.
+        exact = _exact_essential_6251(4, device)
+        generator = torch.Generator().manual_seed(6251)
+        generic = torch.randn(1, 3, 3, generator=generator, dtype=torch.float64).to(device)
+        rank_one = torch.zeros_like(exact)
+        rank_one[0, 0, 0] = 2.0
+        rows = [
+            exact,
+            _exact_essential_6251(None, device),
+            generic,
+            -exact,
+            1e-6 * exact,
+            torch.zeros_like(exact),
+            rank_one,
+        ]
+        batch = torch.cat(rows)
+        weights = torch.randn(3, 3, generator=generator, dtype=torch.float64).to(device)
+
+        def per_row_grads(E_mat):
+            # Does not depend on the labeling of the candidates, which a batched SVD need not share with a single one.
+            leaf = E_mat.clone().requires_grad_()
+            R1, R2, t = epi.decompose_essential_matrix(leaf)
+            rotations = (R1 * weights).sum((-2, -1)) * (R2 * weights).sum((-2, -1))
+            translations = (t[..., 0] * weights[0]).sum(-1) ** 2
+            projections = (epi.project_to_essential(leaf) * weights).sum((-2, -1))
+            return torch.autograd.grad((rotations + translations + projections).sum(), leaf)[0]
+
+        grads = per_row_grads(batch)
+        assert torch.isfinite(grads).all()
+        for row, grad in zip(rows[:5], grads[:5]):
+            self.assert_close(grad[None], per_row_grads(row), atol=1e-12, rtol=1e-9)
+
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason=_HALF_SCALES)
+    @pytest.mark.applies_to(
+        when=lambda p: not ((p["dtype_name"] == "float64") and (p["device_name"] == "mps")), reason="MPS has no float64"
+    )
+    @pytest.mark.parametrize("scale", [-1.0, 1e-6, -1e-6, 1e6, "largest", "smallest"])
+    def test_scale_and_sign_of_the_matrix_6251(self, device, dtype, scale):
+        # R1, R2 and t do not depend on the scale or sign of E, so their Jacobian scales as 1 / scale; the projection is
+        # linear in the scale, so its Jacobian does not change. A negated or rescaled matrix can flip the labeling. The
+        # squares of the entries of the last two scales are out of range, and the result must not depend on them.
+        if isinstance(scale, str):
+            scale = torch.finfo(dtype).max ** (0.8 if scale == "largest" else -0.8)
+        atol = 1e-9 if dtype == torch.float64 else 1e-3
+        E_mat = _exact_essential_6251(4, device, dtype)
+        reference = tuple(out.detach() for out in epi.decompose_essential_matrix(E_mat))
+        jacobian = torch.autograd.functional.jacobian
+
+        def candidates(E):
+            return _candidates_on_branch_6251(E, reference)
+
+        for actual, expected in zip(jacobian(candidates, scale * E_mat), jacobian(candidates, E_mat)):
+            self.assert_close(actual[0] * scale, expected[0], atol=atol, rtol=atol)
+        self.assert_close(
+            jacobian(epi.project_to_essential, scale * E_mat),
+            jacobian(epi.project_to_essential, E_mat),
+            atol=atol,
+            rtol=atol,
+        )
+
+    def test_gradient_follows_the_float64_one_in_every_dtype_6251(self, device, dtype):
+        # float32 is decomposed in float64 and half precision in float32, so the gradient keeps that precision.
+        # The reference comes from the CPU: MPS has no float64.
+        # The half tolerances sit between the error of the float32 work dtype and that of working in the half dtype, at
+        # the pose below: 2.3e-04 against 4.8e-04 for float16 and 8.6e-04 against 3.8e-03 for bfloat16.
+        tolerances = {torch.float16: 3.5e-4, torch.bfloat16: 2e-3, torch.float32: 1e-5, torch.float64: 1e-12}
+        E_mat = _exact_essential_6251(4, device, dtype)
+        jacobian = torch.autograd.functional.jacobian(epi.project_to_essential, E_mat)
+        assert jacobian.dtype == dtype
+        expected = torch.autograd.functional.jacobian(epi.project_to_essential, E_mat.cpu().double())
+        atol = tolerances[dtype]
+        self.assert_close(jacobian.cpu().double(), expected, atol=atol, rtol=0.0)
+
+    @pytest.mark.parametrize("name", list(_SVD_DECOMPOSITIONS_6251))
+    @pytest.mark.parametrize("diagonal", [(2.0, 0.0, 0.0), (0.0, 0.0, 0.0), (1.0, 1.0, 1.0), (2.0, 1.0, 1.0)])
+    def test_convention_no_derivative_gradient_is_finite_6251(self, device, dtype, name, diagonal):
+        # With s2 == s3 the singular vector u3 is not unique, so no derivative exists. The choice is a finite gradient
+        # instead of NaN; its value is not part of the convention, as it depends on the basis the SVD returns.
+        E_mat = torch.diag(torch.tensor(diagonal, device=device, dtype=dtype))[None].requires_grad_()
+        outputs = _SVD_DECOMPOSITIONS_6251[name](E_mat)
+        outputs = outputs if isinstance(outputs, tuple) else (outputs,)
+        (grad,) = torch.autograd.grad(sum(output.sum() for output in outputs), E_mat)
+        assert torch.isfinite(grad).all()
+
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="MPS has no float64")
+    def test_forward_mode_and_torch_func_6251(self, device):
+        E_mat = _exact_essential_6251(None, device)
+        generator = torch.Generator().manual_seed(6251)
+        tangent = torch.randn(1, 3, 3, generator=generator, dtype=torch.float64).to(device)
+        reference = tuple(out.detach() for out in epi.decompose_essential_matrix(E_mat))
+
+        def outputs(E):
+            R1, R2, t = _candidates_on_branch_6251(E, reference)
+            return torch.cat([R1.flatten(), R2.flatten(), t.flatten(), epi.project_to_essential(E).flatten()])
+
+        expected = torch.autograd.functional.jacobian(outputs, E_mat)
+        assert torch.isfinite(expected).all()
+        _, jvp = torch.func.jvp(outputs, (E_mat,), (tangent,))
+        self.assert_close(jvp, expected.flatten(1) @ tangent.flatten(), atol=1e-10, rtol=1e-10)
+        self.assert_close(torch.func.jacrev(outputs)(E_mat), expected, atol=1e-10, rtol=1e-10)
+        self.assert_close(torch.func.jacfwd(outputs)(E_mat), expected, atol=1e-10, rtol=1e-10)
+
+    @CPU_CUDA_AUTOCAST
+    @pytest.mark.parametrize("name", ["decompose_essential_matrix", "project_to_essential"])
+    def test_autocast_does_not_change_the_gradient_6251(self, device, name):
+        _skip_without_bfloat16_autocast(device)
+        E_mat = _exact_essential_6251(4, device, torch.float32).requires_grad_()
+
+        def grad_of_sum(outputs):
+            outputs = outputs if isinstance(outputs, tuple) else (outputs,)
+            return torch.autograd.grad(sum(output.sum() for output in outputs), E_mat)[0]
+
+        fn = _SVD_DECOMPOSITIONS_6251[name]
+        expected = grad_of_sum(fn(E_mat))
+        with torch.autocast(device.type, dtype=torch.bfloat16):
+            outputs = fn(E_mat)
+        actual = grad_of_sum(outputs)
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, atol=0, rtol=0)
+
+    @pytest.mark.parametrize("name", list(_SVD_DECOMPOSITIONS_6251))
+    def test_dynamo_gradient_at_equal_singular_values_6251(self, device, dtype, torch_optimizer, name):
+        fn = _SVD_DECOMPOSITIONS_6251[name]
+        E_mat = _exact_essential_6251(None, device, dtype).requires_grad_()
+        compiled = torch_optimizer(fn, fullgraph=True)
+        expected, actual = fn(E_mat), compiled(E_mat)
+        expected = expected if isinstance(expected, tuple) else (expected,)
+        actual = actual if isinstance(actual, tuple) else (actual,)
+        for result, reference in zip(actual, expected):
+            self.assert_close(result, reference)
+        eager_gradient = torch.autograd.grad(sum(value.sum() for value in expected), E_mat)[0]
+        compiled_gradient = torch.autograd.grad(sum(value.sum() for value in actual), E_mat)[0]
+        assert torch.isfinite(compiled_gradient).all()
+        self.assert_close(compiled_gradient, eager_gradient)

@@ -20,6 +20,8 @@ from typing import Tuple
 
 import torch
 
+from kornia.core.utils import _autocast_disabled
+
 
 def arange_sequence(ranges: torch.Tensor) -> torch.Tensor:
     """Return a sequence of the ranges specified by the argument.
@@ -37,21 +39,22 @@ def arange_sequence(ranges: torch.Tensor) -> torch.Tensor:
 
 def dist_matrix(d1: torch.Tensor, d2: torch.Tensor, is_normalized: bool = False) -> torch.Tensor:
     """Distance between two tensors."""
-    if is_normalized:
-        return 2 - 2.0 * d1 @ d2.t()
-    x_norm = (d1**2).sum(1).view(-1, 1)
-    y_norm = (d2**2).sum(1).view(1, -1)
-    # print(x_norm, y_norm)
-    return x_norm + y_norm - 2.0 * d1 @ d2.t()
-    # distmat[torch.isnan(distmat)] = np.inf
+    # AdaLAM converts descriptors and coordinates to float32 before matching. An outer autocast region would
+    # still round (in float16, overflow) only the dot product, breaking cancellation with the full-precision
+    # norms. Keep the distance arithmetic in its input dtype.
+    with _autocast_disabled(d1.device.type):
+        if is_normalized:
+            return 2 - 2.0 * d1 @ d2.t()
+        x_norm = (d1**2).sum(1).view(-1, 1)
+        y_norm = (d2**2).sum(1).view(1, -1)
+        return x_norm + y_norm - 2.0 * d1 @ d2.t()
 
 
 def orientation_diff(o1: torch.Tensor, o2: torch.Tensor) -> torch.Tensor:
     """Orientation difference between two tensors."""
     diff = o2 - o1
-    diff[diff < -180] += 360
-    diff[diff >= 180] -= 360
-    return diff
+    diff = torch.where(diff < -180, diff + 360, diff)
+    return torch.where(diff >= 180, diff - 360, diff)
 
 
 def piecewise_arange(piecewise_idxer: torch.Tensor) -> torch.Tensor:
@@ -60,17 +63,8 @@ def piecewise_arange(piecewise_idxer: torch.Tensor) -> torch.Tensor:
     Example:
     [0, 0, 0, 3, 3, 3, 3, 1, 1, 2] -> [0, 1, 2, 0, 1, 2, 3, 0, 1, 0]
     """
-    dv = piecewise_idxer.device
-    # print(piecewise_idxer)
-    uni: torch.Tensor
-    uni, counts = torch.unique_consecutive(piecewise_idxer, return_counts=True)
-    # print(counts)
-    maxcnt = int(torch.max(counts).item())
-    numuni = uni.shape[0]
-    tmp = torch.zeros(size=(numuni, maxcnt), device=dv).bool()
-    ranges = torch.arange(maxcnt, device=dv).unsqueeze(0).expand(numuni, -1)
-    tmp[ranges < counts.unsqueeze(-1)] = True
-    return ranges[tmp]
+    _, counts = torch.unique_consecutive(piecewise_idxer, return_counts=True)
+    return arange_sequence(counts)
 
 
 def batch_2x2_inv(m: torch.Tensor, check_dets: bool = False) -> torch.Tensor:
@@ -109,8 +103,8 @@ def batch_2x2_det(m: torch.Tensor) -> torch.Tensor:
     return a * d - b * c
 
 
-def batch_2x2_ellipse(m: torch.Tensor, *, eps: float = 0.0) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Return Eigenvalues and Eigenvectors of batch of 2x2 matrices."""
+def batch_2x2_eigenvals(m: torch.Tensor, *, eps: float = 0.0) -> torch.Tensor:
+    """Return eigenvalues of ``m @ m.mT`` for a batch of 2x2 matrices."""
     am = m[..., 0, 0]
     bm = m[..., 0, 1]
     cm = m[..., 1, 0]
@@ -126,15 +120,23 @@ def batch_2x2_ellipse(m: torch.Tensor, *, eps: float = 0.0) -> Tuple[torch.Tenso
     # stable hypot
     sqrtdisc = torch.hypot(diff, b)
 
-    e1 = trh + sqrtdisc
-    e2 = trh - sqrtdisc
-    if eps > 0:
-        e1 = e1.clamp(min=eps)
-        e2 = e2.clamp(min=eps)
-    else:
-        e1 = e1.clamp(min=0.0)
-        e2 = e2.clamp(min=0.0)
-    eigenvals = torch.stack([e1, e2], dim=-1)
+    min_val = eps if eps > 0 else 0.0
+    e1 = (trh + sqrtdisc).clamp(min=min_val)
+    e2 = (trh - sqrtdisc).clamp(min=min_val)
+    return torch.stack([e1, e2], dim=-1)
+
+
+def batch_2x2_ellipse(m: torch.Tensor, *, eps: float = 0.0) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Return Eigenvalues and Eigenvectors of batch of 2x2 matrices."""
+    eigenvals = batch_2x2_eigenvals(m, eps=eps)
+    am = m[..., 0, 0]
+    bm = m[..., 0, 1]
+    cm = m[..., 1, 0]
+    dm = m[..., 1, 1]
+
+    a = am * am + bm * bm
+    b = am * cm + bm * dm
+    d = cm * cm + dm * dm
 
     theta = 0.5 * torch.atan2(2.0 * b, a - d)
     c = torch.cos(theta)
@@ -154,17 +156,19 @@ def draw_first_k_couples(k: int, rdims: torch.Tensor, dv: torch.device) -> torch
     Max n for which we can exhaustively sample with k couples:
     * n2/2 + n/2 = k
     * n = sqrt(1/4 + 2k)-1/2 = (sqrt(8k+1)-1)/2
+
+    The couples are ``(1, 0), (2, 0), (2, 1), (3, 0), ...``: the ``k`` distinct pairs ``(i, j)`` with ``j < i`` in
+    that order, so the residual couples after the complete rows continue with ``(n + 1, 0), (n + 1, 1), ...``. The
+    reference AdaLAM implementation used the residual count as that first index, which repeated couples already
+    drawn (8 of the default 128) instead of trying new ones. Each region then takes the indices modulo its number of
+    samples in ``rdims``, so the couples stay distinct only in a region with enough samples for ``k`` distinct
+    couples, at least 17 for ``k = 128``; in a smaller region they wrap, and can repeat or pair a sample with itself.
     """
     max_exhaustive_search = int(math.sqrt(2 * k + 0.25) - 0.5)
-    residual_search = int(k - max_exhaustive_search * (max_exhaustive_search + 1) / 2)
-
-    repeats = torch.cat(
-        [
-            torch.arange(max_exhaustive_search, dtype=torch.long, device=dv) + 1,
-            torch.tensor([residual_search], dtype=torch.long, device=dv),
-        ]
-    )
-    idx_sequence = torch.stack([repeats.repeat_interleave(repeats), arange_sequence(repeats)], dim=-1)
+    # The strict lower triangle is already in pair order. Its size depends only on Python k, avoiding the
+    # repeat_interleave output-size read, max().item(), and boolean compaction of GPU-generated row lengths.
+    size = max_exhaustive_search + 2
+    idx_sequence = torch.tril_indices(size, size, offset=-1, device=dv)[:, :k].t()
     return torch.remainder(idx_sequence.unsqueeze(-1), rdims)
 
 

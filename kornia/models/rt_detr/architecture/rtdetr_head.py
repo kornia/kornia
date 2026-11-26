@@ -205,7 +205,7 @@ class TransformerDecoderLayer(nn.Module):
         """Run one RT-DETR transformer decoder layer.
 
         Args:
-            tgt: Query tensor with shape :math:`(B, N_q, D)`.
+            tgt: Query tensor with shape ``(B, N_q, D)``.
             ref_points: Reference points for deformable cross-attention.
             memory: Flattened encoder memory tensor.
             memory_spatial_shapes: Spatial shape for each memory level.
@@ -215,7 +215,7 @@ class TransformerDecoderLayer(nn.Module):
             query_pos_embed: Optional positional embedding for object queries.
 
         Returns:
-            Updated query tensor with shape :math:`(B, N_q, D)`.
+            Updated query tensor with shape ``(B, N_q, D)``.
         """
         # TODO: rename variables because is confusing
         # self attention
@@ -262,7 +262,7 @@ class TransformerDecoder(nn.Module):
         """Decode object queries into bounding boxes and class logits.
 
         Args:
-            tgt: Initial query tensor with shape :math:`(B, N_q, D)`.
+            tgt: Initial query tensor with shape ``(B, N_q, D)``.
             ref_points_unact: Unactivated reference boxes for the queries.
             memory: Flattened encoder feature memory.
             memory_spatial_shapes: Spatial shape for each feature level.

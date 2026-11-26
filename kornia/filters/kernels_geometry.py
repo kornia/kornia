@@ -31,39 +31,41 @@ from .kernels import _check_kernel_size, _unpack_2d_ks, _unpack_3d_ks
 def get_motion_kernel2d(
     kernel_size: int, angle: torch.Tensor | float, direction: torch.Tensor | float = 0.0, mode: str = "nearest"
 ) -> torch.Tensor:
-    r"""Return 2D motion blur filter.
+    r"""Return a 2D motion-blur kernel: a weighted line rotated by an angle.
+
+    ``kernel = get_motion_kernel2d(kernel_size, angle, direction)`` puts ``kernel_size`` taps along the middle row,
+    weights them by ``direction``, rotates them by ``angle`` degrees and normalizes the sum to 1. It returns a
+    ``(B, kernel_size, kernel_size)`` tensor with one kernel per angle.
 
     Convention:
-        - ``direction`` is clamped to ``[-1, 1]`` and weighs the line linearly before it is rotated: ``1`` gives
-          ``[0.4, 0.3, 0.2, 0.1, 0]`` along the middle row of a size-5 kernel, heavy at the left end and 0 at the
-          right, so only ``kernel_size - 1`` taps carry weight; ``-1`` mirrors it and ``0`` is uniform.
+        - ``direction`` is clamped to ``[-1, 1]`` and weights the line linearly before the rotation: ``0`` is uniform,
+          ``1`` gives ``[0.4, 0.3, 0.2, 0.1, 0]`` along the middle row of a size-5 kernel, heavy at the left end and 0
+          at the right, and ``-1`` mirrors it.
         - ``angle`` is in degrees and turns the line counter-clockwise as displayed (row 0 at the top), as
           :func:`~kornia.geometry.transform.rotate` does: at ``90`` the heavy end moves from the left to the bottom.
-        - Because :func:`~kornia.filters.filter2d` correlates, the streak that the kernel draws from a bright point
-          is heaviest on the side opposite the kernel's heavy end: to the point's right at ``angle=0``,
-          ``direction=1``.
-        - The rotation resamples the line with ``mode``: ``'nearest'`` copies each pixel from the nearest tap, so the
-          number of taps changes with the angle (3 at 45 degrees, 7 at 25 for a size-5 line), and ``'bilinear'``
-          spreads the weight off the line.
-        - A floating tensor ``angle`` of shape :math:`(B,)` gives :math:`(B, k, k)` in its dtype. A tensor
-          ``direction`` must match it in length, dtype and device; a float ``direction`` is not broadcast, so it
-          raises for ``B > 1``.
-        - With ``'nearest'``, each pixel copies the tap nearest to its source under the inverse rotation, picked
-          with exact arithmetic: where the source falls exactly between two taps, such as at 30 or 120 degrees, the
-          tie goes to the even coordinate, as ``torch.nn.functional.grid_sample`` breaks it. The kernel is the
-          same on every device and dtype, for every full turn added to the angle, and with ``torch.compile``.
+        - :func:`~kornia.filters.filter2d` correlates, so the streak that the kernel draws from a bright point is
+          heaviest on the side opposite the kernel's heavy end: to the point's right at ``angle=0``, ``direction=1``.
+        - ``mode`` resamples the rotated line. ``'nearest'`` copies each pixel from the nearest tap, so the number
+          of taps changes with the angle (3 at 45 degrees, 7 at 25 for a size-5 line), and ``'bilinear'`` spreads the
+          weight off the line.
+        - A tensor ``direction`` must match a tensor ``angle`` in length, dtype and device, and a floating one gives
+          the kernel its dtype; a float ``direction`` is not broadcast, so it raises for ``B > 1``.
+        - The ``'nearest'`` kernel is the same on every device and dtype, for every full turn added to the angle, and
+          with ``torch.compile``. Where a source falls exactly between two taps, such as at 30 or 120 degrees, the tie
+          goes to the even coordinate, as ``torch.nn.functional.grid_sample`` breaks it.
 
     Args:
-        kernel_size: motion kernel width and height, an odd integer of at least 3.
-        angle: angle of the motion blur in degrees (anti-clockwise rotation).
-        direction: forward/backward direction of the motion blur.
-            Lower values towards -1.0 will point the motion blur towards the back (with angle provided via angle),
-            while higher values towards 1.0 will point the motion blur forward. A value of 0.0 leads to a
-            uniformly (but still angled) motion blur.
-        mode: interpolation mode for rotating the kernel. ``'bilinear'`` or ``'nearest'``.
+        kernel_size: width and height, an odd integer of at least 3.
+        angle: angle in degrees, a float or a ``(B,)`` tensor.
+        direction: weighting of the line in ``[-1, 1]``, a float or a ``(B,)`` tensor; see the Convention block.
+        mode: interpolation of the rotation, ``'nearest'`` or ``'bilinear'``.
 
     Returns:
-        The motion blur kernel of shape :math:`(B, k_\text{size}, k_\text{size})`.
+        the kernels, with shape ``(B, kernel_size, kernel_size)``.
+
+    See Also:
+        - :func:`get_motion_kernel3d`: the 3D kernel, rotated by an axis-angle vector.
+        - :func:`motion_blur`: the blur that applies it to an image.
 
     Examples:
         >>> get_motion_kernel2d(5, 0., 0.)
@@ -161,36 +163,36 @@ def get_motion_kernel3d(
     direction: torch.Tensor | float = 0.0,
     mode: str = "nearest",
 ) -> torch.Tensor:
-    r"""Return 3D motion blur filter.
+    r"""Return a 3D motion-blur kernel: a weighted line rotated by an axis-angle vector.
+
+    ``kernel = get_motion_kernel3d(kernel_size, angle, direction)`` puts ``kernel_size`` taps along x through the
+    centre, weights them by ``direction``, rotates them by ``angle`` and normalizes the sum to 1. It returns a
+    ``(B, kernel_size, kernel_size, kernel_size)`` tensor with one kernel per angle.
 
     Convention:
-        See the Convention block on :func:`~kornia.filters.get_motion_kernel2d` for ``direction`` and ``mode``.
-        ``angle`` is a Rodrigues axis-angle vector ``(rx, ry, rz)`` in degrees, as applied by
-        :func:`~kornia.geometry.transform.rotate3d`: its direction is the rotation axis and its norm is the
-        rotation angle. :func:`~kornia.geometry.transform.rotate3d` and the 3D motion blurs call the components
-        ``yaw``, ``pitch`` and ``roll``, but they are not composed Euler rotations. The unrotated line lies along x,
-        so with the default ``mode='nearest'`` yaw alone leaves the kernel unchanged (``'bilinear'`` resamples it
-        off the line); a positive pitch alone turns the line's -x end, the heavy end for a positive ``direction``,
-        towards +z, and a positive roll alone turns the line clockwise as displayed, the opposite of the 2d
-        ``angle``.
-        With ``'nearest'``, each voxel copies the tap nearest to its source under the inverse rotation, picked with
-        exact arithmetic: where the source falls exactly between two taps, such as at a pitch or roll of 30 or 120
-        degrees, the tie goes to the even coordinate, as ``torch.nn.functional.grid_sample`` breaks it. The kernel
-        is the same on every device and dtype and with ``torch.compile``.
+        - See the Convention block on :func:`~kornia.filters.get_motion_kernel2d` for ``direction`` and ``mode``.
+        - ``angle`` is a Rodrigues axis-angle vector ``(rx, ry, rz)`` in degrees, as applied by
+          :func:`~kornia.geometry.transform.rotate3d`: its direction is the rotation axis and its norm is the
+          rotation angle. :func:`~kornia.geometry.transform.rotate3d` and the 3D motion blurs call the components
+          ``yaw``, ``pitch`` and ``roll``, but they are not composed Euler rotations.
+        - The unrotated line lies along x, so with the default ``mode='nearest'`` yaw alone leaves the kernel
+          unchanged (``'bilinear'`` resamples it off the line). A positive pitch alone turns the line's -x end, the
+          heavy end for a positive ``direction``, towards +z. A positive roll alone turns the line clockwise as
+          displayed, the opposite of the 2D ``angle``.
+        - The ``'nearest'`` kernel is the same on every device and dtype and with ``torch.compile``.
 
     Args:
-        kernel_size: motion kernel width, height and depth, an odd integer of at least 3.
-        angle: Rodrigues axis-angle vector ``(rx, ry, rz)`` in degrees, not Euler angles.
-            If tensor, it must be :math:`(B, 3)`.
-            If tuple, it must be ``(rx, ry, rz)``.
-        direction: forward/backward direction of the motion blur.
-            Lower values towards -1.0 will point the motion blur towards the back (with angle provided via angle),
-            while higher values towards 1.0 will point the motion blur forward. A value of 0.0 leads to a
-            uniformly (but still angled) motion blur.
-        mode: interpolation mode for rotating the kernel. ``'bilinear'`` or ``'nearest'``.
+        kernel_size: width, height and depth, an odd integer of at least 3.
+        angle: axis-angle vector ``(rx, ry, rz)`` in degrees, a tuple or a ``(B, 3)`` tensor.
+        direction: weighting of the line in ``[-1, 1]``, a float or a ``(B,)`` tensor, as in the 2D kernel.
+        mode: interpolation of the rotation, ``'nearest'`` or ``'bilinear'``.
 
     Returns:
-        The motion blur kernel with shape :math:`(B, k_\text{size}, k_\text{size}, k_\text{size})`.
+        the kernels, with shape ``(B, kernel_size, kernel_size, kernel_size)``.
+
+    See Also:
+        - :func:`get_motion_kernel2d`: the 2D kernel, rotated by an angle.
+        - :func:`motion_blur3d`: the blur that applies it to a volume.
 
     Examples:
         >>> get_motion_kernel3d(3, (0., 0., 0.), 0.)

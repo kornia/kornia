@@ -9,16 +9,17 @@ For internal changes without a fragment, explain why and ask for the no-changelo
 
 ## Related issue or discussion
 
-<!-- Link one if it exists, for example: Fixes #123. This is optional. -->
+<!-- Link one if it exists, for example: Fixes #123. This is optional, except for a new public API,
+model mode, or separately maintained execution path: link the issue where a maintainer agreed to the scope. -->
 
 ## What did you check?
 
-<!-- List the tests, examples, or manual checks you ran, and include useful results. -->
+<!-- List the tests, examples, or manual checks you ran, including what changes for a caller (final output, task metric, timing of the public call), and include useful results. -->
 
 ```text
 $ pixi run test-module tests/...
 ```
 
-## How did AI help?
+## Which part was done by a human, if any?
 
-<!-- If you used AI, briefly say what it helped with and what you checked or changed afterward. Otherwise, leave this blank. -->
+<!-- State what the human did vs. what AI did (e.g., "All of it, no AI used", "Human diagnosed the bug and reviewed the diff; AI wrote the fix and tests", or "None — human asked to fix #123 and AI did the rest"). -->

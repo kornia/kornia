@@ -18,6 +18,7 @@
 import io
 import re
 import struct
+import warnings
 import zlib
 from pathlib import Path
 
@@ -162,21 +163,6 @@ class TestIoImage:
         with pytest.raises((IsADirectoryError, PermissionError), match=re.escape(f"dir{suffix}")):
             load_image(tmp_path / f"dir{suffix}")
 
-    def test_smoke(self, tmp_path: Path) -> None:
-        height, width = 4, 5
-        img_th: torch.Tensor = create_random_img8_torch(height, width, 3)
-
-        file_path = tmp_path / "image.jpg"
-        write_image(str(file_path), img_th)
-
-        assert file_path.is_file()
-
-        img_load: torch.Tensor = load_image(str(file_path), ImageLoadType.UNCHANGED)
-
-        assert img_th.shape == img_load.shape
-        assert img_th.shape[1:] == (height, width)
-        assert str(img_th.device) == "cpu"
-
     def test_device(self, device, png_image: Path) -> None:
         file_path = Path(png_image)
 
@@ -249,16 +235,15 @@ class TestIoImage:
         assert loaded.shape == (1, 4, 5)
         assert torch.equal(loaded, img)
 
-    @pytest.mark.parametrize("ext", ["jpg"])
-    @pytest.mark.parametrize("channels", [3])
-    def test_write_image(self, device, tmp_path, ext, channels):
+    def test_write_image(self, device, tmp_path):
+        # A tensor on the test device is written from its CPU copy; PNG is lossless, so it reads back bit for bit.
         height, width = 4, 5
-        img_th: torch.Tensor = create_random_img8_torch(height, width, channels, device)
+        img_th: torch.Tensor = create_random_img8_torch(height, width, 3, device)
 
-        file_path = tmp_path / f"image.{ext}"
+        file_path = tmp_path / "image.png"
         write_image(file_path, img_th)
 
-        assert file_path.is_file()
+        assert torch.equal(load_image(file_path, ImageLoadType.UNCHANGED), img_th.cpu())
 
     @pytest.mark.parametrize("shape", [(1, 1, 5), (1, 5, 1)])
     def test_write_image_one_row_or_one_column_grayscale(self, tmp_path: Path, shape) -> None:
@@ -306,6 +291,17 @@ class TestIndexedPng:
         out = load_image(path, ImageLoadType.RGBA8, device=str(device))
         assert out.device.type == torch.device(device).type
         assert out.shape == (4, 2, 3)
+        assert out[3].tolist() == [[255, 128, 0], [255, 0, 128]]
+
+    def test_rgba8_expands_palette_on_decode_device(self, tmp_path: Path) -> None:
+        """Palette expansion works even when factory calls default to another device."""
+        path = tmp_path / "indexed_trns.png"
+        write_indexed_png(path, PALETTE_INDICES, PALETTE, alpha=bytes([0, 128]))
+
+        with torch.device("meta"):
+            out = load_image(path, ImageLoadType.RGBA8, device="cpu")
+
+        assert out.device.type == "cpu"
         assert out[3].tolist() == [[255, 128, 0], [255, 0, 128]]
 
     @pytest.mark.parametrize(
@@ -1291,3 +1287,29 @@ class TestConventionsIo:
         path = tmp_path / "thin.png"
         write_image(path, torch.zeros(*shape, dtype=torch.uint8))
         assert path.stat().st_size > 0
+
+
+@pytest.mark.parametrize("side, expected", [("long", (1, 3, 24, 40)), ("short", (1, 3, 40, 56))])
+def test_sample_images_resize_side_with_divisible_factor(tmp_path, side, expected):
+    from kornia.io import get_sample_images
+
+    path = tmp_path / "non_square.png"
+    write_image(path, torch.zeros(3, 22, 32, dtype=torch.uint8))
+    with warnings.catch_warnings():
+        warnings.filterwarnings("error", message=r".*side", category=DeprecationWarning)
+        out = get_sample_images(40, paths=[str(path)], divisible_factor=8, as_list=False, side=side)
+    assert out.shape == expected
+
+
+@pytest.mark.parametrize("side", ["short", "long"])
+def test_sample_images_divisible_only_warns_for_side(tmp_path, side):
+    from kornia.io import get_sample_images
+
+    path = tmp_path / "non_square.png"
+    write_image(path, torch.zeros(3, 22, 32, dtype=torch.uint8))
+    expected = get_sample_images(paths=[str(path)], divisible_factor=8)
+    with pytest.warns(DeprecationWarning, match="side"):
+        out = get_sample_images(paths=[str(path)], divisible_factor=8, side=side)
+    assert len(out) == len(expected) == 1
+    assert out[0].shape == expected[0].shape
+    torch.testing.assert_close(out[0], expected[0], rtol=0, atol=0)
