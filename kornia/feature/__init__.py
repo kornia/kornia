@@ -28,8 +28,9 @@ same mask to LAFs, responses and descriptors.
 
 Which function to use:
 
-- Match images: :class:`LoFTR` without a detector; :class:`LocalFeatureMatcher` with a local feature and a
-  descriptor-only matcher; :meth:`~kornia.feature.XFeat.match_xfeat` or :meth:`~kornia.feature.XFeat.match_xfeat_star`.
+- Match images: :class:`LoFTR` or :class:`EfficientLoFTR` without a detector; :class:`LocalFeatureMatcher` with a
+  local feature and a descriptor-only matcher; :meth:`~kornia.feature.XFeat.match_xfeat` or
+  :meth:`~kornia.feature.XFeat.match_xfeat_star`.
 - Detect and describe learned keypoints: :class:`ALIKED` (subpixel), :class:`DISK` (integer pixels), :class:`XFeat`
   (64-D descriptors), :class:`CLIDD` (very small networks, 48- to 128-D descriptors) or :class:`DeDoDe` (separate
   detector and descriptor networks); load with ``from_pretrained``.

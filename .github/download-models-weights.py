@@ -138,6 +138,10 @@ MODELS: dict[str, "str | list[str]"] = {
         "https://huggingface.co/kornia/loftr/resolve/main/loftr_indoor.ckpt",
         "https://cmp.felk.cvut.cz/~mishkdmy/models/loftr_indoor.ckpt",
     ],
+    # EfficientLoFTR: its tests instantiate the outdoor weights.
+    "eloftr_outdoor_modified.ckpt": (
+        "https://huggingface.co/kornia/Efficient_LOFTR/resolve/main/eloftr_outdoor_modified.ckpt"
+    ),
     # LightGlue pins its own cache names; these keys are not the URL basenames.
     "superpoint_lightglue_v0-1_arxiv-pth": [
         "https://huggingface.co/kornia/lightglue/resolve/main/superpoint_lightglue.pth",

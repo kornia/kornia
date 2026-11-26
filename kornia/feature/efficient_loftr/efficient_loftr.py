@@ -92,6 +92,10 @@ class EfficientLoFTR(nn.Module):
     Returns:
         Dictionary with image correspondences and confidence scores.
 
+    See Also:
+        - :class:`LoFTR`: the matcher this model builds on, with ``outdoor``, ``indoor`` and ``indoor_new`` weights;
+          this one has ``outdoor`` weights only.
+
     Example:
         >>> img1 = torch.rand(1, 1, 128, 128)
         >>> img2 = torch.rand(1, 1, 128, 128)
@@ -126,16 +130,16 @@ class EfficientLoFTR(nn.Module):
 
         Keyword Args:
             data:
-                'image0': left image with shape :math: `(torch.Tensor): (N, 1, H1, W1)`
-                'image1': right image with shape :math: `(torch.Tensor): (N, 1, H2, W2)`
-                'mask0'(optional) : left image mask. '0' indicates a padded position :math: `(N, H1, W1)`.
-                'mask1'(optional) : right image mask. '0' indicates a padded position :math: `(N, H2, W2)`.
+                'image0': left image with shape ``(N, 1, H1, W1)``.
+                'image1': right image with shape ``(N, 1, H2, W2)``.
+                'mask0'(optional) : left image mask. '0' indicates a padded position ``(N, H1, W1)``.
+                'mask1'(optional) : right image mask. '0' indicates a padded position ``(N, H2, W2)``.
 
         Returns:
-            - ``keypoints0``, matching keypoints from image0 :math:`(NC, 2)`.
-            - ``keypoints1``, matching keypoints from image1 :math:`(NC, 2)`.
-            - ``confidence``, confidence score [0, 1] :math:`(NC)`.
-            - ``batch_indexes``, batch indexes for the keypoints and lafs :math:`(NC)`.
+            - ``keypoints0``, matching keypoints from image0 ``(NC, 2)``.
+            - ``keypoints1``, matching keypoints from image1 ``(NC, 2)``.
+            - ``confidence``, confidence score in [0, 1] ``(NC,)``.
+            - ``batch_indexes``, batch index of each match ``(NC,)``.
 
         """
         # 1. Local Feature CNN
