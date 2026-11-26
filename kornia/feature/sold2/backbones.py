@@ -26,6 +26,8 @@ import torch.nn.functional as F
 from torch import nn
 from torch.nn.functional import pixel_shuffle, softmax
 
+from kornia.feature._normalization import _Float32BatchNormSequential
+
 
 class HourglassConfig(NamedTuple):
     """Define the configuration for the Hourglass backbone.
@@ -281,7 +283,8 @@ class HourglassNet(nn.Module):
     def _make_fc(self, inplanes: int, outplanes: int) -> nn.Module:
         bn = nn.BatchNorm2d(inplanes)
         conv = nn.Conv2d(inplanes, outplanes, kernel_size=1)
-        return nn.Sequential(conv, bn, self.relu)
+        # The pretrained running variances of this BatchNorm reach 2.6e6, beyond float16's range.
+        return _Float32BatchNormSequential(conv, bn, self.relu)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Run this SOLD2 backbone component forward.
