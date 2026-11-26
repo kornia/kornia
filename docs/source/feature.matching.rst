@@ -73,3 +73,6 @@ Learned matchers
 
 .. autoclass:: LoFTR
    :members: forward, extract_features
+
+.. autoclass:: EfficientLoFTR
+   :members: forward

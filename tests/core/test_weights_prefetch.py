@@ -79,6 +79,7 @@ from kornia.feature.clidd import clidd
 from kornia.feature.dedode import dedode
 from kornia.feature.dedode import encoder as dedode_encoder
 from kornia.feature.disk import disk
+from kornia.feature.efficient_loftr import efficient_loftr
 from kornia.feature.lightglue import LightGlue
 from kornia.feature.loftr import loftr
 from kornia.feature.sold2 import sold2, sold2_detector
@@ -139,6 +140,7 @@ WEIGHT_REGISTRIES: dict[str, tuple[ModuleType, dict[str, Any]]] = {
     "mkd": (mkd, mkd.urls),
     "defmo": (defmo, defmo.urls),
     "loftr": (loftr, loftr.urls),
+    "efficient_loftr": (efficient_loftr, efficient_loftr.urls),
     "sold2": (sold2, sold2.urls),
     "sold2_detector": (sold2_detector, sold2_detector.urls),
     "disk": (disk, disk.urls),
