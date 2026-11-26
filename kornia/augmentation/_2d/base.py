@@ -115,9 +115,8 @@ class AugmentationBase2D(_AugmentationBase):
         - a ``_param_generator.*`` range buffer in ``state_dict()`` updates the samplers when loading changes it, and
           a learnable range is read before each draw; see :doc:`/get-started/conventions` for the classes this leaves
           out (`#4428 <https://github.com/kornia/kornia/issues/4428>`_).
-        - an empty image batch (``B = 0``) follows the configured output geometry. Channels, spatial sizes and
-          configuration must still satisfy the concrete operation's input checks. See
-          :ref:`augmentation-empty-batches` for data-key, replay and coverage qualifications
+        - an empty image batch (``B = 0``) follows the configured output geometry. See
+          :ref:`augmentation-empty-batches` for data-key and replay details
           (`#4429 <https://github.com/kornia/kornia/issues/4429>`_).
         - rotation-like parameters are in degrees, and a positive angle turns the image counter-clockwise as
           displayed (top-left origin, y pointing down), as :func:`~kornia.geometry.transform.rotate` documents;

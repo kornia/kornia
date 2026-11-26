@@ -63,11 +63,10 @@ Kornia augmentations generally follow a `sample-apply` routine.
 Empty image batches
 -------------------
 
-An empty batch has ``B = 0`` with otherwise valid channel and spatial dimensions:
-``(0, C, H, W)`` for images or ``(0, C, D, H, W)`` for volumes. Its output keeps the zero batch
-dimension and has the configured output geometry. Crops and resizes therefore return their configured
-spatial size even at ``p=0``: there are no samples to skip. For a nonempty batch, a gate that skips the
-whole batch keeps the input canvas instead.
+An empty batch has ``B = 0``: ``(0, C, H, W)`` for images or ``(0, C, D, H, W)`` for volumes.
+Its output keeps the zero batch dimension and has the configured output geometry. Crops and resizes return
+their configured spatial size even at ``p=0``: there are no samples to skip. For a nonempty batch, a gate
+that skips the whole batch keeps the input canvas instead.
 
 .. code-block:: python
 
@@ -79,31 +78,17 @@ whole batch keeps the input canvas instead.
    cropped = crop(images)                     # shape (0, 3, 4, 6)
    replay = crop(images, params=crop._params)  # the same empty output shape
 
-The empty-batch inventory checks image calls and saved-parameter replay for the public concrete
-2D, 3D and mix classes, using explicit constructor configurations at ``p=0``, ``p=0.5`` and ``p=1`` where
-the constructor exposes ``p``; ``PadTo`` is always applied.
-It does not certify every argument combination or every backward path. The coverage guard requires an
-inventory entry when a public concrete augmentation is added.
-
 The additional contracts are:
 
-- **Input validation:** a zero batch does not make invalid crop sizes, channel counts or spatial sizes valid.
-  A zero height, width or depth is a different input from a zero batch; follow the concrete operation's checks.
 - **Masks:** supported image/mask pipelines keep the empty mask on the image's output canvas, including after
-  a shape-changing crop or resize. Unsupported annotation handlers remain unsupported on empty batches.
+  a shape-changing crop or resize.
 - **Mix labels:** ``RandomMixUpV2`` returns class data of shape ``(0, 3)``; ``RandomCutMixV2`` keeps its mix axis,
   giving ``(num_mix, 0, 3)``. Transplantation takes its driving label mask along with the empty image, and its
   recorded ``forward_input_shape`` describes that mask.
-- **Dissolving:** ``RandomDissolving`` skips diffusion inference for an empty image batch. Its fast regression
-  checks use a stub model; they do not validate a downloaded Stable Diffusion model. Construction still has
+- **Dissolving:** ``RandomDissolving`` skips diffusion inference for an empty image batch. Construction still has
   its normal model and optional-dependency requirements.
-- **Containers and inverse:** image, augmentation, video and patch sequences preserve their supported empty
-  shapes, subject to their children's contracts. An empty batch does not add an otherwise unsupported inverse
-  or annotation operation; for supported inverses, retain the recorded input-shape metadata when replaying.
-
-`Issue #4429 <https://github.com/kornia/kornia/issues/4429>`_ tracks the reconciliation of the historical reports,
-configuration-specific coverage and remaining defects. The image-shape inventory does not close that umbrella
-issue or establish support for every empty-batch gradient path.
+- **Containers and inverse:** image, augmentation, video and patch sequences preserve the zero batch dimension.
+  For an empty batch, ``inverse`` returns the forward input's shape.
 
 Custom Augmentation Classes
 ---------------------------
