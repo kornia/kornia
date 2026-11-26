@@ -327,6 +327,26 @@ class TestStereoCamera(BaseTester):
         inputs = (camera.rectified_left_camera, camera.rectified_right_camera, disparity)
         self.assert_close(torch_optimizer(op, fullgraph=True)(*inputs), op(*inputs))
 
+    @pytest.mark.applies_to(dtypes=["float16", "bfloat16"], reason="half disparity rounds the pixel indices")
+    def test_convention_reprojection_keeps_pixel_indices(self, device: torch.device, dtype: torch.dtype) -> None:
+        left = torch.tensor(
+            [[[512.0, 0.0, 2048.0, 0.0], [0.0, 512.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0]]],
+            device=device,
+            dtype=torch.float32,
+        )
+        right = left.clone()
+        right[:, 0, 3] = -512.0
+        camera = StereoCamera(left, right)
+        disparity = torch.full((1, 2, 2110, 1), 64.0, device=device, dtype=dtype)
+
+        # With a unit baseline, Z = 512 / 64 = 8 and (X, Y) = ((u - 2048) / 64, v / 64).
+        expected = disparity.new_tensor([[53 / 64, 1 / 64, 8], [54 / 64, 1 / 64, 8], [55 / 64, 1 / 64, 8]])
+        points, valid = camera.reproject_disparity_to_3D(disparity, return_mask=True)
+
+        assert points.dtype == dtype
+        assert valid.all()
+        self.assert_close(points[0, 1, 2101:2104], expected, atol=0, rtol=0)
+
     @pytest.mark.parametrize("camera_index", [0, 1])
     @pytest.mark.parametrize("shape", [(3, 3), (4, 4), (3, 5)])
     def test_exception_invalid_camera_shape(self, batch_size, device, dtype, camera_index, shape):
