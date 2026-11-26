@@ -70,7 +70,7 @@ class FineMatching(nn.Module):
             return
 
         # compute pixel-level confidence matrix
-        with torch.autocast(enabled=True if not (self.training or self.validate) else False, device_type="cuda"):
+        with torch.autocast(enabled=not (self.training or self.validate), device_type="cuda"):
             feat_f0, feat_f1 = feat_0[..., : -self.local_regress_slicedim], feat_1[..., : -self.local_regress_slicedim]
             feat_ff0, feat_ff1 = (
                 feat_0[..., -self.local_regress_slicedim :],
@@ -145,6 +145,7 @@ class FineMatching(nn.Module):
         self.get_fine_match_local(coords_normalized, data, scale1)
 
     def get_fine_match_local(self, coords_normed: Tensor, data: Dict[str, Any], scale1: int) -> None:
+        """Keep the keypoints of image 0 and move those of image 1 by the regressed subpixel offset."""
         # W, WW, C, scale = self.W, self.WW, self.C, self.scale
 
         mkpts0_c, mkpts1_c = data["mkpts0_c"], data["mkpts1_c"]
@@ -157,6 +158,7 @@ class FineMatching(nn.Module):
 
     @torch.no_grad()
     def get_fine_ds_match(self, conf_matrix: Tensor, data: Dict[str, Any]) -> None:
+        """Move both keypoints of each match to the best pair of pixels in its fine windows."""
         W, WW, _C, scale = self.W, self.WW, self.C, self.scale
         m, _, _ = conf_matrix.shape
 

@@ -48,6 +48,7 @@ class RepVGG_8_1_align(nn.Module):
                     nn.init.constant_(m.bias, 0)
 
     def forward(self, x: Tensor) -> Dict[str, Tensor]:
+        """Return the 1/8 coarse features and the 1/4 and 1/2 features that the fine level refines with."""
         out = self.layer0(x)  # 1/2
         for module in self.layer1:
             out = module(out)  # 1/2

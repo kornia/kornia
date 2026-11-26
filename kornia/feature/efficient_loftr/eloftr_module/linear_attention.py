@@ -75,6 +75,8 @@ def pad_feature(m: Tensor, mask_h0: Tensor, mask_w0: Tensor, x_mask: Tensor) -> 
 
 
 class Attention(nn.Module):
+    """Multi-head scaled dot-product attention, through ``F.scaled_dot_product_attention`` when it is available."""
+
     def __init__(self, no_flash: bool = False, nhead: int = 8, dim: int = 256, fp32: bool = False) -> None:
         super().__init__()
         self.flash = FLASH_AVAILABLE and not no_flash
@@ -90,6 +92,7 @@ class Attention(nn.Module):
         q_mask: Optional[Tensor] = None,
         kv_mask: Optional[Tensor] = None,
     ) -> Tensor:
+        """Attend from ``query`` to ``key`` and ``value``: ``(N, H, L, D)`` with flash, ``(N, L, H, D)`` without."""
         # assert q_mask is None and kv_mask is None, "Not support generalized attention mask yet."
         if q_mask is not None:
             raise AssertionError(q_mask)

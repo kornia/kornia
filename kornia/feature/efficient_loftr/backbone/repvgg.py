@@ -29,7 +29,6 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 import torch
 from torch import Tensor, nn
-from torch.utils import checkpoint
 
 
 def conv_bn(
@@ -54,6 +53,11 @@ def conv_bn(
 
 
 class RepVGGBlock(nn.Module):
+    """RepVGG block: 3x3 and 1x1 convolution branches with BatchNorm, and an identity BatchNorm when the shape is kept.
+
+    The branches are summed before a ReLU. :meth:`switch_to_deploy` fuses them into one 3x3 convolution.
+    """
+
     def __init__(
         self,
         in_channels: int,
@@ -121,13 +125,11 @@ class RepVGGBlock(nn.Module):
             )
 
     def forward(self, inputs: Tensor) -> Tensor:
+        """Apply the block, through the fused convolution after :meth:`switch_to_deploy`."""
         if hasattr(self, "rbr_reparam"):
             return self.nonlinearity(self.se(self.rbr_reparam(inputs)))
 
-        if self.rbr_identity is None:
-            id_out = 0
-        else:
-            id_out = self.rbr_identity(inputs)
+        id_out = 0 if self.rbr_identity is None else self.rbr_identity(inputs)
 
         return self.nonlinearity(self.se(self.rbr_dense(inputs) + self.rbr_1x1(inputs) + id_out))
 
@@ -211,6 +213,7 @@ class RepVGGBlock(nn.Module):
         return kernel * t, beta - running_mean * gamma / std
 
     def switch_to_deploy(self) -> None:
+        """Fuse the branches into one 3x3 convolution with the same output, for inference."""
         if hasattr(self, "rbr_reparam"):
             return
         kernel, bias = self.get_equivalent_kernel_bias()
@@ -237,6 +240,8 @@ class RepVGGBlock(nn.Module):
 
 
 class RepVGG(nn.Module):
+    """RepVGG stem and first three stages, which the EfficientLoFTR backbone takes as its layers; no classifier."""
+
     def __init__(
         self,
         num_blocks: List[int],
@@ -292,19 +297,6 @@ class RepVGG(nn.Module):
             self.in_planes = planes
             self.cur_layer_idx += 1
         return nn.ModuleList(blocks)
-
-    def forward(self, x: Tensor) -> Tensor:
-        out = self.stage0(x)
-        for stage in (self.stage1, self.stage2, self.stage3):
-            for block in stage:
-                if self.use_checkpoint:
-                    out = checkpoint.checkpoint(block, out)
-                else:
-                    out = block(out)
-        out = self.gap(out)
-        out = out.view(out.size(0), -1)
-        out = self.linear(out)
-        return out
 
 
 optional_groupwise_layers = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26]

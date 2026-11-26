@@ -25,6 +25,12 @@ from kornia.feature.loftr.backbone.resnet_fpn import conv1x1, conv3x3
 
 
 class FinePreprocess(nn.Module):
+    """Cut fine-level feature windows around the coarse matches.
+
+    The coarse features are fused with the 1/4 and 1/2 backbone features into full-resolution features, from which
+    a ``fine_window_size`` window is cut around each match in image 0, and a window two pixels wider in image 1.
+    """
+
     def __init__(self, config: Dict[str, Any]) -> None:
         super().__init__()
 
@@ -57,6 +63,7 @@ class FinePreprocess(nn.Module):
                 nn.init.kaiming_normal_(p, mode="fan_out", nonlinearity="relu")
 
     def inter_fpn(self, feat_c: Tensor, x2: Tensor, x1: Tensor, stride: int) -> Tensor:
+        """Fuse the 1/8 coarse features with the 1/4 and 1/2 backbone features into full-resolution features."""
         feat_c = self.layer3_outconv(feat_c)
         feat_c = F.interpolate(feat_c, scale_factor=2.0, mode="bilinear", align_corners=False)
 
@@ -66,10 +73,10 @@ class FinePreprocess(nn.Module):
 
         x1 = self.layer1_outconv(x1)
         x1 = self.layer1_outconv2(x1 + x2)
-        x1 = F.interpolate(x1, scale_factor=2.0, mode="bilinear", align_corners=False)
-        return x1
+        return F.interpolate(x1, scale_factor=2.0, mode="bilinear", align_corners=False)
 
     def forward(self, feat_c0: Tensor, feat_c1: Tensor, data: Dict[str, Any]) -> Tuple[Tensor, Tensor]:
+        """Return the feature windows of both images for the coarse matches in ``data``, one row per match."""
         W = self.W
         stride = data["hw0_f"][0] // data["hw0_c"][0]
 

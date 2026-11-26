@@ -83,6 +83,7 @@ class RoPEPositionEncodingSine(nn.Module):
         )
 
     def rotate_half(self, x: Tensor) -> Tensor:
+        """Rotate each pair of channels by 90 degrees, as the rotary position encoding needs."""
         x = x.unflatten(-1, (-1, 2))
         x1, x2 = x.unbind(dim=-1)
         return torch.stack((-x2, x1), dim=-1).flatten(start_dim=-2)

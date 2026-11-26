@@ -27,6 +27,8 @@ INF = 1e9
 
 
 class CoarseMatching(nn.Module):
+    """Dual-softmax confidence between the coarse features, and its matches by the rules of LoFTR."""
+
     # LoFTR's thresholding, border, mutual-nearest and keypoint rules, shared as they are.
     get_coarse_match = _LoFTRCoarseMatching.get_coarse_match
 

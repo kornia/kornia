@@ -27,6 +27,12 @@ from .linear_attention import Attention
 
 
 class AG_RoPE_EncoderLayer(nn.Module):
+    """EfficientLoFTR encoder layer: attention between aggregated features, upsampled and added to the input.
+
+    Queries come from a strided depthwise convolution of ``x``, and keys and values from max-pooled ``source``, with
+    an optional rotary position encoding.
+    """
+
     def __init__(
         self,
         d_model: int,
