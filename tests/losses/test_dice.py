@@ -523,34 +523,24 @@ class TestDiceLoss(BaseTester):
         [float("nan"), float("inf"), -float("inf")],
     )
     @pytest.mark.parametrize("shape", [(1, 2), (128, 256)])
-    def test_ignore_index_nonfinite_logits(
-        self, device, dtype, average, invalid_logit, shape
-    ):
+    def test_ignore_index_nonfinite_logits(self, device, dtype, average, invalid_logit, shape):
         h, w = shape
         mid = w // 2
 
-        logits = torch.zeros(
-            (1, 2, h, w), device=device, dtype=dtype
-        )
+        logits = torch.zeros((1, 2, h, w), device=device, dtype=dtype)
         logits[:, 0] = 2.0
         logits[:, 1] = 1.0
         logits[..., mid:] = invalid_logit
         logits.requires_grad_(True)
 
-        target = torch.zeros(
-            (1, h, w), device=device, dtype=torch.long
-        )
+        target = torch.zeros((1, h, w), device=device, dtype=torch.long)
         target[..., mid:] = -100
 
         reference = logits[..., :mid].detach().clone()
         reference.requires_grad_(True)
 
-        expected = kornia.losses.dice_loss(
-            reference, target[..., :mid], average=average
-        )
-        actual = kornia.losses.dice_loss(
-            logits, target, average=average
-        )
+        expected = kornia.losses.dice_loss(reference, target[..., :mid], average=average)
+        actual = kornia.losses.dice_loss(logits, target, average=average)
 
         self.assert_close(actual, expected)
 
@@ -561,6 +551,7 @@ class TestDiceLoss(BaseTester):
         assert torch.count_nonzero(logits.grad[..., mid:]) == 0
 
         self.assert_close(logits.grad[..., :mid], reference.grad)
+
 
 class TestConventionsDiceLoss(BaseTester):
     """Pins for the averaging modes, ignored labels and known defect of :func:`dice_loss`."""
