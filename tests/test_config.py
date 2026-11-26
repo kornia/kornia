@@ -38,14 +38,15 @@ class TestHubDirectoryDefaults:
         # the test session pins torch.hub to a relative "weights/" (conftest.py); use torch's own default instead
         monkeypatch.setattr(torch.hub, "_hub_dir", None)
         monkeypatch.delenv("TORCH_HOME", raising=False)
-        before = KorniaConfig()
+
+        # resolve each default in the current directory: a relative default would resolve differently after chdir
+        def where():
+            config = KorniaConfig()
+            return [os.path.abspath(p) for p in (config.hub_cache_dir, config.hub_models_dir, config.hub_onnx_dir)]
+
+        before = where()
         monkeypatch.chdir(tmp_path)
-        after = KorniaConfig()
-        assert (after.hub_cache_dir, after.hub_models_dir, after.hub_onnx_dir) == (
-            before.hub_cache_dir,
-            before.hub_models_dir,
-            before.hub_onnx_dir,
-        )
+        assert where() == before
 
     def test_follows_torch_home(self, tmp_path, monkeypatch):
         # torch.hub.get_dir() reads TORCH_HOME on every call unless torch.hub.set_dir was used

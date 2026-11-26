@@ -19,9 +19,10 @@
 
 ``kornia_config`` holds the process-wide settings. ``kornia_config.lazyloader.installation_mode`` takes an
 :class:`InstallationMode` or its name in any case, and starts from the ``KORNIA_INSTALLATION_MODE`` environment
-variable, or ``"raise"`` when it is unset. ``kornia_config.hub_cache_dir`` (``.kornia_hub``) holds the downloaded
-sample images and ONNX configs, and ``kornia_config.hub_onnx_dir`` (default ``.kornia_hub/onnx_models``, set
-separately) the ONNX models, both relative to the working directory.
+variable, or ``"raise"`` when it is unset. ``kornia_config.hub_cache_dir`` (``<torch.hub.get_dir()>/kornia``) holds
+the downloaded sample images and ONNX configs, and ``kornia_config.hub_onnx_dir`` (default
+``<torch.hub.get_dir()>/kornia/onnx_models``, set separately) the ONNX models. Both defaults are absolute per-user
+paths that follow ``TORCH_HOME``.
 
 Which object to use:
 

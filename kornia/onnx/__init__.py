@@ -20,7 +20,7 @@
 :func:`load`, ``ONNXModule`` and ``ONNXSequential`` take models as ``onnx.ModelProto`` objects, local file paths,
 HTTP(S) URLs or ``hf://<folder>/<name>`` names of the `kornia/ONNX_models <https://huggingface.co/kornia/ONNX_models>`_
 Hugging Face repository, and by default cache a download in ``kornia.config.kornia_config.hub_onnx_dir``
-(``.kornia_hub/onnx_models`` under the working directory). They are called on numpy arrays or CPU torch tensors and
+(``<torch.hub.get_dir()>/kornia/onnx_models`` by default). They are called on numpy arrays or CPU torch tensors and
 return a list of numpy arrays; the session runs on the CPU unless ``providers`` or an ``as_*()`` method such as
 ``as_cuda()`` selects another execution provider.
 Export a Kornia module with ``torch.onnx.export``, or with its ``to_onnx()`` method where it has one, which returns

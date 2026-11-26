@@ -60,7 +60,7 @@ class ONNXModule(ONNXMixin, ONNXRuntimeMixin):
             ``ORT_ENABLE_EXTENDED`` graph optimizations.
         cache_dir: The directory where downloaded ONNX models (``hf://`` names and URLs) are cached, as
             :meth:`~kornia.onnx.utils.ONNXLoader.load_model` lays it out. If None,
-            ``kornia.config.kornia_config.hub_onnx_dir`` (``.kornia_hub/onnx_models`` under the working directory).
+            ``kornia.config.kornia_config.hub_onnx_dir`` (``<torch.hub.get_dir()>/kornia/onnx_models`` by default).
         target_ir_version: The IR version to convert the model to. If None, the model keeps its IR version.
         target_opset_version: The OPSET version to convert the model to. If None, the model keeps its OPSET version.
         force_download: If True, an ``hf://`` name or a URL is downloaded again, and replaces the cached file, even
