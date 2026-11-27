@@ -22,7 +22,57 @@ import kornia
 import kornia.augmentation as K
 
 from testing.augmentation.utils import assert_close, reproducibility_test
-from testing.base import autocast_for
+from testing.base import BaseTester, autocast_for
+
+
+class TestVideoChannelDropout(BaseTester):
+    @pytest.mark.parametrize("data_format", ["BTCHW", "BCTHW"])
+    @pytest.mark.parametrize("same_on_frame", [True, False])
+    @pytest.mark.parametrize("same_on_batch", [True, False])
+    def test_every_frame_drops_channels(self, data_format, same_on_frame, same_on_batch, device, dtype):
+        video = torch.ones(2, 4, 3, 5, 6, device=device, dtype=dtype)
+        if data_format == "BCTHW":
+            video = video.transpose(1, 2)
+        video.requires_grad_()
+        seq = K.VideoSequential(
+            K.RandomChannelDropout(num_drop_channels=2, p=1.0, same_on_batch=same_on_batch),
+            data_format=data_format,
+            same_on_frame=same_on_frame,
+        )
+
+        out = seq(video)
+        frames = out.transpose(1, 2) if data_format == "BCTHW" else out
+        # Two of the three channels must be zero in every frame, including later videos.
+        self.assert_close((frames == 0).all(dim=(-1, -2)).sum(-1), torch.full((2, 4), 2, device=device))
+        if same_on_frame:
+            self.assert_close(frames, frames[:, :1].expand_as(frames))
+        if same_on_batch:
+            self.assert_close(frames, frames[:1, :1].expand_as(frames))
+        self.assert_close(seq(video, params=seq._params), out)
+
+        out.sum().backward()
+        # The input is one everywhere: the output itself is the literal 0/1 derivative of channel replacement.
+        self.assert_close(video.grad, out)
+
+    @pytest.mark.parametrize("data_format", ["BTCHW", "BCTHW"])
+    @pytest.mark.parametrize("same_on_frame", [True, False])
+    @pytest.mark.parametrize("p", [0.0, 0.5])
+    def test_probability_selects_frames(self, data_format, same_on_frame, p, device, dtype):
+        video = torch.ones(3, 4, 3, 5, 6, device=device, dtype=dtype)
+        if data_format == "BCTHW":
+            video = video.transpose(1, 2)
+        seq = K.VideoSequential(K.RandomChannelDropout(p=p), data_format=data_format, same_on_frame=same_on_frame)
+
+        torch.manual_seed(0)
+        out = seq(video)
+        frames = out.transpose(1, 2) if data_format == "BCTHW" else out
+        selected = seq._params[0].data["batch_prob"].to(device=device).reshape(3, 4) > 0.5
+        # Unselected frames stay intact; each selected frame loses exactly one channel.
+        self.assert_close((frames == 0).all(dim=(-1, -2)).sum(-1), selected.long())
+        if p:
+            assert selected.any()
+            assert not selected.all()
+        self.assert_close(seq(video, params=seq._params), out)
 
 
 class TestVideoSequential:
