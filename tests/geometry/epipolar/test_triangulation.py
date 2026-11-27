@@ -200,24 +200,226 @@ class TestTriangulation(BaseTester):
     # ------------------------------------------------------------------
 
     def test_gradcheck(self, device):
-        points1 = torch.rand(1, 8, 2, device=device, dtype=torch.float64, requires_grad=True)
-        points2 = torch.rand(1, 8, 2, device=device, dtype=torch.float64)
-        P1 = kornia.core.ops.eye_like(3, points1)
-        P1 = torch.nn.functional.pad(P1, [0, 1])
-        P2 = kornia.core.ops.eye_like(3, points2)
-        P2 = torch.nn.functional.pad(P2, [0, 1])
+        P1 = torch.tensor(
+            [[[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0]]],
+            device=device,
+            dtype=torch.float64,
+            requires_grad=True,
+        )
+        P2 = torch.tensor(
+            [
+                [
+                    [0.98, 0.0, 0.198997487421324, -1.0],
+                    [0.0, 1.0, 0.0, 0.1],
+                    [-0.198997487421324, 0.0, 0.98, 0.2],
+                ]
+            ],
+            device=device,
+            dtype=torch.float64,
+            requires_grad=True,
+        )
+        points1 = torch.tensor(
+            [[[0.05, -0.03], [-0.08, 0.12], [0.15, 0.07], [-0.11, -0.09]]],
+            device=device,
+            dtype=torch.float64,
+            requires_grad=True,
+        )
+        points2 = torch.tensor(
+            [[[-0.09, -0.01], [-0.19, 0.14], [0.03, 0.09], [-0.24, -0.06]]],
+            device=device,
+            dtype=torch.float64,
+            requires_grad=True,
+        )
         assert self.gradcheck(epi.triangulate_points, (P1, P2, points1, points2), raise_exception=True, fast_mode=True)
 
     @pytest.mark.parametrize("solver", SOLVERS)
     def test_gradcheck_all_solvers(self, solver, device):
-        points1 = torch.rand(1, 4, 2, device=device, dtype=torch.float64, requires_grad=True)
-        points2 = torch.rand(1, 4, 2, device=device, dtype=torch.float64)
-        P1 = kornia.core.ops.eye_like(3, points1)
-        P1 = torch.nn.functional.pad(P1, [0, 1])
-        P2 = kornia.core.ops.eye_like(3, points2)
-        P2 = torch.nn.functional.pad(P2, [0, 1])
+        P1 = torch.tensor(
+            [[[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0]]],
+            device=device,
+            dtype=torch.float64,
+            requires_grad=True,
+        )
+        P2 = torch.tensor(
+            [
+                [
+                    [0.98, 0.0, 0.198997487421324, -1.0],
+                    [0.0, 1.0, 0.0, 0.1],
+                    [-0.198997487421324, 0.0, 0.98, 0.2],
+                ]
+            ],
+            device=device,
+            dtype=torch.float64,
+            requires_grad=True,
+        )
+        points1 = torch.tensor(
+            [[[0.05, -0.03], [-0.08, 0.12], [0.15, 0.07], [-0.11, -0.09]]],
+            device=device,
+            dtype=torch.float64,
+            requires_grad=True,
+        )
+        points2 = torch.tensor(
+            [[[-0.09, -0.01], [-0.19, 0.14], [0.03, 0.09], [-0.24, -0.06]]],
+            device=device,
+            dtype=torch.float64,
+            requires_grad=True,
+        )
         fn = functools.partial(epi.triangulate_points, solver=solver)
         assert self.gradcheck(fn, (P1, P2, points1, points2), raise_exception=True, fast_mode=True)
+
+    @pytest.mark.parametrize("solver", ["svd", "eigh"])
+    def test_gradcheck_zero_baseline_points(self, solver, device):
+        # At an exact zero baseline the camera-centre normalization is discontinuous wrt P1/P2, while
+        # gradients wrt the image correspondences remain smooth.
+        P1 = torch.eye(3, 4, device=device, dtype=torch.float64)[None]
+        P2 = torch.tensor(
+            [[[0.0, -1.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0]]],
+            device=device,
+            dtype=torch.float64,
+        )
+        points1 = torch.tensor(
+            [[[0.05, -0.03], [-0.08, 0.12], [0.15, 0.07], [-0.11, -0.09]]],
+            device=device,
+            dtype=torch.float64,
+            requires_grad=True,
+        )
+        points2 = torch.tensor(
+            [[[-0.09, -0.01], [-0.19, 0.14], [0.03, 0.09], [-0.24, -0.06]]],
+            device=device,
+            dtype=torch.float64,
+            requires_grad=True,
+        )
+        fn = functools.partial(epi.triangulate_points, solver=solver)
+        assert self.gradcheck(
+            fn,
+            (P1, P2, points1, points2),
+            requires_grad=[False, False, True, True],
+            raise_exception=True,
+            fast_mode=True,
+        )
+
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason="backward stability on degenerate poses")
+    @pytest.mark.parametrize("solver", SOLVERS)
+    def test_degenerate_camera_backward_finite(self, solver, device, dtype):
+        pts1 = torch.tensor(
+            [[[0.05, -0.03], [-0.08, 0.12], [0.15, 0.07]]],
+            device=device,
+            dtype=dtype,
+            requires_grad=True,
+        )
+        pts2 = torch.tensor(
+            [[[-0.09, -0.01], [-0.19, 0.14], [0.03, 0.09]]],
+            device=device,
+            dtype=dtype,
+            requires_grad=True,
+        )
+        eye = torch.eye(3, device=device, dtype=dtype)[None]
+        roll = torch.tensor([[[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        for C_val in ([1.0, 2.0, -3.0], [2001.0, -1998.0, 2003.0]):
+            C = torch.tensor([[C_val]], device=device, dtype=dtype).transpose(-2, -1)
+            P1_zb = torch.cat([eye, -C], dim=-1).detach().clone().requires_grad_(True)
+            P2_zb = torch.cat([roll, -roll @ C], dim=-1).detach().clone().requires_grad_(True)
+            p1_in = pts1.detach().clone().requires_grad_(True)
+            p2_in = pts2.detach().clone().requires_grad_(True)
+            out = epi.triangulate_points(P1_zb, P2_zb, p1_in, p2_in, solver=solver)
+            valid = out[~out.isnan().any(-1)]
+            if valid.numel() > 0:
+                valid.sum().backward()
+                for t in (P1_zb, P2_zb, p1_in, p2_in):
+                    assert t.grad is None or torch.isfinite(t.grad).all()
+
+        P_aff1_u = torch.tensor(
+            [[[1.0, 0.0, 0.0, -10.0], [0.0, 1.0, 0.0, 5.0], [0.0, 0.0, 0.0, 1.0]]],
+            device=device,
+            dtype=dtype,
+            requires_grad=True,
+        )
+        P_aff2_u = torch.tensor(
+            [[[0.0, 0.0, 1.0, -20.0], [0.0, 1.0, 0.0, 5.0], [0.0, 0.0, 0.0, 1.0]]],
+            device=device,
+            dtype=dtype,
+            requires_grad=True,
+        )
+        P_aff2 = torch.tensor(
+            [[[0.0, 0.0, 500.0, -100000.0], [0.0, 500.0, 0.0, 25000.0], [0.0, 0.0, 0.0, 1.0]]],
+            device=device,
+            dtype=dtype,
+            requires_grad=True,
+        )
+        P_persp = torch.tensor(
+            [[[800.0, 0.0, 320.0, -79360.0], [0.0, 800.0, 240.0, 41200.0], [0.0, 0.0, 1.0, -195.0]]],
+            device=device,
+            dtype=dtype,
+            requires_grad=True,
+        )
+        xa1_u = torch.tensor([[[1.5, 0.8], [-0.2, -0.4]]], device=device, dtype=dtype, requires_grad=True)
+        xa2_u = torch.tensor([[[2.0, 0.8], [-3.0, -0.4]]], device=device, dtype=dtype, requires_grad=True)
+        xa2 = torch.tensor([[[2500.0, 400.0], [-1500.0, -200.0]]], device=device, dtype=dtype, requires_grad=True)
+        xp = torch.tensor([[[396.0, 272.0], [312.0, 210.0]]], device=device, dtype=dtype, requires_grad=True)
+        for p_a, p_b, q_a, q_b in ((P_aff1_u, P_aff2_u, xa1_u, xa2_u), (P_persp, P_aff2, xp, xa2)):
+            for t in (p_a, p_b, q_a, q_b):
+                if t.grad is not None:
+                    t.grad.zero_()
+            out_m = epi.triangulate_points(p_a, p_b, q_a, q_b, solver=solver)
+            out_m.sum().backward()
+            for t in (p_a, p_b, q_a, q_b):
+                assert t.grad is not None
+                assert torch.isfinite(t.grad).all()
+
+        # Parallel rays produce NaN in one row; masking invalid rows must keep finite gradients for valid rows/cameras.
+        P1_p = torch.tensor(
+            [[[1.0, 0.0, 0.0, -10.0], [0.0, 1.0, 0.0, 5.0], [0.0, 0.0, 1.0, -20.0]]],
+            device=device,
+            dtype=dtype,
+            requires_grad=True,
+        )
+        P2_p = torch.tensor(
+            [[[1.0, 0.0, 0.0, -11.0], [0.0, 1.0, 0.0, 5.0], [0.0, 0.0, 1.0, -20.0]]],
+            device=device,
+            dtype=dtype,
+            requires_grad=True,
+        )
+        q1_p = torch.tensor([[[0.25, -0.15], [0.2, 0.1]]], device=device, dtype=dtype, requires_grad=True)
+        q2_p = torch.tensor([[[0.25, -0.15], [-0.05, 0.1]]], device=device, dtype=dtype, requires_grad=True)
+        out_p = epi.triangulate_points(P1_p, P2_p, q1_p, q2_p, solver=solver)
+        assert torch.isnan(out_p[:, 0]).all()
+        valid_p = out_p[~out_p.isnan().any(-1)]
+        assert valid_p.shape[0] == 1
+        valid_p.sum().backward()
+        for t in (P1_p, P2_p, q1_p, q2_p):
+            assert t.grad is not None
+            assert torch.isfinite(t.grad).all()
+
+    @pytest.mark.parametrize("solver", SOLVERS)
+    def test_mixed_input_dtypes(self, solver, device):
+        P1 = torch.tensor(
+            [[[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0]]],
+            device=device,
+            dtype=torch.float32,
+        )
+        P2 = torch.tensor(
+            [
+                [
+                    [0.98, 0.0, 0.198997487421324, -1.0],
+                    [0.0, 1.0, 0.0, 0.1],
+                    [-0.198997487421324, 0.0, 0.98, 0.2],
+                ]
+            ],
+            device=device,
+            dtype=torch.float32,
+        )
+        pts1 = torch.tensor([[[0.05, -0.03], [-0.08, 0.12]]], device=device, dtype=torch.float32)
+        pts2 = torch.tensor([[[-0.09, -0.01], [-0.19, 0.14]]], device=device, dtype=torch.float32)
+        ref = epi.triangulate_points(P1, P2, pts1, pts2, solver=solver)
+
+        out_half_pts32 = epi.triangulate_points(P1.half(), P2.half(), pts1, pts2, solver=solver)
+        assert out_half_pts32.dtype == torch.float32
+        self.assert_close(out_half_pts32, ref, atol=5e-3, rtol=0.0)
+
+        if device.type != "mps":
+            out_f32_pts64 = epi.triangulate_points(P1, P2, pts1.double(), pts2.double(), solver=solver)
+            assert out_f32_pts64.dtype == torch.float64
+            self.assert_close(out_f32_pts64, ref.double(), atol=1e-6, rtol=0.0)
 
     # ------------------------------------------------------------------
     # Noisy correspondences — compare against OpenCV DLT reference
@@ -228,23 +430,27 @@ class TestTriangulation(BaseTester):
     )
     @pytest.mark.parametrize("solver", ["svd", "eigh"])
     def test_noisy_correspondences_dlt(self, solver, device, dtype):
-        """Triangulation from noisy correspondences matches the numpy DLT reference.
+        """Triangulation from noisy correspondences matches the camera-midpoint numpy DLT reference.
 
         Two-view setup: camera 1 at [I|0], camera 2 with ~5.7-degree rotation and
         1-unit rightward translation, 8 points at depth 3-4, Gaussian noise sigma=0.05.
 
-        Expected output was pre-computed once with a point-by-point numpy SVD
-        implementation identical to ``cv2.triangulatePoints`` (seed 7).
+        Expected output was pre-computed independently in numpy by centering at the camera-centre
+        midpoint and scaling by the baseline before solving point-by-point DLT with SVD (seed 7).
 
         # Snippet used to generate X_expected (requires numpy only):
-        # import numpy as np, torch
-        # torch.manual_seed(7)
-        # ... (see test body for the full scene construction)
+        # import numpy as np
+        # C1 = -np.linalg.solve(P1[:3, :3], P1[:3, 3:4])
+        # C2 = -np.linalg.solve(P2[:3, :3], P2[:3, 3:4])
+        # c = 0.5 * (C1 + C2)
+        # s = float(np.linalg.norm(C2 - C1))
+        # P1_loc = np.concatenate([P1[:3, :3], (P1[:3, :3] @ c + P1[:3, 3:4]) / s], axis=-1)
+        # P2_loc = np.concatenate([P2[:3, :3], (P2[:3, :3] @ c + P2[:3, 3:4]) / s], axis=-1)
         # for i in range(N):
-        #     A = np.array([pts1[0,i]*P1[2]-P1[0], pts1[1,i]*P1[2]-P1[1],
-        #                   pts2[0,i]*P2[2]-P2[0], pts2[1,i]*P2[2]-P2[1]])
-        #     _, _, V = np.linalg.svd(A)
-        #     X_expected[i] = V[-1, :3] / V[-1, 3]
+        #     A = np.array([pts1[i, 0]*P1_loc[2]-P1_loc[0], pts1[i, 1]*P1_loc[2]-P1_loc[1],
+        #                   pts2[i, 0]*P2_loc[2]-P2_loc[0], pts2[i, 1]*P2_loc[2]-P2_loc[1]])
+        #     _, _, Vt = np.linalg.svd(A)
+        #     X_expected[i] = s * (Vt[-1, :3] / Vt[-1, 3]) + c[:, 0]
         """
 
         # Hardcoded inputs (torch.manual_seed(7), noise sigma=0.05)
@@ -290,17 +496,17 @@ class TestTriangulation(BaseTester):
             dtype=dtype,
             device=device,
         )
-        # Expected: numpy DLT (same algorithm as cv2.triangulatePoints)
+        # Expected: independent numpy midpoint-normalized DLT
         X_expected = torch.tensor(
             [
-                [-0.08818743120343768, 0.188334626330844, 3.6220817756133172],
-                [0.16144758240818913, 0.8807090389866558, 5.4844829932547015],
-                [0.18216324334542242, 0.517464929751309, 3.3477856439676588],
-                [0.3350949547897918, 0.06786420490996858, 2.770735605435314],
-                [-0.20989477003241103, -0.3123833872441908, 3.754403690255068],
-                [0.5852768065399436, 0.0989402354921456, 2.6188660940360844],
-                [0.1480216292032729, 0.5668535581804692, 3.5667031501090993],
-                [0.22379169128122922, 0.3033298174456883, 2.9457656267879586],
+                [-0.08880389658945637, 0.18841153670999625, 3.62351131790014],
+                [0.15757177732838928, 0.885600174897823, 5.514482304342408],
+                [0.18066248631664222, 0.5183937975066767, 3.3535967578367316],
+                [0.33467099874663286, 0.06791158161820093, 2.7725291146801854],
+                [-0.20996360737018555, -0.31239319362076123, 3.754519968575197],
+                [0.5852741626823669, 0.09894127466277042, 2.6188917064690562],
+                [0.14724987297728892, 0.5673514694486397, 3.5697398583427917],
+                [0.2235387840429543, 0.30342518833918153, 2.9466516048459175],
             ],
             dtype=dtype,
             device=device,
@@ -507,9 +713,7 @@ class TestConventionTriangulation(BaseTester):
         expected = torch.tensor([[9.75, 1.75, 19.0]], device=device, dtype=dtype)
         self.assert_close(epi.triangulate_points(left, right, left_pixels, right_pixels, solver=solver), expected)
 
-    @pytest.mark.applies_to(
-        devices=("cpu", "cuda"), dtypes=("float16",), reason="float64 accumulation of the normal equations"
-    )
+    @pytest.mark.applies_to(dtypes=("float16",), reason="float16 preserves the solution at an offset world origin")
     def test_triangulate_eigh_preserves_half_solution_at_offset_world_origin(self, device, dtype):
         # Focal length 512, principal point (512, 208), baseline 1. A disparity of 8 gives camera
         # depth 64 and world z = 64 - 80 = -16. World x and y are the principal-point offsets divided by 8.
@@ -567,3 +771,163 @@ class TestConventionTriangulation(BaseTester):
             cofactor = epi.triangulate_points(P1, P2, x1 + n1, x2 + n2, solver="cofactor")
             assert (svd - X).norm(dim=-1).max() <= 0.25, name
             assert (cofactor - svd).norm(dim=-1).max() <= 1e-4, name
+
+    @staticmethod
+    def _shifted_scaled_noisy_fixture(device: torch.device, dtype: torch.dtype):
+        """Return camera poses, intrinsics, noisy projections, and independent midpoint DLT reference."""
+        K1 = torch.tensor([[800.0, 0.0, 320.0], [0.0, 800.0, 240.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype)
+        K2 = torch.tensor([[820.0, 0.0, 310.0], [0.0, 820.0, 250.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype)
+        R1 = torch.tensor(
+            [
+                [0.9968017063026194, 0.0, 0.0799146939691727],
+                [0.0, 1.0, 0.0],
+                [-0.0799146939691727, 0.0, 0.9968017063026194],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        R2 = torch.tensor(
+            [
+                [0.9780309147241483, 0.0, -0.2084598998460996],
+                [0.0, 1.0, 0.0],
+                [0.2084598998460996, 0.0, 0.9780309147241483],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        C1 = torch.tensor([[0.4], [-0.2], [0.1]], device=device, dtype=dtype)
+        C2 = torch.tensor([[1.4], [0.1], [-0.2]], device=device, dtype=dtype)
+        x1 = torch.tensor(
+            [
+                [346.960492734637, 222.457937028172],
+                [495.44079372896, 335.34058417263],
+                [262.764810314054, 347.137414337379],
+                [471.256362376846, 174.682530915698],
+                [572.28250093614, 307.155903216317],
+                [296.64024135684, 255.215374023558],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        x2 = torch.tensor(
+            [
+                [-96.625850918629, 174.989704810013],
+                [86.793889451062, 297.106666519409],
+                [-145.44730443701, 321.711187767982],
+                [2.676362180344, 120.782985532275],
+                [152.623258016905, 266.221325507181],
+                [-120.270653957701, 217.898905519145],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        # Expected unshifted/unit-scale DLT points computed independently with numpy SVD in the midpoint frame
+        # (np.random.default_rng(12345).normal(0.0, 0.5) pixel noise around angles a1=0.08, a2=-0.21).
+        X_ref = torch.tensor(
+            [
+                [0.19595262223655785, -0.29748185587550513, 4.507761362426817],
+                [1.0982065645199677, 0.4000909131491279, 5.2068001362796394],
+                [-0.5018611181220574, 0.5978606830822574, 6.013199335118363],
+                [0.798715107131686, -0.499675690509741, 3.8174583478459088],
+                [1.5048699031693211, 0.1976998878836682, 4.9191248995025925],
+                [-0.1863552625212399, -0.1006820826299922, 5.4578439508466605],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        return K1, K2, R1, R2, C1, C2, x1, x2, X_ref
+
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason="precision test for shifted/scaled scenes")
+    @pytest.mark.parametrize("solver", SOLVERS)
+    def test_convention_triangulate_origin_shift_and_unit_scale(self, solver, device, dtype):
+        K1, K2, R1, R2, C1, C2, x1, x2, X_ref = self._shifted_scaled_noisy_fixture(device, dtype)
+        shift_dir = torch.tensor([[1.0], [-0.7], [0.5]], device=device, dtype=dtype)
+        # In float32, the 1/1000 scene shifted by 500 m stores C_shifted ~ 0.5 against a 1e-3 baseline,
+        # quantizing P's translation by ~6e-8 / 1e-3 ~ 6e-5 in normalized coordinates. Cofactor uses one step
+        # of inverse iteration and matches SVD within O((s4/s3)^3) ~ 1.5e-8 in float64 on noisy input.
+        ref_tol = 1e-6 if solver == "cofactor" else 1e-10
+        tol = ref_tol if dtype == torch.float64 else 1e-3
+        self_tol = 1e-10 if dtype == torch.float64 else 1e-3
+        rec_baseline = None
+        for scale in (1.0, 1000.0, 0.001):
+            for shift_mag in (0.0, 87.0, 500.0):
+                shift = shift_dir * shift_mag
+                C1_s = (C1 + shift) * scale
+                C2_s = (C2 + shift) * scale
+                P1 = (K1 @ torch.cat([R1, -R1 @ C1_s], dim=-1)).unsqueeze(0)
+                P2 = (K2 @ torch.cat([R2, -R2 @ C2_s], dim=-1)).unsqueeze(0)
+                out = epi.triangulate_points(P1, P2, x1.unsqueeze(0), x2.unsqueeze(0), solver=solver).squeeze(0)
+                rec = out / scale - shift.squeeze(-1)
+                self.assert_close(rec, X_ref, atol=tol, rtol=0.0)
+                if rec_baseline is None:
+                    rec_baseline = rec
+                else:
+                    self.assert_close(rec, rec_baseline, atol=self_tol, rtol=0.0)
+
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason="noisy view-swap invariance across shift and scale")
+    @pytest.mark.parametrize("solver", SOLVERS)
+    def test_convention_triangulate_noisy_view_swap_symmetry(self, solver, device, dtype):
+        K1, K2, R1, R2, C1, C2, x1, x2, _ = self._shifted_scaled_noisy_fixture(device, dtype)
+        shift = torch.tensor([[500.0], [-350.0], [250.0]], device=device, dtype=dtype)
+        # cof inverse iteration picks the longest sub-system and can differ slightly at float32 input roundoff.
+        tol = 1e-10 if dtype == torch.float64 else 5e-5
+        for scale in (1.0, 1000.0, 0.001):
+            P1 = (K1 @ torch.cat([R1, -R1 @ ((C1 + shift) * scale)], dim=-1)).unsqueeze(0)
+            P2 = (K2 @ torch.cat([R2, -R2 @ ((C2 + shift) * scale)], dim=-1)).unsqueeze(0)
+            out12 = epi.triangulate_points(P1, P2, x1.unsqueeze(0), x2.unsqueeze(0), solver=solver).squeeze(0)
+            out21 = epi.triangulate_points(P2, P1, x2.unsqueeze(0), x1.unsqueeze(0), solver=solver).squeeze(0)
+            self.assert_close(out12 / scale - shift.squeeze(-1), out21 / scale - shift.squeeze(-1), atol=tol, rtol=0.0)
+
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason="singular M and shifted zero-baseline convention")
+    @pytest.mark.parametrize("solver", SOLVERS)
+    def test_convention_triangulate_singular_M_and_shifted_zero_baseline(self, solver, device, dtype):
+        # Singular M (affine cameras at infinity) and mixed perspective+affine far from origin: finite result.
+        P_aff1_u = torch.tensor(
+            [[[1.0, 0.0, 0.0, -10.0], [0.0, 1.0, 0.0, 5.0], [0.0, 0.0, 0.0, 1.0]]],
+            device=device,
+            dtype=dtype,
+        )
+        P_aff2_u = torch.tensor(
+            [[[0.0, 0.0, 1.0, -20.0], [0.0, 1.0, 0.0, 5.0], [0.0, 0.0, 0.0, 1.0]]],
+            device=device,
+            dtype=dtype,
+        )
+        P_aff2 = torch.tensor(
+            [[[0.0, 0.0, 500.0, -100000.0], [0.0, 500.0, 0.0, 25000.0], [0.0, 0.0, 0.0, 1.0]]],
+            device=device,
+            dtype=dtype,
+        )
+        P_persp = torch.tensor(
+            [[[800.0, 0.0, 320.0, -79360.0], [0.0, 800.0, 240.0, 41200.0], [0.0, 0.0, 1.0, -195.0]]],
+            device=device,
+            dtype=dtype,
+        )
+        X_aff_u = torch.tensor([[[11.5, -4.2, 22.0], [9.8, -5.4, 17.0]]], device=device, dtype=dtype)
+        X_aff = torch.tensor([[[101.5, -49.2, 205.0], [99.8, -50.4, 197.0]]], device=device, dtype=dtype)
+
+        def project(P: torch.Tensor, Y: torch.Tensor) -> torch.Tensor:
+            return _dehom(torch.cat([Y, torch.ones_like(Y[..., :1])], -1) @ P.transpose(-2, -1))
+
+        xa1_u, xa2_u = project(P_aff1_u, X_aff_u), project(P_aff2_u, X_aff_u)
+        xp, xa2 = project(P_persp, X_aff), project(P_aff2, X_aff)
+        tol = 1e-6 if dtype == torch.float64 else 5e-2
+        self.assert_close(
+            epi.triangulate_points(P_aff1_u, P_aff2_u, xa1_u, xa2_u, solver=solver), X_aff_u, atol=tol, rtol=0.0
+        )
+        self.assert_close(epi.triangulate_points(P_persp, P_aff2, xp, xa2, solver=solver), X_aff, atol=tol, rtol=0.0)
+
+        # Shifted zero baseline: coincident camera centers at [2001, -1998, 2003].
+        two_view = two_view_scene(device, dtype)
+        K1, K2, R, X = two_view["K1"], two_view["K2"], two_view["R"], two_view["X"]
+        eye = torch.eye(3, device=device, dtype=dtype)[None]
+        C_far = torch.tensor([[[2001.0], [-1998.0], [2003.0]]], device=device, dtype=dtype)
+        P1_zb = epi.projection_from_KRt(K1, eye, -C_far)
+        P2_zb = epi.projection_from_KRt(K2, R, -R @ C_far)
+        x1_zb, x2_zb = project(P1_zb, X + C_far.transpose(-2, -1)), project(P2_zb, X + C_far.transpose(-2, -1))
+        out_zb = epi.triangulate_points(P1_zb, P2_zb, x1_zb, x2_zb, solver=solver)
+        if solver == "cofactor":
+            assert torch.isnan(out_zb).all()
+        else:
+            X64 = X.cpu().double()
+            v = (out_zb - C_far.transpose(-2, -1)).cpu().double()
+            assert (torch.linalg.cross(v, X64, dim=-1).norm(dim=-1) / X64.norm(dim=-1)).max() <= 5e-2
