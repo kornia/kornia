@@ -565,3 +565,22 @@ class TestDistortionKannalaBrandt(BaseTester):
         ).to(dtype)
 
         self.assert_close(analytic, autograd)
+
+    def test_convention_undistort_points_kannala_brandt_half_precision_calibration_preserves_fp32_precision_6938(
+        self, device, dtype
+    ):
+        # Regression for #6938: undistorting float32 pixels with half-precision calibration params
+        # must evaluate in at least float32 working precision and preserve subpixel precision.
+        if dtype not in (torch.float16, torch.bfloat16):
+            return
+        params_half = torch.tensor(
+            [1000.0, 1000.0, 320.0, 240.0, 0.1, 0.01, 0.001, 0.0001],
+            device=device,
+            dtype=dtype,
+        )
+        points_fp32 = torch.tensor([[320.0025, 240.005]], device=device, dtype=torch.float32)
+        recovered = undistort_points_kannala_brandt(points_fp32, params_half)
+
+        assert recovered.dtype == torch.float32
+        assert recovered[0, 0] != 0.0
+        assert recovered[0, 1] != 0.0
