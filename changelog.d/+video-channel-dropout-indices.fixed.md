@@ -1,0 +1,1 @@
+`VideoSequential` now applies `RandomChannelDropout` to every selected frame, preserving shared channel choices with `same_on_frame=True` and `same_on_batch=True` instead of repeatedly overwriting the first frames.

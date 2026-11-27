@@ -238,11 +238,13 @@ class VideoSequential(ImageSequential):
 
     @staticmethod
     def _batch_index_param(module: nn.Module) -> Optional[str]:
-        """Name the parameter of a mix augmentation that holds indices into the image batch.
+        """Name the parameter of an augmentation that holds indices into the image batch.
 
         Along its first axis the parameter has one row per image, and its values index the batch as well. Drawn per
         video, those values are video indices, which must become indices into the ``B * T`` flattened frames.
         """
+        if isinstance(module, K.RandomChannelDropout):
+            return "batch_idx"
         if isinstance(module, K.RandomMixUpV2):
             return "mixup_pairs"
         if isinstance(module, K.PatchMix):
@@ -327,8 +329,9 @@ class VideoSequential(ImageSequential):
             if isinstance(module, (K.RandomCrop, _AugmentationBase, K.MixAugmentationBaseV2)):
                 batch_index_param = self._batch_index_param(module)
                 is_cutmix = isinstance(module, K.RandomCutMixV2)
-                # A mix pairs the images of a batch with each other, so it needs one draw per video, or per frame with
-                # same_on_frame=False, never a shared one. Its own generator applies same_on_batch.
+                # Batch indices need one row per video, or per frame with same_on_frame=False, even when the random
+                # values are shared. The generator applies same_on_batch; sharing dropout's destination index would
+                # overwrite only the first frame instead of the chosen channels of every frame.
                 is_same_on_batch = (
                     getattr(module, "same_on_batch", False) and batch_index_param is None and not is_cutmix
                 )
