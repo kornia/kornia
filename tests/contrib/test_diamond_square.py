@@ -104,6 +104,27 @@ class TestDiamondSquare(BaseTester):
         assert out.device.type == device.type
 
     @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64")
+    @pytest.mark.parametrize("parameter", ["roughness", "random_scale"])
+    def test_float_parameter_keeps_float64_precision(self, parameter, device):
+        # Both forms specify the same float64 parameter and consume identical draws, so their maps must match exactly.
+        value = 0.6123456789012345
+        generator = torch.Generator(device=device)
+        draw = functools.partial(torch.rand, generator=generator)
+        kwargs = {"random_fn": draw, "device": device, "dtype": torch.float64}
+        default_dtype = torch.get_default_dtype()
+        try:
+            torch.set_default_dtype(torch.float32)
+            generator.manual_seed(42)
+            actual = kornia.contrib.diamond_square((2, 2, 9, 9), **kwargs, **{parameter: value})
+            generator.manual_seed(42)
+            expected = kornia.contrib.diamond_square(
+                (2, 2, 9, 9), **kwargs, **{parameter: torch.tensor(value, dtype=torch.float64, device=device)}
+            )
+        finally:
+            torch.set_default_dtype(default_dtype)
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64")
     @pytest.mark.parametrize("tensor_arg", ["random_scale", "roughness"])
     def test_dtype_none_follows_a_tensor_argument_at_every_size(self, tensor_arg, device):
         # With dtype=None each level promotes the map to the dtype of random_scale * roughness, and a map with a side
