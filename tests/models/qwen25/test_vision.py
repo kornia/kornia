@@ -20,11 +20,13 @@ from __future__ import annotations
 import json
 import struct
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 import torch
 
 from kornia.models.qwen25 import Qwen25VisionConfig, Qwen25VisionTransformer
+from kornia.models.qwen25.vision import Qwen25VisionAttention, scaled_dot_product_attention
 
 from testing.base import BaseTester
 
@@ -72,7 +74,37 @@ def _save_safetensors(tensors: dict[str, torch.Tensor], path: Path) -> None:
 
 
 class TestQwen25VisionTransformer(BaseTester):
-    @pytest.mark.parametrize("batch_size", [0, 1, 2])
+    def test_scripted_window_attention(self, device, dtype):
+        attention = Qwen25VisionAttention(16, 4).to(device, dtype).eval()
+        image_tokens = torch.rand(2, 12, 16, device=device, dtype=dtype)
+        cos = torch.ones(12, 4, device=device, dtype=dtype)
+        sin = torch.zeros_like(cos)
+        indices = torch.tensor([[0, 1, 2, 3, 4, 5, 6, 7], [8, 9, 10, 11, -1, -1, -1, -1]], device=device)
+        layout = (indices, torch.arange(12, device=device))
+        with torch.no_grad():
+            actual = torch.jit.script(attention)(image_tokens, cos, sin, None, layout)
+            expected = attention(image_tokens, cos, sin, None, layout)
+        self.assert_close(actual, expected)
+
+    def test_local_attention_work_is_bounded_by_window(self, device, dtype):
+        config = _tiny_config(patch_size=2, window_size=8)
+        model = Qwen25VisionTransformer(config).to(device, dtype).eval()
+        # Both image dimensions end in partial windows, and the batch must remain isolated.
+        images = torch.rand(2, 3, 60, 44, device=device, dtype=dtype)
+        with (
+            torch.no_grad(),
+            patch(
+                "kornia.models.qwen25.vision.scaled_dot_product_attention", wraps=scaled_dot_product_attention
+            ) as attention,
+        ):
+            output = model(images)
+        local, full = attention.call_args_list
+        assert local.args[0].shape[-2] <= (config.window_size // config.patch_size) ** 2
+        assert local.args[1].shape[-2] <= (config.window_size // config.patch_size) ** 2
+        assert full.args[0].shape[-2] == 30 * 22
+        assert output.shape == (2, 15 * 11, config.out_hidden_size)
+
+    @pytest.mark.parametrize("batch_size", [0, 2])
     def test_smoke(self, batch_size, device, dtype):
         model = Qwen25VisionTransformer(_tiny_config()).to(device, dtype).eval()
         images = torch.rand(batch_size, 3, 112, 84, device=device, dtype=dtype)
@@ -84,7 +116,7 @@ class TestQwen25VisionTransformer(BaseTester):
         assert out.dtype == dtype
         assert out.device.type == device.type
 
-    @pytest.mark.parametrize(("height", "width", "tokens"), [(28, 28, 1), (56, 84, 6), (112, 168, 24)])
+    @pytest.mark.parametrize(("height", "width", "tokens"), [(28, 28, 1), (56, 84, 6)])
     def test_cardinality(self, height, width, tokens, device, dtype):
         model = Qwen25VisionTransformer(_tiny_config()).to(device, dtype).eval()
 

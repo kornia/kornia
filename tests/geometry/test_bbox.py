@@ -43,6 +43,17 @@ from kornia.geometry.transform.crop3d import crop_and_resize3d, crop_by_boxes3d
 from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
 
 
+def _coordinate_tolerances(dtype, scale):
+    """Return the float32/float64 tolerance of the box-transform pins, or a half-precision one at coordinate ``scale``.
+
+    In half precision each coordinate goes through up to four roundings of at most ``eps / 2 * scale``: the input
+    literal, the ``xywh`` conversion, the transform and the expected literal.
+    """
+    if dtype in (torch.float16, torch.bfloat16):
+        return {"atol": 2 * torch.finfo(dtype).eps * scale, "rtol": 0.0}
+    return {"atol": 1e-4, "rtol": 1e-4}
+
+
 class TestBbox2D(BaseTester):
     def test_wart_infer_bbox_shape_is_inclusive_3934(self, device, dtype):
         # Wart pin for kornia#3934: a raw box spanning x=1..4 and y=1..2 reports
@@ -87,7 +98,7 @@ class TestBbox2D(BaseTester):
         boxes = torch.zeros(1, num_boxes, 4, 2, device=device, dtype=dtype)
 
         with pytest.raises(ShapeError, match="expected 3 dimensions, got 4"):
-            bbox_to_mask(boxes, width=5, height=5)
+            bbox_to_mask(boxes, size=(5, 5))
 
     def test_convention_validate_bbox_checks_parallelograms_and_accepts_contiguous_batched_boxes(self, device, dtype):
         # The validator only compares the top and bottom edge vectors at fixed vertex
@@ -107,14 +118,17 @@ class TestBbox2D(BaseTester):
         relabeled_rectangle = torch.tensor(
             [[[[0.0, 0.0], [3.0, 0.0], [0.0, 2.0], [3.0, 2.0]]]], device=device, dtype=dtype
         )
-        assert validate_bbox(relabeled_rectangle) is False
+        with pytest.warns(FutureWarning, match="validate_bbox"):
+            assert validate_bbox(relabeled_rectangle) is False
 
         trapezoid = torch.tensor([[[[0.0, 0.0], [10.0, 0.0], [10.0, 5.0], [3.0, 5.0]]]], device=device, dtype=dtype)
-        assert validate_bbox(trapezoid) is False
+        with pytest.warns(FutureWarning, match="validate_bbox"):
+            assert validate_bbox(trapezoid) is False
 
         # The edge vectors share their x component and differ only in y, so only the second comparison rejects it.
         tilted_bottom = torch.tensor([[[[0.0, 0.0], [2.0, 0.0], [2.0, 2.0], [0.0, 1.0]]]], device=device, dtype=dtype)
-        assert validate_bbox(tilted_bottom) is False
+        with pytest.warns(FutureWarning, match="validate_bbox"):
+            assert validate_bbox(tilted_bottom) is False
 
     def test_convention_validate_bbox_accepts_noncontiguous_rank4_layout_4174(self, device, dtype):
         # kornia#4174: a rank-4 input whose leading dimensions cannot be merged by view returns a boolean.
@@ -145,13 +159,16 @@ class TestBbox2D(BaseTester):
             for non_finite in [float("nan"), float("inf"), float("-inf")]:
                 invalid_boxes = boxes.clone()
                 invalid_boxes[1].reshape(-1)[coordinate_index] = non_finite
-                assert validate_bbox(invalid_boxes) is False
+                with pytest.warns(FutureWarning, match="validate_bbox"):
+                    assert validate_bbox(invalid_boxes) is False
 
     def test_wart_validate_bbox_returns_false_where_validate_bbox3d_raises_4013(self, device, dtype):
         # Wart pin for kornia#4013: for the same invalid shape, the 2D validator
-        # returns False while the 3D validator raises.
+        # returns False while the 3D validator raises. The False result is deprecated and
+        # warns until a later release turns it into the AssertionError the 3D validator raises.
         invalid_shape = torch.rand(1, 3, 3, device=device, dtype=dtype)
-        assert validate_bbox(invalid_shape) is False
+        with pytest.warns(FutureWarning, match="validate_bbox"):
+            assert validate_bbox(invalid_shape) is False
         with pytest.raises(AssertionError):
             validate_bbox3d(invalid_shape)
 
@@ -173,6 +190,25 @@ class TestBbox2D(BaseTester):
         )
         with pytest.raises(AssertionError):
             validate_bbox3d(non_cube)
+
+    def test_validate_bbox_warns_where_it_returns_false_4013(self, device, dtype):
+        # kornia#4013: every input for which validate_bbox returns False warns, pointing at the caller, and still
+        # returns False; a valid box warns nothing.
+        valid = torch.tensor([[[0.0, 0.0], [3.0, 0.0], [3.0, 2.0], [0.0, 2.0]]], device=device, dtype=dtype)
+        non_rectangle = valid.clone()
+        non_rectangle[0, 3, 1] = 3.0
+        nan_box = valid.clone()
+        nan_box[0, 2, 0] = float("nan")
+        wrong_shape = torch.rand(1, 3, 2, device=device, dtype=dtype)
+        for boxes in (non_rectangle, nan_box, wrong_shape):
+            with pytest.warns(FutureWarning, match="validate_bbox") as record:
+                assert validate_bbox(boxes) is False
+            assert [w.filename for w in record] == [__file__]
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            assert validate_bbox(valid) is True
+            assert validate_bbox(valid[None]) is True
 
     def test_smoke(self, device, dtype):
         # Sample two points of the rectangle
@@ -234,17 +270,25 @@ class TestBbox2D(BaseTester):
         boxes_sheared = torch.tensor([[[0.0, 0.0], [2.0, 0.0], [3.0, 1.0], [1.0, 1.0]]], device=device, dtype=dtype)
         self.assert_close(scripted_fn(boxes_sheared), validate_bbox(boxes_sheared))
 
-        # Test with invalid shape
+        # Test with invalid shape: the scripted function returns False without the eager deprecation warning
         boxes_wrong_shape = torch.rand(1, 3, 2, device=device, dtype=dtype)
-        self.assert_close(scripted_fn(boxes_wrong_shape), validate_bbox(boxes_wrong_shape))
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            assert scripted_fn(boxes_wrong_shape) is False
+        boxes_non_rectangle = torch.tensor(
+            [[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 2.0]]], device=device, dtype=dtype
+        )
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            assert scripted_fn(boxes_non_rectangle) is False
 
     def test_convention_bbox_to_mask_takes_width_then_height_and_reads_two_vertices_4014(self, device, dtype):
-        # Convention pin (kornia#4014 records the argument-order split with Boxes.to_mask):
-        # bbox_to_mask(boxes, width, height) returns (B, height, width), fills through the
+        # Convention pin (kornia#4014 records the argument-order split with Boxes.to_mask, now repaired through
+        # `size`): bbox_to_mask(boxes, size=(height, width)) returns (B, height, width), fills through the
         # top-left (index 0) and bottom-right (index 2) vertices inclusively, ignores the two
         # other vertices, keeps the input dtype, and carries no gradient path.
         boxes = torch.tensor([[[1.0, 1.0], [3.0, 1.0], [3.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype)
-        mask = bbox_to_mask(boxes, 5, 3)
+        mask = bbox_to_mask(boxes, size=(3, 5))
         assert mask.shape == (1, 3, 5)
         assert mask.dtype == dtype
         expected = torch.tensor(
@@ -253,15 +297,76 @@ class TestBbox2D(BaseTester):
             dtype=dtype,
         )
         self.assert_close(mask, expected, atol=0.0, rtol=0.0)
-        assert bbox_to_mask(boxes, 3, 5).shape == (1, 5, 3)
+        assert bbox_to_mask(boxes, size=(5, 3)).shape == (1, 5, 3)
 
         corrupted = boxes.clone()
         corrupted[0, 1] = 9.0
         corrupted[0, 3] = -9.0
-        self.assert_close(bbox_to_mask(corrupted, 5, 3), expected, atol=0.0, rtol=0.0)
+        self.assert_close(bbox_to_mask(corrupted, size=(3, 5)), expected, atol=0.0, rtol=0.0)
 
-        assert bbox_to_mask(boxes.to(torch.int64), 5, 3).dtype == torch.int64
-        assert not bbox_to_mask(boxes.clone().requires_grad_(), 5, 3).requires_grad
+        assert bbox_to_mask(boxes.to(torch.int64), size=(3, 5)).dtype == torch.int64
+        assert not bbox_to_mask(boxes.clone().requires_grad_(), size=(3, 5)).requires_grad
+
+        # One deprecated call stays in the pin, because the opposite order is what #4014 was filed about.
+        with pytest.warns(DeprecationWarning, match=r"size=\(height, width\)"):
+            self.assert_close(bbox_to_mask(boxes, 5, 3), expected, atol=0.0, rtol=0.0)
+
+    def test_bbox_to_mask_size_matches_the_deprecated_pair_bitwise_4014(self, device, dtype):
+        # The repair must not move a single pixel: on a non-square size the new form has to be
+        # bitwise equal to what the deprecated pair produced before.
+        boxes = torch.tensor([[[1.0, 1.0], [4.0, 1.0], [4.0, 3.0], [1.0, 3.0]]], device=device, dtype=dtype)
+        with pytest.warns(DeprecationWarning, match=r"size=\(height, width\)"):
+            deprecated = bbox_to_mask(boxes, 7, 4)  # width 7, height 4
+        canonical = bbox_to_mask(boxes, size=(4, 7))
+        assert canonical.shape == deprecated.shape == (1, 4, 7)
+        assert torch.equal(canonical, deprecated)
+
+    def test_bbox_to_mask_size_form_warns_nothing_4014(self, device, dtype):
+        boxes = torch.tensor([[[1.0, 1.0], [3.0, 1.0], [3.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            bbox_to_mask(boxes, size=(3, 5))
+
+    @pytest.mark.parametrize("form", ["positional", "keyword"])
+    def test_bbox_to_mask_deprecated_forms_warn_and_agree_4014(self, device, dtype, form):
+        boxes = torch.tensor([[[1.0, 1.0], [3.0, 1.0], [3.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype)
+        expected = bbox_to_mask(boxes, size=(3, 5))
+        with pytest.warns(DeprecationWarning, match=r"size=\(height, width\)") as record:
+            got = bbox_to_mask(boxes, 5, 3) if form == "positional" else bbox_to_mask(boxes, width=5, height=3)
+        assert torch.equal(got, expected)
+        # The warning names the caller's line, not a line inside kornia.
+        assert [w.filename for w in record] == [__file__]
+
+    def test_bbox_to_mask_rejects_both_forms_and_neither_4014(self, device, dtype):
+        boxes = torch.tensor([[[1.0, 1.0], [3.0, 1.0], [3.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="Pass either size=\\(height, width\\) or the deprecated width"):
+            bbox_to_mask(boxes, 5, 3, (3, 5))
+        with pytest.raises(ValueError, match="not both"):
+            bbox_to_mask(boxes, height=3, size=(3, 5))
+        with pytest.raises(TypeError, match="missing required argument 'size'"):
+            bbox_to_mask(boxes)
+        with pytest.raises(TypeError, match="missing required argument 'size'"):
+            bbox_to_mask(boxes, 5)
+
+    def test_bbox_to_mask_stays_scriptable_for_both_size_forms_4014(self, device, dtype):
+        # `size` is an ordinary fourth parameter, not a keyword-only one, precisely because
+        # torch.jit.script(bbox_to_mask) works today and TorchScript rejects keyword-only defaults.
+        boxes = torch.tensor([[[1.0, 1.0], [3.0, 1.0], [3.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype)
+        scripted = torch.jit.script(bbox_to_mask)
+        assert torch.equal(scripted(boxes, size=(3, 5)), bbox_to_mask(boxes, size=(3, 5)))
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            assert torch.equal(scripted(boxes, 5, 3), bbox_to_mask(boxes, 5, 3))
+
+    def test_dynamo_bbox_to_mask_is_fullgraph_for_both_forms_4014(self, device, dtype, torch_optimizer):
+        boxes = torch.tensor([[[1.0, 1.0], [3.0, 1.0], [3.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype)
+        eager = bbox_to_mask(boxes, size=(3, 5))
+        assert torch.equal(torch_optimizer(bbox_to_mask, fullgraph=True)(boxes, size=(3, 5)), eager)
+        # The deprecated path must compile without a graph break too: the warning is suppressed
+        # while capturing, so nothing here raises a Python-level call into `warnings`.
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            assert torch.equal(torch_optimizer(bbox_to_mask, fullgraph=True)(boxes, 5, 3), eager)
 
     def test_wart_bbox_to_mask_compares_raw_floats_inclusively_4015(self, device, dtype):
         # Wart pin for kornia#4015: the fractional box [1.4, 3.0] x [2.0, 2.6] covers the integer
@@ -271,9 +376,9 @@ class TestBbox2D(BaseTester):
         boxes = torch.tensor([[[1.4, 2.0], [3.0, 2.0], [3.0, 2.6], [1.4, 2.6]]], device=device, dtype=dtype)
         expected = torch.zeros(1, 5, 6, device=device, dtype=dtype)
         expected[0, 2, 2:4] = 1.0
-        self.assert_close(bbox_to_mask(boxes, 6, 5), expected, atol=0.0, rtol=0.0)
+        self.assert_close(bbox_to_mask(boxes, size=(5, 6)), expected, atol=0.0, rtol=0.0)
         fractional = torch.tensor([[[1.4, 1.4], [3.6, 1.4], [3.6, 2.6], [1.4, 2.6]]], device=device, dtype=dtype)
-        assert bbox_to_mask(fractional, 6, 5).sum().item() == 2.0
+        assert bbox_to_mask(fractional, size=(5, 6)).sum().item() == 2.0
 
     @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
     def test_bbox_to_mask_position_grid_is_exact_for_half_boxes_on_a_large_image(self, device, half_dtype):
@@ -289,8 +394,8 @@ class TestBbox2D(BaseTester):
             [[[1000.0, 1000.0], [4080.0, 1000.0], [4080.0, 3072.0], [1000.0, 3072.0]]], device=device
         )
         boxes_half = boxes32.to(half_dtype)
-        mask32 = bbox_to_mask(boxes32, width=4096, height=4096)
-        mask_half = bbox_to_mask(boxes_half, width=4096, height=4096)
+        mask32 = bbox_to_mask(boxes32, size=(4096, 4096))
+        mask_half = bbox_to_mask(boxes_half, size=(4096, 4096))
         assert mask_half.dtype == half_dtype
         assert torch.equal(mask_half.bool(), mask32.bool())
 
@@ -340,7 +445,7 @@ class TestTransformBoxes2D(BaseTester):
         trans_mat = torch.tensor([[[-1.0, 0.0, 512.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
 
         out = transform_bbox(trans_mat, boxes, restore_coordinates=True)
-        self.assert_close(out, expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(out, expected, **_coordinate_tolerances(dtype, 512))
 
     def test_transform_multiple_boxes(self, device, dtype):
         boxes = torch.tensor(
@@ -385,8 +490,12 @@ class TestTransformBoxes2D(BaseTester):
         )
 
         out = transform_bbox(trans_mat, boxes, restore_coordinates=True)
-        self.assert_close(out, expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(out, expected, **_coordinate_tolerances(dtype, 512))
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["mode"] == "xywh" and len(p["boxes_shape"]) == 4),
+        reason="polygons are given as vertices, not as xywh",
+    )
     @pytest.mark.parametrize(
         "matrix_batch,boxes_shape",
         [
@@ -403,8 +512,6 @@ class TestTransformBoxes2D(BaseTester):
     @pytest.mark.parametrize("restore_coordinates", [True, False])
     def test_empty_boxes(self, matrix_batch, boxes_shape, mode, restore_coordinates, device, dtype):
         # view(B, -1, 2) cannot infer -1 for zero elements, so zero boxes or an empty batch raised in reshape.
-        if mode == "xywh" and len(boxes_shape) == 4:
-            pytest.skip("polygons are given as vertices, not as xywh")
         trans_mat = torch.eye(3, device=device, dtype=dtype).expand(matrix_batch, 3, 3)
         boxes = torch.empty(boxes_shape, device=device, dtype=dtype, requires_grad=True)
         out = transform_bbox(trans_mat, boxes, mode=mode, restore_coordinates=restore_coordinates)
@@ -415,12 +522,11 @@ class TestTransformBoxes2D(BaseTester):
         assert boxes.grad is not None
         assert boxes.grad.shape == boxes.shape
 
+    @pytest.mark.applies_to(dtypes=("float32",), reason="the exported graph is checked once, in float32")
     @pytest.mark.device_agnostic
     @pytest.mark.parametrize("boxes_shape", [(3, 4), (2, 3, 4), (2, 3, 4, 2)])
     def test_legacy_onnx_dynamic_axes_match_eager(self, boxes_shape, dtype):
         # The traced box count must stay dynamic: an export at one size has to run at another.
-        if dtype != torch.float32:
-            pytest.skip("the exported graph is checked once, in float32")
         pytest.importorskip("onnx")
         ort = pytest.importorskip("onnxruntime")
 
@@ -483,7 +589,7 @@ class TestTransformBoxes2D(BaseTester):
         trans_mat = torch.tensor([[[-1.0, 0.0, 512.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
 
         out = transform_bbox(trans_mat, boxes, mode="xywh", restore_coordinates=True)
-        self.assert_close(out, expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(out, expected, **_coordinate_tolerances(dtype, 512))
         assert torch.equal(boxes, boxes_before)
 
     def test_gradcheck(self, device):
@@ -539,9 +645,11 @@ class TestBbox3D(BaseTester):
             for non_finite in [float("nan"), float("inf"), float("-inf")]:
                 invalid_boxes = boxes.clone()
                 invalid_boxes[0].reshape(-1)[coordinate_index] = non_finite
-                assert validate_bbox3d(invalid_boxes) is False
+                with pytest.warns(FutureWarning, match="validate_bbox3d"):
+                    assert validate_bbox3d(invalid_boxes) is False
                 # the same holds for the (B, N, 8, 3) rank-4 layout
-                assert validate_bbox3d(invalid_boxes[None]) is False
+                with pytest.warns(FutureWarning, match="validate_bbox3d"):
+                    assert validate_bbox3d(invalid_boxes[None]) is False
 
     def test_convention_consumers_still_raise_on_non_finite_coordinates_4258(self, device, dtype):
         # validate_bbox3d's four internal callers use it for its raise and discard the return value, so each
@@ -565,6 +673,9 @@ class TestBbox3D(BaseTester):
         invalid = box.clone()
         invalid[0, 7, 1] = float("nan")
 
+        # The callers raise themselves, so validate_bbox3d's deprecation warning (kornia#4013) is not theirs to
+        # emit: a FutureWarning here would surface as an error instead of the AssertionError.
+        warnings.simplefilter("error", FutureWarning)
         with pytest.raises(AssertionError, match="finite"):
             infer_bbox_shape3d(invalid)
         with pytest.raises(AssertionError, match="finite"):
@@ -697,10 +808,12 @@ class TestBbox3D(BaseTester):
         )
 
     def test_wart_validate_bbox3d_checks_equal_edge_extents_not_cuboids_4013(self, device, dtype, monkeypatch):
-        # Wart pin for kornia#4013 (the 3D validator raises where the 2D one returns False): the
-        # check compares the inclusive extents of the four edges parallel to each axis, so a
-        # sheared parallelepiped and a zero-extent box pass, and only unequal edges raise. Under
-        # graph capture the extent check is skipped and the shape check alone returns True.
+        # Wart pin for kornia#4013 (the 3D validator raises where the 2D one returns False, and its one
+        # False result, a non-finite coordinate, warns that it will raise too): the check compares
+        # the inclusive x extents of the four left-to-right edges, the y extents of the two diagonals
+        # of the front face and of the back face, and the z extents of the four front-to-back edges,
+        # so a sheared parallelepiped and a zero-extent box pass, and only disagreeing extents raise.
+        # Under graph capture the extent check is skipped and the shape check alone returns True.
         cuboid = self._unit_cuboid(device, dtype)
         assert validate_bbox3d(cuboid) is True
         assert validate_bbox3d(cuboid[None]) is True
@@ -714,10 +827,17 @@ class TestBbox3D(BaseTester):
 
         unequal = cuboid.clone()
         unequal[0, 1, 0] = 5.0
-        with pytest.raises(AssertionError, match="widths"):
-            validate_bbox3d(unequal)
-        with pytest.raises(AssertionError, match="shape"):
-            validate_bbox3d(cuboid[0])
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            with pytest.raises(AssertionError, match="widths"):
+                validate_bbox3d(unequal)
+            with pytest.raises(AssertionError, match="shape"):
+                validate_bbox3d(cuboid[0])
+        nan_box = cuboid.clone()
+        nan_box[0, 5, 2] = float("nan")
+        with pytest.warns(FutureWarning, match="validate_bbox3d") as record:
+            assert validate_bbox3d(nan_box) is False
+        assert [w.filename for w in record] == [__file__]
         monkeypatch.setattr(bbox_module, "is_compiling", lambda: True)
         assert validate_bbox3d(unequal) is True
         with pytest.raises(AssertionError, match="shape"):
@@ -836,14 +956,15 @@ class TestBbox3D(BaseTester):
         assert bbox_to_mask3d(cuboid.to(torch.int64), (4, 5, 6)).dtype == torch.int64
         assert not bbox_to_mask3d(cuboid.clone().requires_grad_(), (4, 5, 6)).requires_grad
         square = torch.tensor([[[1.0, 1.0], [3.0, 1.0], [3.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype)
-        assert bbox_to_mask(square, 6, 5).dtype == dtype
+        assert bbox_to_mask(square, size=(5, 6)).dtype == dtype
 
     @pytest.mark.parametrize("case", ["full_width", "full_height", "full_depth", "overhang"])
     def test_convention_bbox_to_mask3d_intersects_the_axis_ranges_for_a_full_or_overhanging_axis_box_4255(
         self, device, dtype, case
     ):
         # kornia#4255: a box whose slab covers (or overhangs) a whole axis of the (4, 4, 5) volume fills the
-        # intersection of the three axis ranges, exactly as Boxes3D.to_mask does. The interior box is a control.
+        # intersection of the three axis ranges, exactly as Boxes3D.to_mask does. The interior box is a control. The
+        # free function reads inclusive corners, so it takes the 'vertices_plus' export.
         xyzxyz_plus, region = {
             "full_width": ([0.0, 1.0, 1.0, 4.0, 2.0, 2.0], (slice(1, 3), slice(1, 3), slice(None))),
             "full_height": ([1.0, 0.0, 1.0, 2.0, 3.0, 2.0], (slice(1, 3), slice(None), slice(1, 3))),
@@ -853,12 +974,13 @@ class TestBbox3D(BaseTester):
         boxes = Boxes3D.from_tensor(torch.tensor([xyzxyz_plus], device=device, dtype=dtype), mode="xyzxyz_plus")
         expected = torch.zeros(1, 1, 4, 4, 5, device=device, dtype=dtype)
         expected[(0, 0, *region)] = 1.0
-        self.assert_close(bbox_to_mask3d(boxes.data, (4, 4, 5)), expected, atol=0.0, rtol=0.0)
+        self.assert_close(bbox_to_mask3d(boxes.to_tensor("vertices_plus"), (4, 4, 5)), expected, atol=0.0, rtol=0.0)
         self.assert_close(boxes.to_mask(4, 4, 5).to(dtype), expected[:, 0], atol=0.0, rtol=0.0)
         interior = Boxes3D.from_tensor(
             torch.tensor([[1.0, 1.0, 1.0, 2.0, 2.0, 2.0]], device=device, dtype=dtype), mode="xyzxyz_plus"
         )
-        assert bbox_to_mask3d(interior.data, (4, 4, 5)).sum().item() == interior.to_mask(4, 4, 5).sum().item() == 8.0
+        inclusive = interior.to_tensor("vertices_plus")
+        assert bbox_to_mask3d(inclusive, (4, 4, 5)).sum().item() == interior.to_mask(4, 4, 5).sum().item() == 8.0
 
 
 class TestNMS(BaseTester):
@@ -909,6 +1031,54 @@ class TestNMS(BaseTester):
         boxes = torch.tensor([[0, 0, 153, 162], [14, 40, 173, 202]], device=device, dtype=dtype)
         scores = torch.tensor([0.875, 0.75], device=device, dtype=dtype)
         expected = torch.tensor([0], device=device, dtype=torch.long)
+        self.assert_close(nms(boxes, scores, 0.5), expected, atol=0, rtol=0)
+
+    @pytest.mark.parametrize(
+        "boxes",
+        [
+            [[10, 10, 10, 20], [100, 100, 100, 200]],  # zero width, far apart
+            [[10, 10, 20, 10], [10, 100, 20, 100]],  # zero height, far apart
+            [[10, 10, 10, 10], [50, 50, 50, 50]],  # two points
+            [[10, 10, 10, 20], [10, 10, 10, 20]],  # identical zero-width boxes
+        ],
+    )
+    @pytest.mark.parametrize("iou_threshold", [0.0, 0.5])
+    def test_zero_area_boxes_have_zero_iou(self, boxes, iou_threshold, device, dtype):
+        # The intersection and the union of two zero-area boxes are both 0. Their IoU is 0, as in torchvision, not
+        # 0 / 0 = NaN, which compared as an overlap and suppressed the lower-scored box. At a threshold of 0, any
+        # positive IoU would suppress it too.
+        boxes = torch.tensor(boxes, device=device, dtype=dtype)
+        scores = torch.tensor([0.875, 0.75], device=device, dtype=dtype)
+        expected = torch.tensor([0, 1], device=device, dtype=torch.long)
+        self.assert_close(nms(boxes, scores, iou_threshold), expected, atol=0, rtol=0)
+        self.assert_close(nms(boxes.to(torch.int32), scores, iou_threshold), expected, atol=0, rtol=0)
+
+    @pytest.mark.parametrize("iou_threshold", [0.0, 0.5])
+    def test_lower_scored_nan_box_does_not_suppress_or_get_suppressed(self, iou_threshold, device, dtype):
+        # A NaN IoU is not above the threshold, so the lower-scored NaN box is kept. It does not suppress any box.
+        boxes = torch.tensor([[0, 0, 10, 10], [100, 100, float("nan"), 110]], device=device, dtype=dtype)
+        scores = torch.tensor([0.875, 0.75], device=device, dtype=dtype)
+        expected = torch.tensor([0, 1], device=device, dtype=torch.long)
+        self.assert_close(nms(boxes, scores, iou_threshold), expected, atol=0, rtol=0)
+
+    @pytest.mark.parametrize("iou_threshold", [0.0, 0.5])
+    def test_highest_scored_nan_box_does_not_suppress_valid_boxes(self, iou_threshold, device, dtype):
+        boxes = torch.tensor(
+            [[100, 100, float("nan"), 110], [0, 0, 10, 10], [200, 200, 210, 210]], device=device, dtype=dtype
+        )
+        scores = torch.tensor([0.875, 0.75, 0.625], device=device, dtype=dtype)
+        expected = torch.tensor([0, 1, 2], device=device, dtype=torch.long)
+        self.assert_close(nms(boxes, scores, iou_threshold), expected, atol=0, rtol=0)
+
+    def test_zero_area_box_next_to_a_box(self, device, dtype):
+        # A zero-width box inside a box with a positive area has IoU 0 with it, and a box with a positive area still
+        # suppresses its duplicate. The last box, a point, is then compared with the zero-width box: their union is
+        # empty, so their IoU is 0 and the point is kept (before #6361 the 0 / 0 suppressed it).
+        boxes = torch.tensor(
+            [[0, 0, 20, 20], [10, 5, 10, 15], [0, 0, 20, 20], [40, 40, 40, 40]], device=device, dtype=dtype
+        )
+        scores = torch.tensor([0.875, 0.75, 0.625, 0.5], device=device, dtype=dtype)
+        expected = torch.tensor([0, 1, 3], device=device, dtype=torch.long)
         self.assert_close(nms(boxes, scores, 0.5), expected, atol=0, rtol=0)
 
     def test_convention_nms_uses_exclusive_xyxy_iou_4008(self, device, dtype):

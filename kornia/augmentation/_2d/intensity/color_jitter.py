@@ -22,11 +22,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import torch
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._2d.intensity.base import (
-    IntensityAugmentationBase2D,
-    _clamp_unit_range,
-    _PicklableCompileMixin,
-)
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _PicklableCompileMixin
 from kornia.augmentation._2d.intensity.color_jiggle import (
     _adjust_hue,
     _apply_order_cond,
@@ -34,6 +30,7 @@ from kornia.augmentation._2d.intensity.color_jiggle import (
     _dispatch_color_steps,
     _Steps,
 )
+from kornia.core.utils import _clamp_unit_range
 from kornia.enhance import (
     adjust_brightness_accumulative,
     adjust_contrast_with_mean_subtraction,
@@ -63,12 +60,13 @@ def _apply_cond(order: Tuple[int, ...], input: torch.Tensor, factors: Tuple[torc
 
 
 class ColorJitter(_PicklableCompileMixin, IntensityAugmentationBase2D):
-    r"""Apply a random transformation to the brightness, contrast, saturation and hue of a torch.Tensor image.
+    r"""Randomly adjust brightness, contrast, saturation and hue using torchvision-compatible formulas.
 
-    The four steps are torchvision's formulas -- brightness multiplies the image by the factor, contrast blends it
-    with its grayscale mean, saturation with its grayscale, and hue is torchvision's ``adjust_hue`` shift -- so this
-    is the class to port ``torchvision.transforms.ColorJitter`` code to. It is not actively maintained; prefer
-    :class:`ColorJiggle` for new code.
+    ``output = ColorJitter(brightness, contrast, saturation, hue)(input)`` applies four sampled adjustments in a
+    sampled or fixed order using torchvision's formulas. Brightness multiplies the image by a factor, contrast
+    blends it with its grayscale mean, saturation blends it with its grayscale, and hue uses torchvision's
+    ``adjust_hue`` shift. Use this class to port ``torchvision.transforms.ColorJitter`` code; it is not actively
+    maintained, so prefer :class:`ColorJiggle` for new code.
 
     .. image:: _static/img/ColorJitter.png
 
@@ -89,8 +87,8 @@ class ColorJitter(_PicklableCompileMixin, IntensityAugmentationBase2D):
           The parameter generator still draws an ``order`` entry into ``_params``, and with a fixed order that
           entry is ignored, including on replay.
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``, Optional: ``(B, 3, 3)``
+        - Output: ``(B, C, H, W)``
 
     Convention:
         - input values are clamped into ``[0, 1]`` before the operation, and the result is clamped
@@ -108,6 +106,11 @@ class ColorJitter(_PicklableCompileMixin, IntensityAugmentationBase2D):
         :func:`kornia.enhance.adjust_contrast_with_mean_subtraction`,
         :func:`kornia.enhance.adjust_saturation_with_gray_subtraction`,
         :func:`kornia.enhance.adjust_hue`.
+
+    See Also:
+        - :class:`ColorJiggle`: Kornia's alternative with additive brightness and raw-value contrast.
+        - :class:`RandomBrightness`: applies Kornia's additive brightness alone.
+        - :class:`RandomSaturation`: applies HSV saturation scaling alone.
 
     Examples:
         >>> rng = torch.manual_seed(0)

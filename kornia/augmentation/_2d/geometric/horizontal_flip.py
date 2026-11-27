@@ -28,27 +28,19 @@ from kornia.geometry.transform import hflip
 
 
 class RandomHorizontalFlip(GeometricAugmentationBase2D):
-    r"""Apply a random horizontal flip to a torch.Tensor image or a batch of torch.Tensor images.
+    r"""Flip images horizontally, applied per sample with probability ``p`` (default 0.5).
 
-    The flip is applied with a given probability.
-
-    .. image:: _static/img/RandomHorizontalFlip.png
-
-    Input should be a torch.Tensor of shape (C, H, W) or a batch of tensors :math:`(B, C, H, W)`.
-    If Input is a tuple it is assumed that the first element contains the aforementioned tensors and the second,
-    the corresponding transformation matrix that has been applied to them. In this case the module
-    will Horizontally flip the tensors and torch.cat the corresponding transformation matrix to the
-    previous one. This is especially useful when using this functionality as part of an ``nn.Sequential`` module.
+    ``output = RandomHorizontalFlip(...)(input)`` reverses the width axis of images of shape ``(B, C, H, W)``.
 
     Args:
-        p: probability of the image being flipped.
+        p: probability of applying the transformation to each sample.
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``, Optional: ``(B, 3, 3)``
+        - Output: ``(B, C, H, W)``
 
     Convention:
         A selected flip maps ``(x, y)`` to ``(W - 1 - x, y)`` with the exact discrete
@@ -57,6 +49,12 @@ class RandomHorizontalFlip(GeometricAugmentationBase2D):
 
     .. note::
         This function internally uses :func:`kornia.geometry.transform.hflip`.
+
+    .. image:: _static/img/RandomHorizontalFlip.png
+
+    See Also:
+        - :class:`RandomHorizontalFlip3D`: reverses the width axis of a volume.
+        - :class:`RandomVerticalFlip`: reflects across the horizontal center line.
 
     Examples:
         >>> import torch

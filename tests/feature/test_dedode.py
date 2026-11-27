@@ -23,12 +23,22 @@ import torch
 from kornia.enhance.normalize import Normalize
 from kornia.feature.dedode import DeDoDe
 from kornia.feature.dedode.decoder import ConvRefiner
+from kornia.feature.dedode.dedode_models import get_detector
 from kornia.feature.dedode.transformer.dinov2 import DinoVisionTransformer
 from kornia.feature.dedode.transformer.layers import MemEffAttention, NestedTensorBlock
+from kornia.feature.dedode.transformer.layers.attention import Attention
 from kornia.feature.dedode.transformer.layers.patch_embed import PatchEmbed
 from kornia.feature.dedode.utils import dedode_denormalize_pixel_coordinates
 
 from testing.base import BaseTester
+
+# Eager runs in half precision, but the compiled outputs differ from it by more than the tolerances of the compiled
+# tests (torch 2.14 CPU: descriptors by 4e-4 in float16 and 3e-3 in bfloat16; the last bfloat16 keypoints of the top
+# 100 move by a pixel).
+COMPILED_FULL_PRECISION = pytest.mark.applies_to(
+    dtypes=("float32", "float64"),
+    reason="compiled half-precision DeDoDe differs from eager by more than these tolerances",
+)
 
 
 class TestConvRefiner(BaseTester):
@@ -56,6 +66,27 @@ class TestConvRefiner(BaseTester):
 
 
 class TestMemEffAttention(BaseTester):
+    @pytest.mark.parametrize("attention_class", [Attention, MemEffAttention])
+    def test_matches_the_materialised_softmax(self, device, dtype, attention_class):
+        # The fused kernel computes softmax(q k^T * scale) v without materialising the N x N weights; the dropout of
+        # attn_drop is off in eval mode.
+        attention = attention_class(dim=16, num_heads=4, qkv_bias=True, attn_drop=0.5).to(device, dtype).eval()
+        x = torch.rand(2, 7, 16, device=device, dtype=dtype)
+        with torch.no_grad():
+            q, k, v = attention.qkv(x).reshape(2, 7, 3, 4, 4).permute(2, 0, 3, 1, 4)
+            weights = (q * attention.scale @ k.transpose(-2, -1)).softmax(dim=-1)
+            expected = attention.proj((weights @ v).transpose(1, 2).reshape(2, 7, 16))
+            self.assert_close(attention(x), expected)
+
+    def test_attn_drop_applies_in_training_mode_only(self, device, dtype):
+        attention = Attention(dim=16, num_heads=4, attn_drop=0.5).to(device, dtype)
+        x = torch.rand(2, 7, 16, device=device, dtype=dtype)
+        with torch.no_grad():
+            expected = attention.eval()(x)
+            assert not torch.allclose(attention.train()(x), expected)
+            attention.attn_drop.p = 0.0
+            self.assert_close(attention(x), expected)
+
     def test_attn_bias_raises(self, device, dtype):
         attention = MemEffAttention(dim=8, num_heads=2).to(device, dtype).eval()
         x = torch.rand(1, 5, 8, device=device, dtype=dtype)
@@ -96,6 +127,17 @@ class TestNestedTensorBlock(BaseTester):
 
 
 class TestDinoVisionTransformer(BaseTester):
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["dtype_name"] == "float64"),
+        reason="MPS does not support float64",
+    )
+    def test_get_intermediate_layers_empty_batch_6266(self, device, dtype):
+        """``reshape=True`` turns the token grid of an empty batch into an empty feature map."""
+        model = DinoVisionTransformer(img_size=56, patch_size=14, embed_dim=32, depth=2, num_heads=2)
+        model = model.to(device, dtype).eval()
+        (out,) = model.get_intermediate_layers(torch.rand(0, 3, 56, 56, device=device, dtype=dtype), reshape=True)
+        assert out.shape == (0, 32, 4, 4)
+
     def test_forward_features_tensor(self, device, dtype):
         model = DinoVisionTransformer(
             img_size=8,
@@ -214,6 +256,38 @@ class TestDeDoDeHalfPrecision(BaseTester):
         assert scores.shape == (1, 10)
         assert torch.isfinite(scores).all()
 
+    def test_detector_returns_at_least_float32_logits(self, device, dtype):
+        # The networks run in the model dtype; the logits are accumulated in at least float32, as Parskatt/DeDoDe
+        # 6d15618 (detectors/dedode_detector.py) does in float32, and are not rounded to a half dtype afterwards.
+        detector = get_detector("L", amp_dtype=dtype).to(device, dtype).eval()
+        with torch.no_grad():
+            logits = detector(torch.rand(1, 3, 56, 84, device=device, dtype=dtype))
+        assert logits.shape == (1, 1, 56, 84)
+        assert logits.dtype == torch.promote_types(dtype, torch.float32)
+        assert torch.isfinite(logits).all()
+
+    @pytest.mark.applies_to(dtypes=("float16", "bfloat16"), reason="a regression for the half dtypes")
+    def test_half_scoremap_keeps_the_float32_top_k(self, device, dtype, monkeypatch):
+        # A peaky map of integer logits, exact in every dtype. Over 252 x 336 pixels most of its softmax
+        # probabilities are below 1e-8: float16 flushes them to 0 and bfloat16 keeps 8 significant bits, so a
+        # softmax in the model dtype loses the top-k. The softmax and the keypoint sampling run in at least float32,
+        # so a half-precision model returns the float32 keypoints and scores.
+        h, w = 252, 336
+        logits = (torch.randn(1, 1, h, w, generator=torch.Generator().manual_seed(0)) * 8).round().to(device)
+
+        def detector(images):
+            return logits.to(images.dtype).expand(images.shape[0], -1, -1, -1)
+
+        monkeypatch.setattr("kornia.feature.dedode.dedode.get_detector", lambda *a, **k: _FixedMap(detector))
+        monkeypatch.setattr("kornia.feature.dedode.dedode.get_descriptor", lambda *a, **k: _FixedMap(lambda x: x))
+        image = torch.rand(1, 3, h, w, device=device)
+        expected_keypoints, expected_scores = DeDoDe().to(device).detect(image)
+        keypoints, scores = DeDoDe().to(device, dtype).detect(image.to(dtype))
+        assert keypoints.shape == (1, 10_000, 2)
+        self.assert_close(keypoints, expected_keypoints, rtol=0.0, atol=0.0)
+        assert keypoints.dtype == scores.dtype == torch.float32
+        self.assert_close(scores, expected_scores, rtol=0.0, atol=0.0)
+
 
 def _tiny_dinov2(monkeypatch):
     """Replace the 24-block ViT-L/14 and its download by a one-block ViT with the same 1024-wide patch tokens."""
@@ -246,17 +320,20 @@ class TestDeDoDeDefaultAmpDtype5934(BaseTester):
     def _image(device):
         return torch.rand(1, 3, 56, 84, generator=torch.Generator().manual_seed(7)).to(device)
 
-    @pytest.mark.parametrize("entry", ["detect", "describe", "forward"])
+    @pytest.mark.applies_to(
+        when=lambda p: p["device_name"] != "cuda",
+        reason="CUDA runs the float16 mixed-precision path, which this test does not cover",
+    )
+    @pytest.mark.parametrize("entry", ["describe", "forward"])
     def test_default_runs_with_float32(self, device, monkeypatch, entry):
-        if device.type == "cuda":
-            pytest.skip("CUDA runs the float16 mixed-precision path, which this test does not cover")
+        # forward runs detect, then the sparse describe; describe alone returns the dense map. The identity of forward
+        # with detect then describe is pinned by TestDeDoDePadding::test_detect_and_describe_agree_with_forward_5730.
         _tiny_dinov2(monkeypatch)
         model = DeDoDe().to(device).eval()
+        backbone = model.descriptor.encoder.frozen_dinov2.dinov2_vitl14
+        assert backbone[0].cls_token.dtype == torch.float32
         x = self._image(device)
-        if entry == "detect":
-            kpts, scores = model.detect(x, n=8)
-            outs = (kpts, scores)
-        elif entry == "describe":
+        if entry == "describe":
             outs = (model.describe(x),)
             assert outs[0].shape == (1, 256, 56, 84)
         else:
@@ -266,34 +343,16 @@ class TestDeDoDeDefaultAmpDtype5934(BaseTester):
         for out in outs:
             assert out.dtype == torch.float32
             assert torch.isfinite(out).all()
-
-    def test_forward_is_detect_then_describe(self, device, monkeypatch):
-        if device.type == "cuda":
-            pytest.skip("CUDA runs the float16 mixed-precision path, which this test does not cover")
-        _tiny_dinov2(monkeypatch)
-        model = DeDoDe().to(device).eval()
-        x = self._image(device)
-        kpts, scores, descs = model(x, n=8)
-        kpts_d, scores_d = model.detect(x, n=8)
-        self.assert_close(kpts, dedode_denormalize_pixel_coordinates(kpts_d, 56, 84))
-        self.assert_close(scores, scores_d)
-        self.assert_close(descs, model.describe(x, kpts_d))
-
-    def test_dinov2_is_not_cast_off_cuda(self, device, monkeypatch):
-        if device.type == "cuda":
-            pytest.skip("CUDA casts the DINOv2 backbone to amp_dtype by design")
-        _tiny_dinov2(monkeypatch)
-        model = DeDoDe().to(device).eval()
-        backbone = model.descriptor.encoder.frozen_dinov2.dinov2_vitl14
-        assert backbone[0].cls_token.dtype == torch.float32
-        model.describe(self._image(device))
+        # off CUDA the DINOv2 backbone is not cast to the default amp_dtype (float16)
         assert backbone[0].cls_token.dtype == torch.float32
         assert backbone[0].cls_token.device.type == device.type
 
+    @pytest.mark.applies_to(
+        when=lambda p: p["device_name"] != "cuda",
+        reason="CUDA runs the mixed-precision path, see test_cuda_casts_the_backbone_to_amp_dtype",
+    )
     @pytest.mark.parametrize("entry", ["describe", "forward"])
     def test_descriptor_g_follows_the_model_dtype(self, device, dtype, monkeypatch, entry):
-        if device.type == "cuda":
-            pytest.skip("CUDA runs the mixed-precision path, see test_cuda_casts_the_backbone_to_amp_dtype")
         _tiny_dinov2(monkeypatch)
         model = DeDoDe(amp_dtype=dtype).to(device, dtype).eval()
         x = self._image(device).to(dtype)
@@ -303,9 +362,8 @@ class TestDeDoDeDefaultAmpDtype5934(BaseTester):
         backbone = model.descriptor.encoder.frozen_dinov2.dinov2_vitl14[0]
         assert backbone.cls_token.dtype == dtype
 
+    @pytest.mark.applies_to(devices=("cuda",), reason="requires CUDA")
     def test_cuda_casts_the_backbone_to_amp_dtype(self, device, monkeypatch):
-        if device.type != "cuda":
-            pytest.skip("requires CUDA")
         _tiny_dinov2(monkeypatch)
         amp_dtype = torch.float16
         model = DeDoDe(amp_dtype=amp_dtype).to(device).eval()
@@ -334,14 +392,6 @@ class TestDeDoDeNoGrad(BaseTester):
         gen = torch.Generator().manual_seed(7)
         return torch.rand(1, 3, 56, 84, generator=gen).to(device, dtype)
 
-    @staticmethod
-    def _skip_half(dtype):
-        if dtype in (torch.float16, torch.bfloat16):
-            # Eager runs in half precision, but the compiled outputs differ from it by more than the tolerances below
-            # (torch 2.14 CPU: descriptors by 4e-4 in float16 and 3e-3 in bfloat16; the last bfloat16 keypoints of the
-            # top 100 move by a pixel).
-            pytest.skip("compiled half-precision DeDoDe differs from eager by more than these tolerances")
-
     def test_outputs_are_ordinary_tensors_without_grad_5737(self, device, dtype):
         # `detect` and `describe` run under `torch.no_grad()`, not `torch.inference_mode()`: inference tensors
         # are what made inductor raise "Cannot set version_counter for inference tensor" on these two methods.
@@ -357,8 +407,8 @@ class TestDeDoDeNoGrad(BaseTester):
         assert not model.detector.seen[0].requires_grad
         assert not model.descriptor.seen[0].requires_grad
 
+    @COMPILED_FULL_PRECISION
     def test_dynamo_detect_5737(self, device, dtype, torch_optimizer, cudnn_tf32_follows_option):
-        self._skip_half(dtype)
         model = self._model(device, dtype)
         x = self._image(device, dtype)
         n = 100
@@ -372,8 +422,8 @@ class TestDeDoDeNoGrad(BaseTester):
         assert dist.amin(dim=-2).max() < 1e-4
         self.assert_close(scores_c, scores, rtol=1e-3, atol=1e-6)
 
+    @COMPILED_FULL_PRECISION
     def test_dynamo_describe_5737(self, device, dtype, torch_optimizer, cudnn_tf32_follows_option):
-        self._skip_half(dtype)
         model = self._model(device, dtype)
         x = self._image(device, dtype)
         kpts, _ = model.detect(x, n=100)
@@ -381,17 +431,11 @@ class TestDeDoDeNoGrad(BaseTester):
         self.assert_close(descs_c, model.describe(x, kpts), rtol=1e-3, atol=1e-4)
 
 
-@pytest.mark.skip(reason="DeDoDe is ummaintained")
 class TestDeDoDe:
+    # Only the B descriptor: the G descriptor builds a DINOv2 backbone, whose 2.2 GB of weights CI does not cache.
     @pytest.mark.slow
-    @pytest.mark.parametrize("descriptor_model", ["B", "G"])
-    @pytest.mark.parametrize("detector_model", ["L"])
-    def test_smoke(self, dtype, device, descriptor_model, detector_model):
-        if "G" in descriptor_model and device.type != "cuda" and dtype == torch.float16:
-            pytest.skip('G descriptors do not support no cuda device. "LayerNormKernelImpl" not implemented for `Half`')
-        dedode = DeDoDe(descriptor_model=descriptor_model, detector_model=detector_model, amp_dtype=dtype).to(
-            device, dtype
-        )
+    def test_smoke(self, dtype, device):
+        dedode = DeDoDe(descriptor_model="B", detector_model="L", amp_dtype=dtype).to(device, dtype)
         shape = (2, 3, 128, 128)
         n = 1000
         inp = torch.randn(*shape, device=device, dtype=dtype)

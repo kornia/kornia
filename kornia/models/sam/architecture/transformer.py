@@ -28,7 +28,9 @@ import math
 import torch
 from torch import nn
 
+from kornia.core._compat import scaled_dot_product_attention
 from kornia.core.check import KORNIA_CHECK
+from kornia.core.utils import _needs_derivatives
 from kornia.models.sam.architecture.common import MLPBlock
 
 
@@ -43,8 +45,9 @@ class TwoWayTransformer(nn.Module):
         embedding_dim: The dimension of the embeddings.
         num_heads: The number of heads in the multi-head attention.
         mlp_dim: The dimension of the internal MLP layers.
-        activation: The activation function to use. Default: :class:`nn.GELU`.
-        attention_type: The type of attention mechanism to apply. Default: "unnorm".
+        activation: The activation function to use. Default: :class:`nn.ReLU`.
+        attention_downsample_rate: The factor by which the cross-attention layers reduce the embedding dimension.
+            Default: 2.
     """
 
     def __init__(
@@ -139,8 +142,9 @@ class TwoWayAttentionBlock(nn.Module):
         embedding_dim: The dimension of the embeddings.
         num_heads: The number of attention heads.
         mlp_dim: The dimension of the internal MLP layers. Default: 2048.
-        activation: The activation function to use. Default: :class:`nn.GELU`.
-        attention_type: The type of attention mechanism. Default: "unnorm".
+        activation: The activation function to use. Default: :class:`nn.ReLU`.
+        attention_downsample_rate: The factor by which the cross-attention layers reduce the embedding dimension.
+            Default: 2.
         skip_first_layer_pe: Whether to skip position encoding in the first layer. Default: False.
     """
 
@@ -189,8 +193,8 @@ class TwoWayAttentionBlock(nn.Module):
         """Run one two-way transformer block for prompt and image tokens.
 
         Args:
-            queries: Prompt token tensor with shape :math:`(B, N_q, D)`.
-            keys: Image token tensor with shape :math:`(B, N_k, D)`.
+            queries: Prompt token tensor with shape ``(B, N_q, D)``.
+            keys: Image token tensor with shape ``(B, N_k, D)``.
             query_pe: Positional encoding for ``queries`` with the same shape.
             key_pe: Positional encoding for ``keys`` with the same shape.
 
@@ -259,12 +263,12 @@ class Attention(nn.Module):
         """Apply scaled dot-product attention to query, key, and value tokens.
 
         Args:
-            q: Query tensor with shape :math:`(B, N_q, D)`.
-            k: Key tensor with shape :math:`(B, N_k, D)`.
-            v: Value tensor with shape :math:`(B, N_k, D)`.
+            q: Query tensor with shape ``(B, N_q, D)``.
+            k: Key tensor with shape ``(B, N_k, D)``.
+            v: Value tensor with shape ``(B, N_k, D)``.
 
         Returns:
-            Tensor with shape :math:`(B, N_q, D)` after multi-head attention
+            Tensor with shape ``(B, N_q, D)`` after multi-head attention
             and output projection.
         """
         # Input projections
@@ -277,13 +281,14 @@ class Attention(nn.Module):
         k = self._separate_heads(k, self.num_heads)
         v = self._separate_heads(v, self.num_heads)
 
-        # Attention
-        _, _, _, c_per_head = q.shape
-        attn = q @ k.permute(0, 1, 3, 2)  # B x N_heads x N_tokens x N_tokens
-        attn = attn / math.sqrt(c_per_head)
-        attn = attn.softmax(dim=-1)
-
-        # Get output
-        out = attn @ v
+        # Keep the original math path for derivatives, including forward AD inside no_grad.
+        # Ordinary inference can avoid storing the prompt-by-image attention matrices.
+        if torch.is_grad_enabled() or _needs_derivatives(q) or _needs_derivatives(k) or _needs_derivatives(v):
+            _, _, _, c_per_head = q.shape
+            attn = q @ k.permute(0, 1, 3, 2)
+            attn = (attn / math.sqrt(c_per_head)).softmax(dim=-1)
+            out = attn @ v
+        else:
+            out = scaled_dot_product_attention(q, k, v)
         out = self._recombine_heads(out)
         return self.out_proj(out)

@@ -95,18 +95,6 @@ class TestBoxFiltering:
         assert len(filtered_boxes[1]) == 1  # No boxes in the second batch
         assert len(filtered_boxes[2]) == 0  # No boxes in the third batch
 
-    def test_filter_as_zero(self, sample_boxes):
-        """Test filtering boxes as zero when filter_as_zero is True."""
-        filter = BoxFiltering(confidence_threshold=0.8, filter_as_zero=True)
-        filtered_boxes = filter(sample_boxes)
-
-        # Expected output: boxes with confidence <= 0.8 should be zeroed out
-        assert torch.all(filtered_boxes[0][0] != 0)  # Box with confidence 0.9 should remain
-        assert torch.all(filtered_boxes[0][1:] == 0)  # Remaining boxes should be zeroed
-        assert torch.all(filtered_boxes[1][0] != 0)  # Box with confidence 0.95 should remain
-        assert torch.all(filtered_boxes[1][1:] == 0)  # Remaining boxes should be zeroed
-        assert torch.all(filtered_boxes[2] == 0)  # All boxes in the third batch should be zeroed
-
     def test_no_class_or_confidence_filtering(self, sample_boxes):
         """Test when no class or confidence filtering is applied."""
         filter = BoxFiltering()  # No thresholds set
@@ -189,3 +177,34 @@ class TestBoxFilteringDevice(BaseTester):
         module = BoxFiltering(filter_as_zero=True, **kwargs).to(device)
         boxes = self._boxes(device, dtype)
         self.assert_close(torch.jit.script(module)(boxes), module(boxes))
+
+
+class TestBoxFilteringFilterAsZero(BaseTester):
+    """``filter_as_zero=True`` sets every filtered-out row to zero and leaves kept rows as they are."""
+
+    def test_filtered_rows_are_zero_even_when_nonfinite(self, device, dtype):
+        """Multiplying by the keep mask left NaN for NaN or inf values and -0.0 for negative ones."""
+        nan, inf = float("nan"), float("inf")
+        boxes = torch.tensor(
+            [
+                [
+                    [0.0, 0.9, 1.0, 2.0, 3.0, 4.0],  # kept
+                    [1.0, nan, 1.0, 1.0, 1.0, 1.0],  # dropped: a NaN score is not above the threshold
+                    [2.0, 0.1, inf, 1.0, 1.0, 1.0],  # dropped, holds inf
+                    [3.0, 0.2, -5.0, 1.0, 1.0, nan],  # dropped, holds a negative value and NaN
+                    [4.0, 0.8, nan, 1.0, -inf, 1.0],  # kept, non-finite values stay
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        out = BoxFiltering(confidence_threshold=0.5, filter_as_zero=True)(boxes)
+
+        dropped = out[0, 1:4]
+        assert torch.all(dropped == 0)
+        assert not torch.signbit(dropped).any()
+        self.assert_close(out[0, 0], boxes[0, 0], rtol=0, atol=0)
+        kept = out[0, 4]
+        assert torch.isnan(kept[2])
+        assert kept[4] == -inf
+        self.assert_close(kept[[0, 1, 3, 5]], boxes[0, 4, [0, 1, 3, 5]], rtol=0, atol=0)

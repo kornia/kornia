@@ -89,7 +89,7 @@ Video data is a special case of 3D volumetric data that contains both spatial an
 sometimes referred to as 2.5D rather than 3D. In most applications, augmenting video data requires the same
 augmentation, with the same parameters, to be applied to every frame of a clip.
 :py:class:`~kornia.augmentation.container.VideoSequential` does exactly that, with the same interface as `nn.Sequential`,
-and supports the :math:`(B, C, T, H, W)` and :math:`(B, T, C, H, W)` data formats.
+and supports the ``(B, C, T, H, W)`` and ``(B, T, C, H, W)`` data formats.
 
 .. code-block:: python
 

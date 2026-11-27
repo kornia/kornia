@@ -51,7 +51,7 @@ class VGG19(nn.Module):
         """Run this DeDoDe module forward.
 
         Args:
-            x: Input image tensor with shape :math:`(B, 3, H, W)` (BGR or RGB).
+            x: Input image tensor with shape ``(B, 3, H, W)`` (BGR or RGB).
             **kwargs: Additional keyword arguments accepted for compatibility with the shared encoder interface. They
                 are not used by this VGG19 batch-normalized backbone wrapper.
 
@@ -102,11 +102,11 @@ class FrozenDINOv2(nn.Module):
         backbone is cast to the dtype and device of ``x``, so the features come back in the dtype of ``x``.
 
         Args:
-            x: Input image tensor with shape :math:`(B, 3, H, W)`.
+            x: Input image tensor with shape ``(B, 3, H, W)``.
 
         Returns:
             Tuple of ``([features_16], [(H//14, W//14)])`` where ``features_16`` has shape
-            :math:`(B, 1024, H/14, W/14)`.
+            ``(B, 1024, H/14, W/14)``.
         """
         B, _C, H, W = x.shape
         use_amp = self.amp and x.is_cuda
@@ -140,7 +140,7 @@ class VGG_DINOv2(nn.Module):
         """Run this DeDoDe module forward.
 
         Args:
-            x: Input image tensor with shape :math:`(B, 3, H, W)`.
+            x: Input image tensor with shape ``(B, 3, H, W)``.
 
         Returns:
             Tuple of combined ``(features, sizes)`` lists from the VGG19 and DINOv2 encoders.

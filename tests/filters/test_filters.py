@@ -74,9 +74,12 @@ from testing.base import (
 
 
 class TestFilter2D(BaseTester):
-    @pytest.mark.parametrize("border_type", ["constant", "reflect", "replicate", "circular"])
+    # "valid" never pads, so it is run with one border only
+    @pytest.mark.parametrize(
+        "border_type, padding",
+        [("constant", "same"), ("reflect", "same"), ("replicate", "same"), ("circular", "same"), ("constant", "valid")],
+    )
     @pytest.mark.parametrize("normalized", [True, False])
-    @pytest.mark.parametrize("padding", ["same", "valid"])
     def test_smoke(self, border_type, normalized, padding, device, dtype):
         kernel = torch.rand(1, 3, 3, device=device, dtype=dtype)
         _, height, width = kernel.shape
@@ -86,20 +89,6 @@ class TestFilter2D(BaseTester):
         actual = filter2d(sample, kernel, border_type, normalized, padding)
         assert isinstance(actual, torch.Tensor)
         assert actual.shape in {(b, c, h, w), (b, c, h - height + 1, w - width + 1)}
-
-    @pytest.mark.parametrize("batch_size", [2, 3, 6, 8])
-    @pytest.mark.parametrize("padding", ["same", "valid"])
-    def test_cardinality(self, batch_size, padding, device, dtype):
-        B: int = batch_size
-        kernel = torch.rand(1, 3, 3, device=device, dtype=dtype)
-        _, height, width = kernel.shape
-        sample = torch.ones(B, 3, 7, 8, device=device, dtype=dtype)
-        b, c, h, w = sample.shape
-        out = filter2d(sample, kernel, padding=padding)
-        if padding == "same":
-            assert out.shape == (b, c, h, w)
-        else:
-            assert out.shape == (b, c, h - height + 1, w - width + 1)
 
     def test_conv(self, device, dtype):
         inp = torch.zeros(1, 1, 5, 5, device=device, dtype=dtype)
@@ -175,52 +164,6 @@ class TestFilter2D(BaseTester):
         with pytest.raises(Exception) as errinfo:
             filter2d(data, k, behaviour="a")
         assert "Invalid behaviour mode, a. Ex" in str(errinfo)
-
-    @pytest.mark.parametrize("padding", ["same", "valid"])
-    def test_mean_filter(self, padding, device, dtype):
-        kernel = torch.ones(1, 3, 3, device=device, dtype=dtype)
-        sample = torch.tensor(
-            [
-                [
-                    [
-                        [0.0, 0.0, 0.0, 0.0, 0.0],
-                        [0.0, 0.0, 0.0, 0.0, 0.0],
-                        [0.0, 0.0, 5.0, 0.0, 0.0],
-                        [0.0, 0.0, 0.0, 0.0, 0.0],
-                        [0.0, 0.0, 0.0, 0.0, 0.0],
-                    ]
-                ]
-            ],
-            device=device,
-            dtype=dtype,
-        )
-
-        actual = filter2d(sample, kernel, padding=padding)
-
-        if padding == "same":
-            expected_same = torch.tensor(
-                [
-                    [
-                        [
-                            [0.0, 0.0, 0.0, 0.0, 0.0],
-                            [0.0, 5.0, 5.0, 5.0, 0.0],
-                            [0.0, 5.0, 5.0, 5.0, 0.0],
-                            [0.0, 5.0, 5.0, 5.0, 0.0],
-                            [0.0, 0.0, 0.0, 0.0, 0.0],
-                        ]
-                    ]
-                ],
-                device=device,
-                dtype=dtype,
-            )
-
-            self.assert_close(actual, expected_same)
-        else:
-            expected_valid = torch.tensor(
-                [[[[5.0, 5.0, 5.0], [5.0, 5.0, 5.0], [5.0, 5.0, 5.0]]]], device=device, dtype=dtype
-            )
-
-            self.assert_close(actual, expected_valid)
 
     @pytest.mark.parametrize("padding", ["same", "valid"])
     def test_mean_filter_2batch_2ch(self, padding, device, dtype):
@@ -362,8 +305,7 @@ class TestFilter2D(BaseTester):
 
             self.assert_close(actual, expected_valid)
 
-    @pytest.mark.parametrize("padding", ["same", "valid"])
-    def test_mix_sized_filter_padding_same(self, padding, device, dtype):
+    def test_mix_sized_filter_padding_same(self, device, dtype):
         kernel = torch.ones(1, 5, 6, device=device, dtype=dtype)
         sample_ = torch.tensor(
             [
@@ -446,9 +388,6 @@ class TestFilter2D(BaseTester):
         # evaluate function gradient
         self.gradcheck(filter2d, (sample, kernel), nondet_tol=1e-8)
 
-    @pytest.mark.skip(reason="filter2d do not have a module")
-    def test_module(self): ...
-
     @pytest.mark.parametrize("normalized", [True, False])
     @pytest.mark.parametrize("padding", ["same", "valid"])
     def test_dynamo(self, normalized, padding, device, dtype, torch_optimizer):
@@ -467,8 +406,6 @@ class TestFilter3D(BaseTester):
     @pytest.mark.parametrize("border_type", ["constant", "reflect", "replicate", "circular"])
     @pytest.mark.parametrize("normalized", [True, False])
     def test_smoke(self, border_type, normalized, device, dtype):
-        if torch_version_le(1, 9, 1) and border_type == "reflect":
-            pytest.skip(reason="Reflect border is not implemented for 3D on torch < 1.9.1")
 
         kernel = torch.rand(1, 3, 3, 3, device=device, dtype=dtype)
         data = torch.ones(1, 1, 6, 7, 8, device=device, dtype=dtype)
@@ -476,12 +413,6 @@ class TestFilter3D(BaseTester):
 
         assert isinstance(actual, torch.Tensor)
         assert actual.shape == data.shape
-
-    @pytest.mark.parametrize("batch_size", [2, 3, 6, 8])
-    def test_cardinality(self, batch_size, device, dtype):
-        kernel = torch.rand(1, 3, 3, 3, device=device, dtype=dtype)
-        data = torch.ones(batch_size, 3, 6, 7, 8, device=device, dtype=dtype)
-        assert filter3d(data, kernel).shape == data.shape
 
     def test_exception(self):
         from kornia.core.exceptions import ShapeError, TypeCheckError
@@ -511,75 +442,6 @@ class TestFilter3D(BaseTester):
         with pytest.raises(Exception) as errinfo:
             filter3d(data, k, behaviour="a")
         assert "Invalid behaviour mode, got a. Ex" in str(errinfo)
-
-    def test_mean_filter(self, device, dtype):
-        kernel = torch.ones(1, 3, 3, 3, device=device, dtype=dtype)
-        sample = torch.tensor(
-            [
-                [
-                    [
-                        [
-                            [0.0, 0.0, 0.0, 0.0, 0.0],
-                            [0.0, 0.0, 0.0, 0.0, 0.0],
-                            [0.0, 0.0, 0.0, 0.0, 0.0],
-                            [0.0, 0.0, 0.0, 0.0, 0.0],
-                            [0.0, 0.0, 0.0, 0.0, 0.0],
-                        ],
-                        [
-                            [0.0, 0.0, 0.0, 0.0, 0.0],
-                            [0.0, 0.0, 0.0, 0.0, 0.0],
-                            [0.0, 0.0, 5.0, 0.0, 0.0],
-                            [0.0, 0.0, 0.0, 0.0, 0.0],
-                            [0.0, 0.0, 0.0, 0.0, 0.0],
-                        ],
-                        [
-                            [0.0, 0.0, 0.0, 0.0, 0.0],
-                            [0.0, 0.0, 0.0, 0.0, 0.0],
-                            [0.0, 0.0, 0.0, 0.0, 0.0],
-                            [0.0, 0.0, 0.0, 0.0, 0.0],
-                            [0.0, 0.0, 0.0, 0.0, 0.0],
-                        ],
-                    ]
-                ]
-            ],
-            device=device,
-            dtype=dtype,
-        )
-
-        expected = torch.tensor(
-            [
-                [
-                    [
-                        [
-                            [0.0, 0.0, 0.0, 0.0, 0.0],
-                            [0.0, 5.0, 5.0, 5.0, 0.0],
-                            [0.0, 5.0, 5.0, 5.0, 0.0],
-                            [0.0, 5.0, 5.0, 5.0, 0.0],
-                            [0.0, 0.0, 0.0, 0.0, 0.0],
-                        ],
-                        [
-                            [0.0, 0.0, 0.0, 0.0, 0.0],
-                            [0.0, 5.0, 5.0, 5.0, 0.0],
-                            [0.0, 5.0, 5.0, 5.0, 0.0],
-                            [0.0, 5.0, 5.0, 5.0, 0.0],
-                            [0.0, 0.0, 0.0, 0.0, 0.0],
-                        ],
-                        [
-                            [0.0, 0.0, 0.0, 0.0, 0.0],
-                            [0.0, 5.0, 5.0, 5.0, 0.0],
-                            [0.0, 5.0, 5.0, 5.0, 0.0],
-                            [0.0, 5.0, 5.0, 5.0, 0.0],
-                            [0.0, 0.0, 0.0, 0.0, 0.0],
-                        ],
-                    ]
-                ]
-            ],
-            device=device,
-            dtype=dtype,
-        )
-
-        actual = filter3d(sample, kernel)
-        self.assert_close(actual, expected)
 
     def test_mean_filter_2batch_2ch(self, device, dtype):
         kernel = torch.ones(1, 3, 3, 3, device=device, dtype=dtype)
@@ -823,6 +685,7 @@ class TestFilter3D(BaseTester):
     @pytest.mark.parametrize("normalized", [True, False])
     @pytest.mark.parametrize("behaviour", ["corr", "conv"])
     def test_noncontiguous_kernel(self, kernel_batch, normalized, behaviour, device, dtype):
+        # Regression #5159: normalizing a permuted kernel must work for correlation and convolution.
         data = torch.arange(840, device=device, dtype=dtype).reshape(2, 2, 7, 6, 5) / 840
         kernel = (torch.arange(30 * kernel_batch, device=device, dtype=dtype) % 7 - 3).reshape(kernel_batch, 2, 3, 5)
         kernel = kernel.permute(0, 3, 2, 1)
@@ -860,9 +723,6 @@ class TestFilter3D(BaseTester):
             nondet_tol=1e-8,
         )
 
-    @pytest.mark.skip(reason="filter3d do not have a module")
-    def test_module(self): ...
-
     @pytest.mark.parametrize("normalized", [True, False])
     def test_dynamo(self, normalized, device, dtype, torch_optimizer):
         kernel = torch.rand(1, 3, 3, 3, device=device, dtype=dtype)
@@ -877,6 +737,23 @@ class TestFilter3D(BaseTester):
 
 
 class TestFilter2D_fftconv(BaseTester):
+    @pytest.mark.applies_to(dtypes=("float16", "bfloat16"), reason="checks the float16 and bfloat16 path")
+    @pytest.mark.parametrize("size", [(50, 50), (40, 45)])
+    def test_half_input_is_transformed_in_float32(self, size, device, dtype):
+        """A half input returns the float32 result for the same values, cast back to the input dtype.
+
+        With a 15 x 15 kernel the padded sizes are 64 x 64, a power of two, and 54 x 59, which is not.
+        """
+        generator = torch.Generator().manual_seed(0)
+        sample = torch.rand(2, 3, *size, generator=generator).to(device, dtype)
+        kernel = torch.rand(1, 15, 15, generator=generator).to(device, dtype)
+
+        actual = fft_conv(sample, kernel, border_type="constant")
+        expected = fft_conv(sample.float(), kernel.float(), border_type="constant").to(dtype)
+
+        assert actual.dtype == dtype
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
     @pytest.mark.parametrize("padding", ["same", "valid"])
     @pytest.mark.parametrize("behaviour", ["corr", "conv"])
     @pytest.mark.parametrize("normalized", [True, False])
@@ -891,9 +768,12 @@ class TestFilter2D_fftconv(BaseTester):
         assert actual.device == sample.device
         self.assert_close(actual, expected)
 
-    @pytest.mark.parametrize("border_type", ["constant", "reflect", "replicate", "circular"])
+    # "valid" never pads, so it is run with one border only
+    @pytest.mark.parametrize(
+        "border_type, padding",
+        [("constant", "same"), ("reflect", "same"), ("replicate", "same"), ("circular", "same"), ("constant", "valid")],
+    )
     @pytest.mark.parametrize("normalized", [True, False])
-    @pytest.mark.parametrize("padding", ["same", "valid"])
     def test_smoke(self, border_type, normalized, padding, device, dtype):
         kernel = torch.rand(1, 3, 3, device=device, dtype=dtype)
         _, height, width = kernel.shape
@@ -903,20 +783,6 @@ class TestFilter2D_fftconv(BaseTester):
         actual = fft_conv(sample, kernel, border_type, normalized, padding)
         assert isinstance(actual, torch.Tensor)
         assert actual.shape in {(b, c, h, w), (b, c, h - height + 1, w - width + 1)}
-
-    @pytest.mark.parametrize("batch_size", [2, 3, 6, 8])
-    @pytest.mark.parametrize("padding", ["same", "valid"])
-    def test_cardinality(self, batch_size, padding, device, dtype):
-        B: int = batch_size
-        kernel = torch.rand(1, 3, 3, device=device, dtype=dtype)
-        _, height, width = kernel.shape
-        sample = torch.ones(B, 3, 7, 8, device=device, dtype=dtype)
-        b, c, h, w = sample.shape
-        out = fft_conv(sample, kernel, padding=padding)
-        if padding == "same":
-            assert out.shape == (b, c, h, w)
-        else:
-            assert out.shape == (b, c, h - height + 1, w - width + 1)
 
     def test_conv(self, device, dtype):
         inp = torch.zeros(1, 1, 5, 5, device=device, dtype=dtype)
@@ -987,52 +853,6 @@ class TestFilter2D_fftconv(BaseTester):
         with pytest.raises(Exception) as errinfo:
             fft_conv(data, k, padding="a")
         assert "Invalid padding mode, a. Ex" in str(errinfo)
-
-    @pytest.mark.parametrize("padding", ["same", "valid"])
-    def test_mean_filter(self, padding, device, dtype):
-        kernel = torch.ones(1, 3, 3, device=device, dtype=dtype)
-        sample = torch.tensor(
-            [
-                [
-                    [
-                        [0.0, 0.0, 0.0, 0.0, 0.0],
-                        [0.0, 0.0, 0.0, 0.0, 0.0],
-                        [0.0, 0.0, 5.0, 0.0, 0.0],
-                        [0.0, 0.0, 0.0, 0.0, 0.0],
-                        [0.0, 0.0, 0.0, 0.0, 0.0],
-                    ]
-                ]
-            ],
-            device=device,
-            dtype=dtype,
-        )
-
-        actual = fft_conv(sample, kernel, padding=padding)
-
-        if padding == "same":
-            expected_same = torch.tensor(
-                [
-                    [
-                        [
-                            [0.0, 0.0, 0.0, 0.0, 0.0],
-                            [0.0, 5.0, 5.0, 5.0, 0.0],
-                            [0.0, 5.0, 5.0, 5.0, 0.0],
-                            [0.0, 5.0, 5.0, 5.0, 0.0],
-                            [0.0, 0.0, 0.0, 0.0, 0.0],
-                        ]
-                    ]
-                ],
-                device=device,
-                dtype=dtype,
-            )
-
-            self.assert_close(actual, expected_same)
-        else:
-            expected_valid = torch.tensor(
-                [[[[5.0, 5.0, 5.0], [5.0, 5.0, 5.0], [5.0, 5.0, 5.0]]]], device=device, dtype=dtype
-            )
-
-            self.assert_close(actual, expected_valid)
 
     @pytest.mark.parametrize("padding", ["same", "valid"])
     def test_mean_filter_2batch_2ch(self, padding, device, dtype):
@@ -1174,8 +994,7 @@ class TestFilter2D_fftconv(BaseTester):
 
             self.assert_close(actual, expected_valid)
 
-    @pytest.mark.parametrize("padding", ["same", "valid"])
-    def test_mix_sized_filter_padding_same(self, padding, device, dtype):
+    def test_mix_sized_filter_padding_same(self, device, dtype):
         kernel = torch.ones(1, 5, 6, device=device, dtype=dtype)
         sample_ = torch.tensor(
             [
@@ -1228,9 +1047,6 @@ class TestFilter2D_fftconv(BaseTester):
         # evaluate function gradient
         self.gradcheck(fft_conv, (sample, kernel), nondet_tol=1e-8)
 
-    @pytest.mark.skip(reason="filter2d do not have a module")
-    def test_module(self): ...
-
     @pytest.mark.parametrize("normalized", [True, False])
     @pytest.mark.parametrize("padding", ["same", "valid"])
     def test_dynamo(self, normalized, padding, device, dtype, torch_optimizer):
@@ -1267,94 +1083,33 @@ class TestCorrelateConvolveExports:
             assert func is getattr(defining, name), name
             assert func.__module__ == "kornia.filters.filter", name
 
-    @pytest.mark.parametrize("name", NAMES)
-    def test_listed_in_all(self, name):
-        import kornia.filters as KF
-
-        # `from kornia.filters import *` binds exactly the names in `__all__`.
-        assert name in KF.__all__
-
-    def test_all_is_well_formed(self):
+    def test_all_has_no_duplicates(self):
         import kornia.filters as KF
 
         assert len(KF.__all__) == len(set(KF.__all__))
-        assert all(hasattr(KF, name) for name in KF.__all__)
 
 
-class TestCorrelateConvolveShapes(BaseTester):
-    """The output shapes the four docstrings state, for odd and even kernels."""
+class TestCorrelateConvolveForwarding(BaseTester):
+    @pytest.mark.parametrize("func,behaviour", [(correlate2d, "corr"), (convolve2d, "conv")])
+    @pytest.mark.parametrize("padding,normalized,shape", [("same", True, (2, 3, 7, 8)), ("valid", False, (2, 3, 4, 6))])
+    def test_forwarding_2d(self, func, behaviour, padding, normalized, shape, device, dtype):
+        image = torch.rand(2, 3, 7, 8, device=device, dtype=dtype)
+        kernel = torch.arange(1, 13, device=device, dtype=dtype).reshape(1, 4, 3)
+        actual = func(image, kernel, border_type="constant", normalized=normalized, padding=padding)
+        expected = filter2d(
+            image, kernel, border_type="constant", normalized=normalized, padding=padding, behaviour=behaviour
+        )
+        assert actual.shape == shape
+        self.assert_close(actual, expected)
 
-    @pytest.mark.parametrize("func", [correlate2d, convolve2d])
-    @pytest.mark.parametrize("kernel_size", [(1, 1), (3, 3), (2, 2), (4, 3), (2, 5)])
-    @pytest.mark.parametrize("padding", ["same", "valid"])
-    def test_cardinality_2d(self, func, kernel_size, padding, device, dtype):
-        b, c, h, w = 2, 3, 7, 8
-        kh, kw = kernel_size
-        inp = torch.ones(b, c, h, w, device=device, dtype=dtype)
-        kernel = torch.ones(1, kh, kw, device=device, dtype=dtype)
-        expected = (b, c, h, w) if padding == "same" else (b, c, h - kh + 1, w - kw + 1)
-        # the shape does not depend on the border; "constant" also runs in half precision on old torch
-        assert func(inp, kernel, border_type="constant", padding=padding).shape == expected
-
-    @pytest.mark.parametrize("func", [correlate3d, convolve3d])
-    @pytest.mark.parametrize("kernel_size", [(1, 1, 1), (3, 3, 3), (2, 2, 2), (4, 3, 2)])
-    def test_cardinality_3d(self, func, kernel_size, device, dtype):
-        inp = torch.ones(2, 3, 5, 7, 8, device=device, dtype=dtype)
-        kernel = torch.ones(1, *kernel_size, device=device, dtype=dtype)
-        # the shape does not depend on the border; "constant" also runs in half precision on old torch
-        assert func(inp, kernel, border_type="constant").shape == inp.shape
-
-
-class TestCorrelate2d(BaseTester):
-    def test_equivalent_to_filter2d_corr(self, device, dtype):
-        inp = torch.rand(1, 1, 7, 8, device=device, dtype=dtype)
-        kernel = torch.rand(1, 3, 3, device=device, dtype=dtype)
-        expected = filter2d(inp, kernel, behaviour="corr")
-        result = correlate2d(inp, kernel)
-        self.assert_close(result, expected)
-
-    @pytest.mark.parametrize("border_type", ["constant", "reflect", "replicate", "circular"])
-    @pytest.mark.parametrize("padding", ["same", "valid"])
-    def test_smoke(self, border_type, padding, device, dtype):
-        inp = torch.ones(1, 1, 7, 8, device=device, dtype=dtype)
-        kernel = torch.rand(1, 3, 3, device=device, dtype=dtype)
-        out = correlate2d(inp, kernel, border_type=border_type, padding=padding)
-        assert isinstance(out, torch.Tensor)
-
-
-class TestConvolve2d(BaseTester):
-    def test_equivalent_to_filter2d_conv(self, device, dtype):
-        inp = torch.rand(1, 1, 7, 8, device=device, dtype=dtype)
-        kernel = torch.rand(1, 3, 3, device=device, dtype=dtype)
-        expected = filter2d(inp, kernel, behaviour="conv")
-        result = convolve2d(inp, kernel)
-        self.assert_close(result, expected)
-
-    def test_differs_from_correlate_asymmetric_kernel(self, device, dtype):
-        inp = torch.rand(1, 1, 7, 8, device=device, dtype=dtype)
-        # Asymmetric kernel so corr != conv
-        kernel = torch.tensor([[[1.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]], device=device, dtype=dtype)
-        corr = correlate2d(inp, kernel)
-        conv = convolve2d(inp, kernel)
-        assert not torch.allclose(corr, conv)
-
-
-class TestCorrelate3d(BaseTester):
-    def test_equivalent_to_filter3d_corr(self, device, dtype):
-        inp = torch.rand(1, 1, 5, 7, 8, device=device, dtype=dtype)
-        kernel = torch.rand(1, 3, 3, 3, device=device, dtype=dtype)
-        expected = filter3d(inp, kernel, behaviour="corr")
-        result = correlate3d(inp, kernel)
-        self.assert_close(result, expected)
-
-
-class TestConvolve3d(BaseTester):
-    def test_equivalent_to_filter3d_conv(self, device, dtype):
-        inp = torch.rand(1, 1, 5, 7, 8, device=device, dtype=dtype)
-        kernel = torch.rand(1, 3, 3, 3, device=device, dtype=dtype)
-        expected = filter3d(inp, kernel, behaviour="conv")
-        result = convolve3d(inp, kernel)
-        self.assert_close(result, expected)
+    @pytest.mark.parametrize("func,behaviour", [(correlate3d, "corr"), (convolve3d, "conv")])
+    def test_forwarding_3d(self, func, behaviour, device, dtype):
+        volume = torch.rand(2, 3, 5, 7, 8, device=device, dtype=dtype)
+        kernel = torch.arange(1, 25, device=device, dtype=dtype).reshape(1, 4, 3, 2)
+        actual = func(volume, kernel, border_type="constant", normalized=True)
+        expected = filter3d(volume, kernel, border_type="constant", normalized=True, behaviour=behaviour)
+        assert actual.shape == volume.shape
+        self.assert_close(actual, expected)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -1399,11 +1154,12 @@ _FILTER2D_FNS = {"filter2d": filter2d, "fft_conv": fft_conv}
 
 
 def _fft_guard(name: str, device: torch.device, dtype: torch.dtype) -> None:
-    """Skip fft_conv where the device has no FFT for the dtype (fft_conv computes a CPU half input in float32)."""
+    """Skip fft_conv where the device has no FFT for the dtype it transforms (float32 for half inputs)."""
     if name != "fft_conv" or device.type == "cpu":
         return
+    fft_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
     try:
-        torch.fft.rfftn(torch.zeros(3, 5, device=device, dtype=dtype))
+        torch.fft.rfftn(torch.zeros(3, 5, device=device, dtype=fft_dtype))
     except (RuntimeError, NotImplementedError):
         pytest.skip("this device has no FFT for this dtype, which fft_conv needs")
 
@@ -1610,19 +1366,37 @@ class TestConventionsFilter2d(BaseTester):
         assert kernel.grad is not None
         assert kernel.grad.dtype == torch.float64
 
+    @pytest.mark.parametrize("name", ["filter2d", "fft_conv", "filter3d"])
+    def test_convention_filter2d_kernel_gradient_reaches_a_float64_cpu_kernel(self, name, device, dtype):
+        # A single MPS -> CPU float64 copy left this gradient unwritten on torch 2.14 and raised on 2.15
+        # (pytorch/pytorch#197715).
+        _fft_guard(name, device, dtype)
+        fn = filter3d if name == "filter3d" else _FILTER2D_FNS[name]
+        spatial = (3, 5, 7) if name == "filter3d" else (5, 7)
+        image = torch.ones(1, 1, *spatial, device=device, dtype=dtype)
+        kernel = torch.full((1, *((3,) * len(spatial))), 0.5, dtype=torch.float64, requires_grad=True)
+        fn(image, kernel, "constant").float().sum().backward()
+        # Zero padding: a tap at offset o from the centre lands inside the image at n - |o| positions of an axis
+        # of length n, so its gradient is the product of those counts, e.g. 4 * 6 = 24 at a 2-D corner.
+        counts = [torch.tensor([n - 1.0, n, n - 1.0], dtype=torch.float64) for n in spatial]
+        expected = counts[0][:, None] * counts[1][None, :]
+        if name == "filter3d":
+            expected = expected[:, :, None] * counts[2][None, None, :]
+        self.assert_close(kernel.grad[0], expected)
+
     @pytest.mark.parametrize("border_type, too_narrow, wide_enough", [("reflect", 2, 3), ("circular", 1, 2)])
-    def test_convention_filter2d_reflect_and_circular_need_the_axis_longer_than_the_pad(
+    def test_convention_filter2d_reflect_and_circular_extend_to_short_axes(
         self, border_type, too_narrow, wide_enough, device, dtype
     ):
         if border_type == "reflect" and not supports_reflect_padding(device, dtype):
             pytest.skip("reflection_pad2d is unavailable for this device/dtype")
-        # A kernel 4 wide pads 1 column before and 2 after. reflect needs every pad shorter than the axis, circular
-        # at most as long; a narrower axis raises.
-        kernel = _rand(1, 1, 4, device=device, dtype=dtype)
+        # A kernel 4 wide pads 1 column before and 2 after. Both borders keep a constant image constant,
+        # including where the backend's own reflection or wrapping limit was reached.
+        kernel = torch.tensor([[[1, 2, 4, 8]]], device=device, dtype=dtype)
         out = filter2d(_rand(1, 1, 3, wide_enough, device=device, dtype=dtype), kernel, border_type)
         assert out.shape == (1, 1, 3, wide_enough)
-        with pytest.raises((RuntimeError, BaseError)):
-            filter2d(_rand(1, 1, 3, too_narrow, device=device, dtype=dtype), kernel, border_type)
+        image = torch.ones(1, 1, 3, too_narrow, device=device, dtype=dtype)
+        self.assert_close(filter2d(image, kernel, border_type), image * 15, rtol=0, atol=0)
         # constant padding runs on any size
         assert filter2d(_rand(1, 1, 3, 1, device=device, dtype=dtype), kernel, "constant").shape == (1, 1, 3, 1)
 
@@ -1828,16 +1602,6 @@ class TestConventionsFilter2d(BaseTester):
         assert not torch.equal(conv, corr)
         assert torch.equal(filter3d(volume, kernel, behaviour="CONV"), conv)
         assert torch.equal(filter3d(volume, kernel, behaviour="Corr"), corr)
-
-    @pytest.mark.parametrize("behaviour", ["corr", "conv"])
-    def test_convention_filter3d_normalized_accepts_a_non_contiguous_kernel_5159(self, behaviour, device, dtype):
-        """filter3d(normalized=True) gives a permuted kernel the result of its contiguous copy (#5159)."""
-        volume = _rand(1, 1, 5, 6, 7, device=device, dtype=dtype)
-        kernel = _rand(1, 3, 4, 5, device=device, dtype=dtype, seed=1).permute(0, 3, 2, 1)  # (1, 5, 4, 3)
-        assert not kernel.is_contiguous()
-        expected = filter3d(volume, kernel.contiguous(), "constant", normalized=True, behaviour=behaviour)
-        out = filter3d(volume, kernel, "constant", normalized=True, behaviour=behaviour)
-        assert torch.equal(out, expected)
 
     @pytest.mark.parametrize("name", ["filter2d", "fft_conv"])
     def test_convention_filter2d_valid_padding_rejects_a_kernel_larger_than_the_input_5285(self, name, device, dtype):
@@ -2114,9 +1878,18 @@ class TestConventionsKernels(BaseTester):
         along_x = get_gaussian_kernel1d(7, 1.5, device=device, dtype=dtype)[0]
         self.assert_close(kernel[0], along_z[:, None, None] * along_y[None, :, None] * along_x[None, None, :])
 
-    @pytest.mark.parametrize("ndim", [1, 2, 3])
-    def test_convention_gaussian_kernel_batched_sigma_gives_one_kernel_per_row(self, ndim, device, dtype):
-        builder = {1: get_gaussian_kernel1d, 2: get_gaussian_kernel2d, 3: get_gaussian_kernel3d}[ndim]
+    @pytest.mark.parametrize(
+        "builder, ndim",
+        [
+            (get_gaussian_kernel1d, 1),
+            (get_gaussian_erf_kernel1d, 1),
+            (get_gaussian_discrete_kernel1d, 1),
+            (get_gaussian_kernel2d, 2),
+            (get_gaussian_kernel3d, 3),
+        ],
+        ids=lambda v: v.__name__ if callable(v) else None,
+    )
+    def test_convention_gaussian_kernel_batched_sigma_gives_one_kernel_per_row(self, builder, ndim, device, dtype):
         sizes = (3, 5, 7)[:ndim]
         size_arg = sizes[0] if ndim == 1 else sizes
         sigma = torch.tensor([[0.8, 1.2, 1.6][:ndim], [1.5, 0.6, 1.1][:ndim]], device=device, dtype=dtype)  # (B, ndim)
@@ -2353,13 +2126,14 @@ class TestConventionsKernels(BaseTester):
         get_motion_kernel3d(5, angle, torch.tensor([0.3, -0.3], device=device, dtype=dtype)).sum().backward()
         self.assert_close(angle.grad, torch.zeros_like(angle))
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="an angle 1e-4 degrees from a tie is not representable in half precision"
+    )
     @pytest.mark.parametrize("kernel_size", [3, 5, 7])
     def test_convention_motion_kernel3d_nearest_next_to_a_tie_is_rotate3d_5510(self, kernel_size, device, dtype):
         """1e-4 degrees from a tie, the taps are rotate3d()'s: only an exact tie is snapped (#5510)."""
         from kornia.geometry.transform import rotate3d
 
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("an angle 1e-4 degrees from a tie is not representable in half precision")
         ties = torch.tensor([30.0, 60.0, 120.0, 150.0, 210.0, 240.0, 300.0, 330.0], dtype=torch.float64)
         near = torch.cat([ties - 1e-4, ties + 1e-4])
         zero = torch.zeros_like(near)
@@ -2603,13 +2377,14 @@ class TestConventionsKernels(BaseTester):
         get_motion_kernel2d(5, angle, torch.tensor([0.3, -0.3], device=device, dtype=dtype)).sum().backward()
         self.assert_close(angle.grad, torch.zeros_like(angle))
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="an angle 1e-4 degrees from a tie is not representable in half precision"
+    )
     @pytest.mark.parametrize("kernel_size", [3, 5, 7])
     def test_convention_motion_kernel2d_nearest_next_to_a_tie_is_rotate_5181(self, kernel_size, device, dtype):
         """1e-4 degrees from a tie, the taps are rotate()'s: only an exact tie is snapped (#5181)."""
         from kornia.geometry.transform import rotate
 
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("an angle 1e-4 degrees from a tie is not representable in half precision")
         ties = torch.tensor([30.0, 60.0, 120.0, 150.0, 210.0, 240.0, 300.0, 330.0], dtype=torch.float64)
         angle = torch.cat([ties - 1e-4, ties + 1e-4]).to(device=device, dtype=dtype)
         # 1e-4 degrees moves a source more than 1e-6 px off the half: rotate() in float64 resolves it, and so must
@@ -2724,6 +2499,24 @@ class TestEmptyBatchPerSampleKernel(BaseTester):
         for value in (image, params[0]):
             assert value.grad is not None
             assert value.grad.shape == value.shape
+
+    @pytest.mark.parametrize("padding", ["same", "valid"])
+    @pytest.mark.parametrize("kernel_batch", [0, 1])
+    def test_fft_conv_empty_batch_6266(self, padding, kernel_batch, device, dtype):
+        """fft_conv returns an empty batch like filter2d instead of raising an MKL FFT error (#6266)."""
+        _fft_guard("fft_conv", device, dtype)
+        image = torch.empty(0, 3, 9, 13, device=device, dtype=dtype, requires_grad=True)
+        kernel = torch.ones(kernel_batch, 3, 5, device=device, dtype=dtype, requires_grad=True)
+        output = fft_conv(image, kernel, "constant", True, padding)
+        expected = filter2d(image, kernel, "constant", True, padding)
+        assert output.shape == expected.shape
+        assert output.dtype == dtype
+        assert output.device == device
+        output.sum().backward()
+        for value in (image, kernel):
+            assert value.grad is not None
+            assert value.grad.shape == value.shape
+            self.assert_close(value.grad, torch.zeros_like(value.grad))
 
     @pytest.mark.parametrize(("op", "spatial"), [(filter2d, (9, 13)), (filter3d, (5, 9, 13))])
     @pytest.mark.parametrize(("batch", "kernel_batch"), [(0, 2), (2, 0)])

@@ -15,9 +15,14 @@
 # limitations under the License.
 #
 
-"""Tracking submodule for Kornia.
+"""Track a planar target through video frames with local feature matching and homographies.
 
-This package provides tracking algorithms and utilities, including planar homography tracking.
+The target and the frames are grayscale ``(1, 1, H, W)`` images, and a homography maps target pixels to frame
+pixels.
+
+Which class to use:
+
+- Follow one planar target, such as a poster or a book cover, from frame to frame: :class:`HomographyTracker`.
 """
 
 from .planar_tracker import HomographyTracker

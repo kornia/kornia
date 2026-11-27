@@ -58,7 +58,7 @@ Deeper, single-topic scripts:
 | [`filters/`](filters/) | [`flagship.py`](filters/flagship.py): core filters vs OpenCV/albumentations/torchvision v2/kornia-rs/PIL/scikit-image. [`gaussian_cpu.py`](filters/gaussian_cpu.py): Gaussian blur and scale-pyramid base/branch timing and numerical comparisons; [report](filters/gaussian_cpu.md). |
 | [`color/`](color/) | pytest-benchmark microbenchmarks for color conversions (`*_test.py`). |
 | [`contrib/`](contrib/) | [`connected_components.py`](contrib/connected_components.py): union-find vs pooling labeling, validated against SciPy; [report](contrib/connected_components.md). |
-| [`feature/`](feature/) | Local-feature detector benchmarks incl. quality (matching) metrics; [`laf_ops.py`](feature/laf_ops.py) microbenchmarks the shared LAF operations and [`ellipse_to_laf.py`](feature/ellipse_to_laf.py) drills into one of them (both base-revision A/B — no cross-library baseline exists). [`local_features.py`](feature/local_features.py) measures Oxford graf speed and homography corner error for SIFT, SIFT-AffNet-HardNet and KeyNet-HardNet on CPU, CUDA or MPS (`--device cpu --timing-pairs 2` times the representative 1–2 pair and still scores all five); results in [`graf_benchmark.md`](feature/graf_benchmark.md). [`sift_runtime.py`](feature/sift_runtime.py) and [`plot_sift_runtime.py`](feature/plot_sift_runtime.py) chart scale-space SIFT runtime across releases and batch sizes; results in [`sift_runtime.md`](feature/sift_runtime.md). |
+| [`feature/`](feature/) | Local-feature detector benchmarks incl. quality (matching) metrics; [`laf_ops.py`](feature/laf_ops.py) microbenchmarks the shared LAF operations and [`ellipse_to_laf.py`](feature/ellipse_to_laf.py) drills into one of them (both base-revision A/B — no cross-library baseline exists). [`local_features.py`](feature/local_features.py) measures Oxford graf speed and homography corner error for SIFT, SIFT-AffNet-HardNet and KeyNet-HardNet on CPU, CUDA or MPS (`--device cpu --timing-pairs 2` times the representative 1–2 pair and still scores all five); results in [`graf_benchmark.md`](feature/graf_benchmark.md). [`sift_runtime.py`](feature/sift_runtime.py) and [`plot_sift_runtime.py`](feature/plot_sift_runtime.py) chart scale-space SIFT runtime across releases and batch sizes; results in [`sift_runtime.md`](feature/sift_runtime.md). [`patch_network_layout.py`](feature/patch_network_layout.py) times the convolution bodies of the patch descriptor and shape networks (HardNet, HardNet8, SOSNet, TFeat, HyNet, AffNet, OriNet) in the default and the channels-last layout on any device, and their public forwards for a base/branch comparison. |
 | [`common.py`](common.py) | Shared methodology utilities — use these in every new benchmark. |
 
 [`feature/sift_scale_space.py`](feature/sift_scale_space.py) compares complete SIFT
@@ -142,6 +142,10 @@ Every benchmark here must follow the same rules (utilities in [`common.py`](comm
   commits, so a snapshot can carry the current version and a recent timestamp and still measure an
   implementation that no longer exists. Quote `kornia` and `git_commit` together whenever a number
   is cited; the performance page and the llms digest both print the commit for this reason.
+- **A release re-measures what its changes reach:** a release's `<kornia-version>` directory may hold
+  only the suites whose code paths changed since the previous snapshot. The performance page and the
+  llms digest publish each `<suite>--<machine>--<device>` file from its newest version directory,
+  for the machines that the newest directory measures.
 - **Supersede stale snapshots:** when a merged change alters the speed of ops a committed snapshot
   measures, re-measure that machine. When the hardware is not available, move the run to
   `benchmarks/results/superseded/<version>/` and add a row to that directory's README naming the

@@ -20,6 +20,7 @@ from typing import Dict, Optional, Tuple, Union
 import torch
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
+from kornia.augmentation.random_generator.utils import _range_bound_dtype
 from kornia.augmentation.utils import (
     _adapted_rsampling,
     _check_positive_int_or_traced,
@@ -29,7 +30,7 @@ from kornia.augmentation.utils import (
     _shear_bound,
 )
 from kornia.augmentation.utils.helpers import _constant_tensor
-from kornia.core.utils import _extract_device_dtype
+from kornia.core.utils import _extract_device_dtype, _to_device_nonblocking
 
 __all__ = ["AffineGenerator"]
 
@@ -47,7 +48,7 @@ class AffineGenerator(RandomGeneratorBase):
             randomly sampled from the range a <= scale <= b. Will keep original scale by default.
         shear: Range of degrees to select from.
             If float, a shear parallel to the x axis in the range (-shear, +shear) will be applied.
-            If (a, b), a shear parallel to the x axis in the range (-shear, +shear) will be applied.
+            If (a, b), a shear parallel to the x axis in the range (a, b) will be applied.
             If (a, b, c, d), then x-axis shear in (shear[0], shear[1]) and y-axis shear in (shear[2], shear[3])
             will be applied. Will not apply shear by default.
             If torch.Tensor, shear is a 2x2 torch.Tensor, a x-axis shear in (shear[0][0], shear[0][1]) and
@@ -87,25 +88,32 @@ class AffineGenerator(RandomGeneratorBase):
         return f"degrees={self.degrees}, translate={self.translate}, scale={self.scale}, shear={self.shear}"
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
-        _degrees = _range_bound(self.degrees, "degrees", 0, (-360, 360)).to(device=device, dtype=dtype)
+        range_dtype = _range_bound_dtype(dtype)
+        _degrees = _range_bound(self.degrees, "degrees", 0, (-360, 360), dtype=range_dtype).to(
+            device=device, dtype=dtype
+        )
         _translate = (
             self.translate
             if self.translate is None
-            else _range_bound(self.translate, "translate", bounds=(0, 1), check="singular").to(
+            else _range_bound(self.translate, "translate", bounds=(0, 1), check="singular", dtype=range_dtype).to(
                 device=device, dtype=dtype
             )
         )
         _scale: Optional[torch.Tensor] = None
         if self.scale is not None:
             if len(self.scale) == 2:
-                _scale = _range_bound(self.scale[:2], "scale", bounds=(0, float("inf")), check="singular").to(
-                    device=device, dtype=dtype
-                )
+                _scale = _range_bound(
+                    self.scale[:2], "scale", bounds=(0, float("inf")), check="singular", dtype=range_dtype
+                ).to(device=device, dtype=dtype)
             elif len(self.scale) == 4:
                 _scale = torch.cat(
                     [
-                        _range_bound(self.scale[:2], "scale_x", bounds=(0, float("inf")), check="singular"),
-                        _range_bound(self.scale[-2:], "scale_y", bounds=(0, float("inf")), check="singular"),
+                        _range_bound(
+                            self.scale[:2], "scale_x", bounds=(0, float("inf")), check="singular", dtype=range_dtype
+                        ),
+                        _range_bound(
+                            self.scale[-2:], "scale_y", bounds=(0, float("inf")), check="singular", dtype=range_dtype
+                        ),
                     ]
                 ).to(device=device, dtype=dtype)
             else:
@@ -156,14 +164,16 @@ class AffineGenerator(RandomGeneratorBase):
         _check_positive_int_or_traced(width, "width")
         _check_positive_int_or_traced(height, "height")
 
-        angle = _adapted_rsampling((batch_size,), self.degree_sampler, same_on_batch).to(device=_device, dtype=_dtype)
+        angle = _to_device_nonblocking(
+            _adapted_rsampling((batch_size,), self.degree_sampler, same_on_batch), _device, _dtype
+        )
 
         # compute torch.Tensor ranges
         if self.scale_2_sampler is not None:
             _scale = _adapted_rsampling((batch_size,), self.scale_2_sampler, same_on_batch).unsqueeze(1).repeat(1, 2)
             if self.scale_4_sampler is not None:
                 _scale[:, 1] = _adapted_rsampling((batch_size,), self.scale_4_sampler, same_on_batch)
-            _scale = _scale.to(device=_device, dtype=_dtype)
+            _scale = _to_device_nonblocking(_scale, _device, _dtype)
         else:
             _scale = torch.ones((batch_size, 2), device=_device, dtype=_dtype)
 
@@ -175,7 +185,7 @@ class AffineGenerator(RandomGeneratorBase):
                 ],
                 dim=-1,
             )
-            translations = translations.to(device=_device, dtype=_dtype)
+            translations = _to_device_nonblocking(translations, _device, _dtype)
         else:
             translations = torch.zeros((batch_size, 2), device=_device, dtype=_dtype)
 
@@ -186,8 +196,8 @@ class AffineGenerator(RandomGeneratorBase):
         if self.shear_x_sampler is not None and self.shear_y_sampler is not None:
             sx = _adapted_rsampling((batch_size,), self.shear_x_sampler, same_on_batch)
             sy = _adapted_rsampling((batch_size,), self.shear_y_sampler, same_on_batch)
-            sx = sx.to(device=_device, dtype=_dtype)
-            sy = sy.to(device=_device, dtype=_dtype)
+            sx = _to_device_nonblocking(sx, _device, _dtype)
+            sy = _to_device_nonblocking(sy, _device, _dtype)
         else:
             sx = torch.zeros(batch_size, device=_device, dtype=_dtype)
             sy = torch.zeros(batch_size, device=_device, dtype=_dtype)

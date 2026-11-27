@@ -18,11 +18,12 @@
 import pytest
 import torch
 
+from kornia.core.utils import _autocast_disabled
 from kornia.geometry.camera.stereo import StereoCamera, reproject_disparity_to_3D
+from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from kornia.geometry.grid import create_meshgrid
-from kornia.geometry.linalg import transform_points
 
-from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available, skip_unsupported_autocast
 
 
 def _camera(device, dtype):
@@ -32,13 +33,21 @@ def _camera(device, dtype):
     return StereoCamera(left, right)
 
 
-def _legacy(disparity, q):
-    # The pre-mask implementation delegates the homogeneous divide and final cast
-    # to transform_points. Keep that independent entry point as a compatibility oracle.
+def _historical_reprojection(disparity, q):
+    # Freeze the pre-mask transform_points arithmetic as a compatibility oracle. Calling transform_points itself
+    # would make stereo's established absolute-W cutoff track later changes to that general projective API (#6813).
     b, h, w, _ = disparity.shape
     uv = create_meshgrid(h, w, normalized_coordinates=False, device=disparity.device, dtype=disparity.dtype)
     uvd = torch.cat((uv.expand(b, -1, -1, -1), disparity), -1).reshape(b, h * w, 3)
-    return transform_points(q, uvd).reshape(b, h, w, 3)
+    # Historical transform_points returned an empty point axis before touching Q, including the missing Q gradient.
+    if h * w == 0:
+        return uvd.reshape(b, h, w, 3)
+    uvd_h = convert_points_to_homogeneous(uvd).to(q.dtype)
+    repeats = b // q.shape[0] if q.shape[0] > 0 else 0
+    q_t = torch.repeat_interleave(q, repeats=int(repeats), dim=0).transpose(-1, -2)
+    with _autocast_disabled(disparity.device.type):
+        homogeneous = torch.bmm(uvd_h, q_t)
+    return convert_points_from_homogeneous(homogeneous, eps=1e-8).to(disparity.dtype).reshape(b, h, w, 3)
 
 
 class _Reproject(torch.nn.Module):
@@ -78,7 +87,7 @@ class TestStereoReconstructionValidity(BaseTester):
             torch.zeros(1, 1, 1, 1, device=device, dtype=dtype), q, return_mask=True
         )
         assert valid.all()
-        self.assert_close(points.flatten(), q.new_tensor([-2, -1.5, 50]))
+        self.assert_close(points.flatten(), points.new_tensor([-2, -1.5, 50]))
 
     def test_infinite_w_is_invalid_even_with_finite_xyz(self, device, dtype):
         q = _camera(device, dtype).Q.clone()
@@ -87,7 +96,7 @@ class TestStereoReconstructionValidity(BaseTester):
         points, valid = reproject_disparity_to_3D(d, q, return_mask=True)
         assert torch.isfinite(points).all()
         assert not valid.any()
-        assert torch.equal(points, _legacy(d, q))
+        assert torch.equal(points, _historical_reprojection(d, q))
 
     @pytest.mark.parametrize("value", [float("nan"), float("inf"), -float("inf")])
     @pytest.mark.parametrize("operand", ["disparity", "q"])
@@ -100,18 +109,20 @@ class TestStereoReconstructionValidity(BaseTester):
             q[0, 0, 3] = value
         points, valid = reproject_disparity_to_3D(d, q, return_mask=True)
         assert not valid[0, 0, 0, 0]
-        torch.testing.assert_close(points, _legacy(d, q), atol=0, rtol=0, equal_nan=True)
+        torch.testing.assert_close(points, _historical_reprojection(d, q), atol=0, rtol=0, equal_nan=True)
 
+    @pytest.mark.applies_to(
+        when=lambda p: not ((p["device_name"] == "mps") and (torch.float64 in (p["q_dtype"], p["d_dtype"]))),
+        reason="MPS does not support float64",
+    )
     @pytest.mark.parametrize("q_dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64])
     @pytest.mark.parametrize("d_dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64])
     def test_mixed_dtypes_preserve_coordinates(self, device, q_dtype, d_dtype):
-        if device.type == "mps" and torch.float64 in (q_dtype, d_dtype):
-            pytest.skip("MPS does not support float64")
         q = _camera(device, q_dtype).Q
         d = torch.full((2, 2, 3, 1), 10, device=device, dtype=d_dtype)
         points, valid = reproject_disparity_to_3D(d, q, return_mask=True)
         assert points.dtype == d_dtype
-        assert torch.equal(points, _legacy(d, q))
+        assert torch.equal(points, _historical_reprojection(d, q))
         assert valid.all()
 
     def test_final_cast_overflow(self, device):
@@ -134,10 +145,15 @@ class TestStereoReconstructionValidity(BaseTester):
         q[:, 0, 3], q[:, 1, 3], q[:, 2, 3], q[:, 3, 3] = w, w, w, w
         d = torch.zeros(4, 1, 1, 1, device=device, dtype=dtype)
         points, valid = reproject_disparity_to_3D(d, q, return_mask=True)
-        expected = (w.abs() > 1e-8) & torch.isfinite(_legacy(d, q)).all(dim=(1, 2, 3))
-        assert torch.equal(valid.flatten(), expected)
-        assert not valid[:2].any()
-        torch.testing.assert_close(points, _legacy(d, q), atol=0, rtol=0, equal_nan=True)
+        # Independently pin both sides of the cutoff. The converter returns the numerator below it. Above it,
+        # reciprocal overflow makes float16 infinite, bfloat16 rounds the ratio to 255/256, and float32/64 give 1.
+        above_value = float("inf") if dtype == torch.float16 else 255.0 / 256.0 if dtype == torch.bfloat16 else 1.0
+        expected_xyz = torch.stack((below, cutoff, w.new_tensor(above_value), w.new_tensor(above_value)))
+        expected_points = expected_xyz[:, None, None, None].expand(-1, 1, 1, 3)
+        expected_valid = valid.new_tensor([False, False, dtype != torch.float16, dtype != torch.float16])
+        assert torch.equal(valid.flatten(), expected_valid)
+        torch.testing.assert_close(points, expected_points, atol=0, rtol=0, equal_nan=True)
+        torch.testing.assert_close(points, _historical_reprojection(d, q), atol=0, rtol=0, equal_nan=True)
         if dtype in (torch.float32, torch.float64):
             assert valid[2:].all()
             _, scaled_valid = reproject_disparity_to_3D(d, q * 0.1, return_mask=True)
@@ -151,7 +167,7 @@ class TestStereoReconstructionValidity(BaseTester):
         d = torch.tensor([0, 10], device=device, dtype=dtype).reshape(1, 1, 2, 1).requires_grad_()
         points, valid = reproject_disparity_to_3D(d, q, return_mask=True)
         actual = torch.autograd.grad(points.sum(), (d, q))
-        expected = torch.autograd.grad(_legacy(d, q).sum(), (d, q))
+        expected = torch.autograd.grad(_historical_reprojection(d, q).sum(), (d, q))
         assert valid.flatten().tolist() == [False, True]
         for a, b in zip(actual, expected):
             self.assert_close(a, b, atol=0, rtol=0)
@@ -165,9 +181,9 @@ class TestStereoReconstructionValidity(BaseTester):
         points, valid = reproject_disparity_to_3D(d, q, return_mask=True)
         assert points.shape == (batch, rows, cols, 3)
         assert valid.shape == d.shape
-        assert torch.equal(points, _legacy(d, q))
+        assert torch.equal(points, _historical_reprojection(d, q))
         actual = torch.autograd.grad(points.sum(), (d, q), allow_unused=True)
-        expected = torch.autograd.grad(_legacy(d, q).sum(), (d, q), allow_unused=True)
+        expected = torch.autograd.grad(_historical_reprojection(d, q).sum(), (d, q), allow_unused=True)
         for a, b in zip(actual, expected):
             if b is None:
                 assert a is None
@@ -175,12 +191,12 @@ class TestStereoReconstructionValidity(BaseTester):
                 self.assert_close(a, b, atol=0, rtol=0)
 
     @pytest.mark.device_agnostic
-    def test_cpu_autocast_preserves_coordinates_gradients_and_cutoff(self):
+    def test_cpu_autocast_preserves_coordinates_gradients_and_cutoff_6601(self):
         q = _camera(torch.device("cpu"), torch.float32).Q.detach().requires_grad_()
         d = torch.tensor([0.0, 10.0]).reshape(1, 1, 2, 1).requires_grad_()
         with torch.autocast("cpu", dtype=torch.bfloat16):
             points, valid = reproject_disparity_to_3D(d, q, return_mask=True)
-            expected_points = _legacy(d, q)
+            expected_points = _historical_reprojection(d, q)
         assert torch.equal(points, expected_points)
         assert valid.flatten().tolist() == [False, True]
         actual = torch.autograd.grad(points.sum(), (d, q))
@@ -188,15 +204,26 @@ class TestStereoReconstructionValidity(BaseTester):
         for a, b in zip(actual, expected):
             self.assert_close(a, b, atol=0, rtol=0)
 
-        # W is above the float32 cutoff but rounds to the cutoff under autocast.
+        # W is above the float32 cutoff. In half precision it rounded to the cutoff: the region marked it invalid.
         q = torch.zeros(1, 4, 4)
         q[..., 3] = 1e-8 * (1 + 1e-4)
         d = torch.zeros(1, 1, 1, 1)
         assert reproject_disparity_to_3D(d, q, return_mask=True)[1].all()
         with torch.autocast("cpu", dtype=torch.bfloat16):
             points, valid = reproject_disparity_to_3D(d, q, return_mask=True)
-            assert torch.equal(points, _legacy(d, q))
-        assert not valid.any()
+            assert torch.equal(points, _historical_reprojection(d, q))
+        assert valid.all()
+
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_region_does_not_change_the_points_6601(self, autocast_dtype, device):
+        skip_unsupported_autocast(device, autocast_dtype)
+        camera = _camera(device, torch.float32)
+        disparity = torch.rand(1, 64, 64, 1, generator=torch.Generator().manual_seed(0)).to(device) * 40 + 1
+        expected = reproject_disparity_to_3D(disparity, camera.Q)
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = reproject_disparity_to_3D(disparity, camera.Q)
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, rtol=0, atol=0)
 
     def test_mismatched_batch(self, device, dtype):
         d = torch.ones(3, 2, 2, 1, device=device, dtype=dtype)
@@ -208,7 +235,7 @@ class TestStereoReconstructionValidity(BaseTester):
         d = torch.arange(24, device=device, dtype=dtype).reshape(2, 3, 4, 1).transpose(1, 2)
         q = _camera(device, dtype).Q.expand(2, -1, -1).transpose(1, 2).contiguous().transpose(1, 2)
         points, valid = reproject_disparity_to_3D(d, q, return_mask=True)
-        assert torch.equal(points, _legacy(d, q))
+        assert torch.equal(points, _historical_reprojection(d, q))
         assert torch.equal(valid, d != 0)
 
     @pytest.mark.parametrize("return_mask", [False, True])

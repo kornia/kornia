@@ -75,6 +75,67 @@ class TestDiffJPEG(BaseTester):
             _DCT8_CACHE.clear()
             _DCT8_CACHE.update(cache)
 
+    @pytest.mark.parametrize("grid", [(1, 1), (1, 3), (3, 1), (2, 5), (4, 6), (7, 2)])
+    @pytest.mark.parametrize("batch", [0, 1, 3])
+    def test_chroma_patches_match_per_plane_views(self, device, dtype, grid, batch) -> None:
+        """The joint chroma patches hold the values and the order of the per-plane views, and invert to the planes."""
+        from kornia.enhance.jpeg import _patchify_8x8, _patchify_chroma, _unpatchify_8x8, _unpatchify_chroma
+
+        generator = torch.Generator().manual_seed(0)
+        height, width = 8 * grid[0], 8 * grid[1]
+        cb = torch.randn(batch, height, width, generator=generator).to(device=device, dtype=dtype)
+        cr = torch.randn(batch, height, width, generator=generator).to(device=device, dtype=dtype)
+
+        # Both only move values, so they must agree to the last bit in every dtype.
+        patches = _patchify_chroma(cb, cr)
+        self.assert_close(patches, torch.cat((_patchify_8x8(cb), _patchify_8x8(cr)), dim=1), rtol=0.0, atol=0.0)
+
+        n = grid[0] * grid[1]
+        cb_back, cr_back = _unpatchify_chroma(patches, height, width)
+        self.assert_close(cb_back, _unpatchify_8x8(patches[:, :n], height, width), rtol=0.0, atol=0.0)
+        self.assert_close(cr_back, _unpatchify_8x8(patches[:, n:], height, width), rtol=0.0, atol=0.0)
+        self.assert_close(cb_back, cb, rtol=0.0, atol=0.0)
+        self.assert_close(cr_back, cr, rtol=0.0, atol=0.0)
+
+    @pytest.mark.parametrize(
+        "shape", [(1, 3, 16, 16), (2, 3, 32, 48), (1, 3, 41, 70), (2, 3, 17, 33), (1, 3, 1, 1), (0, 3, 24, 24)]
+    )
+    def test_values_and_gradients_match_per_plane_views(self, device, dtype, shape, monkeypatch) -> None:
+        """The codec gives, to the last bit, the values and gradients of per-plane views and a slicing crop."""
+        from kornia.enhance import jpeg
+
+        def patchify_views(cb: torch.Tensor, cr: torch.Tensor) -> torch.Tensor:
+            return torch.cat((jpeg._patchify_8x8(cb), jpeg._patchify_8x8(cr)), dim=1)
+
+        def unpatchify_views(patches: torch.Tensor, H: int, W: int) -> tuple[torch.Tensor, torch.Tensor]:
+            n = patches.shape[1] // 2
+            return jpeg._unpatchify_8x8(patches[:, :n], H, W), jpeg._unpatchify_8x8(patches[:, n:], H, W)
+
+        generator = torch.Generator().manual_seed(0)
+        image = torch.rand(*shape, generator=generator).to(device=device, dtype=dtype)
+        quality = (torch.rand(max(shape[0], 1), generator=generator) * 90.0 + 5.0).to(device=device, dtype=dtype)
+        weights = torch.rand(*shape, generator=generator).to(device=device, dtype=dtype)
+        codec = kornia.enhance.JPEGCodecDifferentiable()
+
+        def run() -> tuple[torch.Tensor, torch.Tensor]:
+            x = image.clone().requires_grad_(True)
+            out = codec(x, quality)
+            (out * weights).sum().backward()
+            return out.detach(), x.grad
+
+        actual, actual_grad = run()
+        monkeypatch.setattr(jpeg, "_patchify_chroma", patchify_views)
+        monkeypatch.setattr(jpeg, "_unpatchify_chroma", unpatchify_views)
+        monkeypatch.setattr(jpeg, "_crop_padding", lambda image, H, W: image[..., :H, :W])
+        expected, expected_grad = run()
+
+        assert actual.shape == expected.shape
+        self.assert_close(actual, expected, rtol=0.0, atol=0.0)
+        # The CUDA backward of the bilinear chroma upsampling adds atomically, in no fixed order: compare the gradients
+        # to the last bit on CPU only.
+        exact = {"rtol": 0.0, "atol": 0.0} if device.type == "cpu" else {}
+        self.assert_close(actual_grad, expected_grad, **exact)
+
     def test_smoke(self, device, dtype) -> None:
         """This test standard usage."""
         B, H, W = 2, 32, 32
@@ -1190,9 +1251,10 @@ class TestDiffJPEG(BaseTester):
         # We use a slightly higher tolerance since our implementation varies from the reference implementation
         self.assert_close(img_jpeg, img_jpeg_ref, rtol=0.01, atol=0.01)
 
+    @pytest.mark.applies_to(
+        dtypes=("float16", "bfloat16"), reason="only float16 and bfloat16 inputs are computed in float32"
+    )
     def test_half_precision_rounds_float32_once(self, device, dtype) -> None:
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("only float16 and bfloat16 inputs are computed in float32")
         # Computed in the input dtype, the codec rounded pixels scaled to [0, 255], DCT coefficients of about 1000 and a
         # quantization scale of 2500 to an 8-bit (bfloat16) or 11-bit (float16) significand, and its outputs were up to
         # 0.2 away from float64's on these qualities.
@@ -1210,12 +1272,11 @@ class TestDiffJPEG(BaseTester):
         assert img_jpeg.dtype == dtype
         assert torch.equal(img_jpeg, wide.to(dtype))
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda", "mps"), reason="CPU, CUDA and MPS autocast")
     def test_a_mixed_precision_region_does_not_reach_the_codec(self, device) -> None:
         # A caller's autocast ran the codec's matrix products and convolutions in its lower dtype: a float32 image under
         # CPU bfloat16 autocast came out about 0.1 away from the same call outside autocast. MPS autocasts to float16;
         # the test has no "autocast" in its name, which conftest would skip on MPS.
-        if device.type not in ("cpu", "cuda", "mps"):
-            pytest.skip("CPU, CUDA and MPS autocast")
         # MPS autocasts to float16, and so does a CUDA device without bfloat16, where bfloat16 autocast raises.
         bfloat16_ok = device.type == "cpu" or (device.type == "cuda" and torch.cuda.is_bf16_supported())
         autocast_dtype = torch.bfloat16 if bfloat16_ok else torch.float16
@@ -1238,9 +1299,10 @@ class TestDiffJPEG(BaseTester):
                 else:
                     assert torch.equal(grad, expected_grad)
 
+    @pytest.mark.applies_to(
+        dtypes=("float16", "bfloat16"), reason="only half-precision inputs exercise this comparison"
+    )
     def test_half_precision_backward(self, device, dtype) -> None:
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("float32 and float64 gradients are covered by test_gradcheck")
         img = torch.rand(4, 3, 32, 32, device=device, dtype=dtype, requires_grad=True)
         jpeg_quality = torch.tensor([99.0, 90.0, 50.0, 10.0], device=device, dtype=dtype, requires_grad=True)
         img32 = img.detach().float().requires_grad_(True)
@@ -1311,8 +1373,7 @@ class TestDiffJPEG(BaseTester):
         assert img_jpeg is not None
         assert img_jpeg.shape == img.shape
 
-    # @pytest.mark.slow
-    def test_gradcheck(self, device) -> None:
+    def test_reference_gradients(self, device) -> None:
         """We test that the gradient matches the gradient of the reference implementation."""
         B, H, W = 1, 16, 16
         img = torch.zeros(B, 3, H, W, device=device, dtype=torch.float)
@@ -1328,7 +1389,9 @@ class TestDiffJPEG(BaseTester):
         jpeg_quality_grad_ref = torch.tensor([0.0042], device=device)
         # We use a slightly higher tolerance since our implementation varies from the reference implementation
         self.assert_close(img.grad.mean().view(-1), img_jpeg_mean_grad_ref, rtol=0.01, atol=0.01)
-        self.assert_close(jpeg_quality.grad, jpeg_quality_grad_ref, rtol=0.01, atol=0.01)
+        # The reference is rounded to four decimals (at most 5e-5 absolute error).
+        # CPU/MPS give about 0.0041562; the old atol=0.01 also accepted zero or a reversed gradient.
+        self.assert_close(jpeg_quality.grad, jpeg_quality_grad_ref, rtol=0.01, atol=5e-5)
 
     def test_basis_cache_after_inference_mode(self, device, dtype, monkeypatch) -> None:
         """A first call under ``torch.inference_mode()`` must not break later calls that track gradients.
@@ -1406,7 +1469,8 @@ class TestDefaultQuantizationTables(BaseTester):
         kornia.enhance.jpeg_codec_differentiable(img, quality).sum().backward()
         assert img.grad is not None
 
-    @pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA streams")
+    @pytest.mark.uses_accelerator
+    @pytest.mark.applies_to(devices=("cuda",), reason="needs CUDA streams")
     def test_cached_tables_are_complete_on_another_stream(self):
         # The caches are shared by every stream. A call on a second stream must not read tables whose fill kernels
         # are still queued behind other work on the stream that built them.

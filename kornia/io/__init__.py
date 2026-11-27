@@ -15,9 +15,18 @@
 # limitations under the License.
 #
 
-"""IO submodule for Kornia.
+"""Load image files into tensors and write tensors to image files with kornia-rs.
 
-This package provides image input/output utilities, including image loading and writing functions.
+Tensors are ``(C, H, W)`` in RGB order, alpha last. Files are decoded and encoded on the CPU, and the extension of the
+path, in any letter case, picks the format.
+
+Which function to use:
+
+- A file to a tensor: :func:`load_image`, with :class:`ImageLoadType` choosing the channels, dtype and range.
+- A tensor to a JPEG, PNG or TIFF file: :func:`write_image`.
+- The sample images of kornia's examples, downloaded once and cached, or your own paths and URLs as a list or one
+  resized batch: :func:`get_sample_images`.
+- A file into an :class:`~kornia.image.Image` container: :meth:`~kornia.image.Image.from_file`.
 """
 
 from .io import ImageLoadType, load_image, write_image

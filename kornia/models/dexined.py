@@ -197,7 +197,7 @@ class DexiNed(ONNXExportMixin, nn.Module):
     converts an RGB image in :math:`[0, 1]` to this input and applies a sigmoid to the output.
 
     Return:
-        The fused edge logits, one tensor with shape :math:`(B,1,H,W)`.
+        The fused edge logits, one tensor with shape ``(B,1,H,W)``.
 
     Example:
         >>> img = torch.rand(1, 3, 320, 320)
@@ -275,7 +275,7 @@ class DexiNed(ONNXExportMixin, nn.Module):
 
         Args:
             x: Input BGR image tensor in :math:`[0, 255]` minus the BGR mean ``[103.939, 116.779, 123.68]``, with
-                shape :math:`(B, 3, H, W)`, where :math:`B` is batch size, :math:`H` is height, and :math:`W` is
+                shape ``(B, 3, H, W)``, where :math:`B` is batch size, :math:`H` is height, and :math:`W` is
                 width.
 
         Returns:
@@ -331,10 +331,10 @@ class DexiNed(ONNXExportMixin, nn.Module):
 
         Args:
             x: Input BGR image tensor in :math:`[0, 255]` minus the BGR mean ``[103.939, 116.779, 123.68]``, with
-                shape :math:`(B, 3, H, W)`.
+                shape ``(B, 3, H, W)``.
 
         Returns:
-            Tensor with shape :math:`(B, 1, H, W)` containing the fused DexiNed
+            Tensor with shape ``(B, 1, H, W)`` containing the fused DexiNed
             edge logits.
         """
         features = self.get_features(x)

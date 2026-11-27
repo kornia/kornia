@@ -30,26 +30,27 @@ from kornia.geometry.transform import get_shear_matrix2d, warp_affine
 
 
 class RandomShear(GeometricAugmentationBase2D):
-    r"""Apply a random 2D shear transformation to a torch.Tensor image.
+    r"""Shear images by random angles in degrees, applied per sample with probability ``p`` (default 0.5).
 
-    The transformation is computed so that the image center is kept invariant.
+    ``output = RandomShear(shear, ...)(input)`` shears images of shape ``(B, C, H, W)`` about their centers by
+    sampled angles.
 
     Args:
         shear: Range of degrees to select from.
             If float, a shear parallel to the x axis in the range (-shear, +shear) will be applied.
-            If (a, b), a shear parallel to the x axis in the range (-shear, +shear) will be applied.
+            If (a, b), a shear parallel to the x axis in the range (a, b) will be applied.
             If (a, b, c, d), then x-axis shear in (shear[0], shear[1]) and y-axis shear in (shear[2], shear[3])
             will be applied. Will not apply shear by default.
         resample: resample mode from "nearest" (0) or "bilinear" (1).
         padding_mode: padding mode from "torch.zeros" (0), "border" (1) or "reflection" (2).
         same_on_batch: apply the same transformation across the batch.
         align_corners: interpolation flag.
-        p: probability of applying the transformation.
+        p: probability of applying the transformation to each sample.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``
+        - Output: ``(B, C, H, W)``
 
     Convention:
         - See :class:`~kornia.augmentation.GeometricAugmentationBase2D` for coordinates, defaults and inverse.
@@ -58,6 +59,14 @@ class RandomShear(GeometricAugmentationBase2D):
 
     .. note::
         This function internally uses :func:`kornia.geometry.transform.warp_affine`.
+
+    .. note::
+        Unlike torchvision's ``RandomAffine(degrees=0, shear=...)``, which shears every image, this class shears each
+        sample with probability ``p``, 0.5 by default; with ``same_on_batch=True`` one draw decides for the whole batch.
+        Pass ``p=1.0`` to shear every sample.
+
+    See Also:
+        - :class:`RandomAffine`: samples a combined affine transformation.
 
     Examples:
         >>> import torch

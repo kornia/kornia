@@ -26,6 +26,7 @@ from torch._dynamo.testing import CompileCounter, CompileCounterWithBackend
 
 import kornia.augmentation as K
 
+from testing.augmentation.utils import oversized_random_crop_params
 from testing.base import BaseTester, dynamo_is_available
 
 
@@ -156,7 +157,19 @@ class TestAugmentationCompile(BaseTester):
             self.assert_close(actual, expected)
             weights = torch.rand_like(actual)
             actual_grad = torch.autograd.grad(actual, input, weights)[0]
-            if device.type == "cuda" and dtype in (torch.float16, torch.bfloat16):
+            if device.type == "cuda" and resample == "nearest":
+                # CUDA's nearest-exact interpolate backward, which the eager slice crop uses, can send a pixel's
+                # gradient to its neighbour: a crop axis of 12 pixels resized to one reads pixel 6 and sends the
+                # gradient to pixel 5. The gather of the compiled crop routes it to the pixel it read, so compare with
+                # the eager crop on the CPU, in float32 for half dtypes. This is the PyTorch bug
+                # https://github.com/pytorch/pytorch/issues/97135; drop this branch once it is fixed.
+                reference_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+                reference = input.detach().to("cpu", reference_dtype).requires_grad_()
+                cpu_params = {key: value.cpu() if torch.is_tensor(value) else value for key, value in params.items()}
+                expected_grad = torch.autograd.grad(
+                    aug(reference, params=cpu_params), reference, weights.to("cpu", reference_dtype)
+                )[0].to(device, dtype)
+            elif device.type == "cuda" and dtype in (torch.float16, torch.bfloat16):
                 # CUDA half interpolate backward rounds atomic updates. Compare with
                 # float32 accumulation, as in the real-backend replay tests below.
                 reference = input.detach().float().requires_grad_()
@@ -389,7 +402,9 @@ class TestRandomCropCompile(BaseTester):
         input = torch.rand(2, 3, 12, 15, device=device, dtype=dtype, requires_grad=True)
         fn = torch_optimizer(aug)
         for _ in range(3):
-            params = aug.forward_parameters(input.shape)
+            # (19, 23) without pad_if_needed exceeds the 14 x 17 padded canvas, which a forward call rejects (#4414);
+            # its replayed parameters still reach the oversized-crop scaling.
+            params = oversized_random_crop_params(aug, input.shape)
             expected = aug(input, params=params)
             actual = fn(input, params=params)
             self.assert_close(actual, expected)
@@ -463,6 +478,20 @@ class TestContainerCompile(BaseTester):
         for out, ref in zip(actual, expected, strict=True):
             self.assert_close(out, ref)
             self.assert_close(out, input.flip(-1))
+        assert counter.frame_count == 1
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason="no Dynamo on this torch/python pair")
+    def test_eager_backend_traces_mask_container_with_child_flags_in_one_graph(self, device, dtype):
+        # The default mask options are filtered against each child's flags; Normalize has flags, a flip has none.
+        torch._dynamo.reset()
+        aug = K.AugmentationSequential(
+            K.RandomHorizontalFlip(p=1.0), K.Normalize(mean=0.0, std=1.0), data_keys=["input", "mask"]
+        )
+        input = torch.rand(1, 3, 4, 6, device=device, dtype=dtype)
+        counter = CompileCounter()
+        out_input, out_mask = torch.compile(aug, backend=counter, fullgraph=True)(input, input)
+        self.assert_close(out_input, input.flip(-1))
+        self.assert_close(out_mask, input.flip(-1))
         assert counter.frame_count == 1
 
     @pytest.mark.skipif(not dynamo_is_available(), reason="no Dynamo on this torch/python pair")

@@ -722,6 +722,7 @@ class _RecordingConfig:
             "collectonly": False,
             "numprocesses": None,
             "plugins": [],
+            "skip_onnx": False,
         }
         options[option_name] = option_value
         self.option = SimpleNamespace(**options)
@@ -820,6 +821,7 @@ class TestProfileConfiguration:
         ("collectonly", True),
         ("numprocesses", 2),
         ("plugins", ["no:cacheprovider"]),
+        ("skip_onnx", True),
     ],
 )
 def test_record_mode_rejects_partial_run_options(
@@ -858,7 +860,7 @@ def test_recorded_baseline_manifest(dtype: str) -> None:
             enforce_compatibility=False,
         )
 
-    assert entries
+    # Both manifests are empty since #6927 and #6928; an entry recorded later must still be well formed.
     assert all(entry.phase in {"setup", "call"} for entry in entries.values())
     assert all("." in entry.exception for entry in entries.values())
 
@@ -917,6 +919,13 @@ def test_upstream_probe_floor_is_consistent_across_jobs() -> None:
     }
 
     assert len(set(floors.values())) == 1, floors
+    root = Path(project_conftest.__file__).parent
+    blocking = (root / ".github" / "workflows" / "pr_test_cpu.yml").read_text(encoding="utf-8")
+    # Both the matrix entries (`pytorch-version: "2.15.0"`) and the JSON pins of single jobs (`'["2.15.0"]'`).
+    pins = re.findall(r"\n\s+pytorch-version: (.+)", blocking)
+    pinned = [version for pin in pins for version in re.findall(r'"(\d+\.\d+\.\d+)"', pin)]
+    latest = max(pinned, key=lambda version: tuple(map(int, version.split("."))))
+    assert set(floors.values()) == {latest}, floors
 
 
 def test_upstream_probe_record_jobs_match_the_blocking_python() -> None:

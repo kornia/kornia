@@ -118,7 +118,7 @@ class EfficientViT(ModelBase[EfficientViTConfig]):
         """Extract features from the input images.
 
         Args:
-            images: input images tensor of shape :math:`(B, C, H, W)`.
+            images: input images tensor of shape ``(B, C, H, W)``.
 
         Returns:
             a dictionary with the input under ``"input"``, the output of each stage under ``"stage0"``,

@@ -32,6 +32,9 @@ contract and the technical guidelines; the repository's ``AGENTS.md`` documents 
 (tests, lint, docs builds). Maintainers review and respond when they can, but we cannot promise that every
 issue or pull request will be reviewed or merged.
 
-Not sure where to start? Documentation fixes, new tests and issues labeled `"good first issue"
-<https://github.com/kornia/kornia/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22>`_ are the
-friendliest entry points. And if code is not your thing, consider :doc:`sponsoring <sponsor>` instead.
+If you're choosing a question to investigate, start with the `roadmap's areas seeking contributors
+<https://github.com/kornia/kornia/blob/main/ROADMAP.md#areas-seeking-contributors>`_. For work a maintainer has
+already agreed to, browse the `help wanted issues
+<https://github.com/kornia/kornia/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22>`_.
+Check the issue for an existing contributor or pull request before claiming it.
+You can also support Kornia through :doc:`sponsorship <sponsor>`.

@@ -28,9 +28,9 @@ from kornia.geometry.transform.imgwarp import get_affine_matrix3d, warp_affine3d
 
 
 class RandomAffine3D(GeometricAugmentationBase3D):
-    r"""Apply affine transformation 3D volumes (5D torch.Tensor).
+    r"""Warp volumes by a random 3D affine transformation, applied per sample with probability ``p`` (default 0.5).
 
-    The transformation is computed so that the center is kept invariant.
+    ``output = RandomAffine3D(degrees, ...)(input)`` warps volumes of shape ``(B, C, D, H, W)`` about their center.
 
     Args:
         degrees: Range of yaw (x-axis), pitch (y-axis), roll (z-axis) to select from. The three
@@ -63,12 +63,13 @@ class RandomAffine3D(GeometricAugmentationBase3D):
         resample: resample mode from "nearest" (0) or "bilinear" (1).
         same_on_batch: apply the same transformation across the batch.
         align_corners: interpolation flag.
+        p: probability of applying the transformation to each sample.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
           to the batch form (False). Default: False.
 
     Shape:
-        - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`
-        - Output: :math:`(B, C, D, H, W)`
+        - Input: ``(C, D, H, W)`` or ``(B, C, D, H, W)``
+        - Output: ``(B, C, D, H, W)``
 
     Note:
         Input torch.Tensor must be float and normalized into [0, 1] for the best differentiability support.
@@ -86,6 +87,10 @@ class RandomAffine3D(GeometricAugmentationBase3D):
         - a two-value ``scale=(a, b)`` is isotropic: one factor per sample is drawn from ``[a, b]`` and applied
           to all three axes, as the 2D :class:`~kornia.augmentation.RandomAffine` does. The three-pair form
           ``((a, b), (c, d), (e, f))`` draws each axis independently.
+
+    See Also:
+        - :class:`RandomRotation3D`: samples a 3D rotation without translation, scale or shear.
+        - :class:`RandomAffine`: applies the corresponding transform to 2D images.
 
     Examples:
         >>> import torch

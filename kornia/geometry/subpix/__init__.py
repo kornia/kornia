@@ -15,9 +15,26 @@
 # limitations under the License.
 #
 
-"""Kornia Geometry Subpix — Subpixel operations for Kornia.
+"""Sub-pixel locations from heatmaps and scale-space volumes: soft-argmax, strict NMS and quadratic refinement.
 
-This subpackage provides subpixel localization and softmax utilities for geometry tasks.
+2D coordinates are ``(x, y)`` = (column, row) and 3D ones ``(d, x, y)``, depth first (the scale level of a
+scale-space volume), with integer pixel centres; see :ref:`Coordinates and sizes <coordinate-conventions>`. A
+``normalized_coordinates=True`` result is in :math:`[-1, 1]`, corner-aligned; the default differs between functions.
+A class in parentheses is the module form of the function before it: it stores the arguments.
+
+Which function to use:
+
+- One location per heatmap channel, the softmax-weighted mean over the whole map: :func:`spatial_soft_argmax2d`
+  (:class:`SpatialSoftArgmax2d`), or its two steps, :func:`spatial_softmax2d` and :func:`spatial_expectation2d`.
+  The other direction, a Gaussian heatmap around a given mean: :func:`render_gaussian2d`.
+- One location per sliding window, for maps with several peaks: :func:`conv_soft_argmax2d`
+  (:class:`ConvSoftArgmax2d`), and for ``(B, C, D, H, W)`` volumes :func:`conv_soft_argmax3d`
+  (:class:`ConvSoftArgmax3d`).
+- Strict local maxima: of a map, :func:`nms2d` (:class:`NonMaximaSuppression2d`); of a volume, :func:`nms3d`
+  (:class:`NonMaximaSuppression3d`); the maxima and minima of a volume in one call, :func:`nms3d_minmax`.
+- Sub-voxel refinement of the maxima of a scale-space volume by a quadratic fit: :class:`AdaptiveQuadInterp3d`, which
+  by default runs :func:`conv_quad_interp3d` (:class:`ConvQuadInterp3d`) on CUDA and :func:`iterative_quad_interp3d`
+  (:class:`IterativeQuadInterp3d`) elsewhere.
 """
 
 from __future__ import annotations

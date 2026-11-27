@@ -6,6 +6,12 @@ kornia.geometry.quaternion
 
 .. currentmodule:: kornia.geometry.quaternion
 
+:class:`Quaternion` holds ``(*, 4)`` quaternions in ``(w, x, y, z)`` order, multiplies them by the Hamilton product and
+converts them to and from rotation matrices, rotation vectors and Euler angles; :func:`average_quaternions` returns the
+mean rotation of many. A quaternion does not act on points: :class:`~kornia.geometry.liegroup.So3` wraps one to rotate
+points and adds ``exp``, ``log`` and Jacobians, and :class:`~kornia.geometry.liegroup.Se3` adds a translation. For the
+same conversions on plain tensors, see :doc:`geometry.conversions`.
+
 Module state
 ------------
 

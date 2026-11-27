@@ -16,14 +16,19 @@
 #
 
 import unittest.mock
+from types import SimpleNamespace
 
 import pytest
 import torch
 
+from kornia.core._compat import scaled_dot_product_attention
+from kornia.core.check import are_checks_enabled, disable_checks, enable_checks
+from kornia.core.exceptions import BaseError
 from kornia.feature.integrated import LightGlueMatcher
 from kornia.feature.laf import laf_from_center_scale_ori
 from kornia.feature.lightglue import (
     Attention,
+    CrossBlock,
     LearnableFourierPositionalEncoding,
     LightGlue,
     TokenConfidence,
@@ -95,13 +100,6 @@ def test_lightglue_pruning_removes_all():
     assert out["matches1"].shape == (B, M)
 
 
-def test_normalize_keypoints_smoke():
-    kpts = torch.zeros(1, 5, 2)
-    size = torch.tensor([[100, 200]])
-    out = normalize_keypoints(kpts, size)
-    assert out.shape == kpts.shape
-
-
 def test_normalize_keypoints_center():
     size = torch.tensor([[100, 100]])
     kpts = size.float().unsqueeze(0) / 2  # center pixel
@@ -148,12 +146,6 @@ def test_pad_to_length_pads():
     assert not mask[..., 5:, :].any()
 
 
-def test_rotate_half_shape():
-    x = torch.rand(2, 8, 4)
-    out = rotate_half(x)
-    assert out.shape == x.shape
-
-
 def test_rotate_half_double_gives_negation():
     x = torch.rand(1, 4, 8)
     assert torch.allclose(rotate_half(rotate_half(x)), -x, atol=1e-6)
@@ -178,29 +170,37 @@ def test_attention_allow_flash_matches_on_cpu():
     k = torch.rand(B, H, N, Dh)
     v = torch.rand(B, H, N, Dh)
 
-    # ``Attention.__init__`` flips the process-global ``torch.backends.cuda`` flash-SDPA switch;
-    # put back whatever this test found so later tests in a CUDA run do not depend on its order.
-    flash_sdp_was_enabled = torch.backends.cuda.flash_sdp_enabled()
+    attn_no_flash = Attention(allow_flash=False)
+    attn_flash = Attention(allow_flash=True)
+
+    out_no_flash = attn_no_flash(q, k, v)
+    out_flash = attn_flash(q, k, v)
+    assert_close(out_no_flash, out_flash)
+
+    # First query row cannot attend to anything: softmax produces NaN there, which
+    # ``Attention.forward`` replaces via ``nan_to_num``.
+    mask = torch.ones(B, H, N, N, dtype=torch.bool)
+    mask[:, :, 0, :] = False
+
+    out_no_flash_masked = attn_no_flash(q, k, v, mask=mask)
+    out_flash_masked = attn_flash(q, k, v, mask=mask)
+    assert not torch.isnan(out_no_flash_masked).any()
+    assert not torch.isnan(out_flash_masked).any()
+    assert_close(out_no_flash_masked, out_flash_masked)
+
+
+@pytest.mark.parametrize("flash", [False, True])
+def test_lightglue_leaves_global_flash_sdp_setting_alone(flash):
+    # the SDPA backends are the caller's process-wide choice: building a model in either mode must not change them
+    was_enabled = torch.backends.cuda.flash_sdp_enabled()
     try:
-        attn_no_flash = Attention(allow_flash=False)
-        attn_flash = Attention(allow_flash=True)
-
-        out_no_flash = attn_no_flash(q, k, v)
-        out_flash = attn_flash(q, k, v)
-        assert_close(out_no_flash, out_flash)
-
-        # First query row cannot attend to anything: softmax produces NaN there, which
-        # ``Attention.forward`` replaces via ``nan_to_num``.
-        mask = torch.ones(B, H, N, N, dtype=torch.bool)
-        mask[:, :, 0, :] = False
-
-        out_no_flash_masked = attn_no_flash(q, k, v, mask=mask)
-        out_flash_masked = attn_flash(q, k, v, mask=mask)
-        assert not torch.isnan(out_no_flash_masked).any()
-        assert not torch.isnan(out_flash_masked).any()
-        assert_close(out_no_flash_masked, out_flash_masked)
+        for enabled in (False, True):
+            torch.backends.cuda.enable_flash_sdp(enabled)
+            Attention(allow_flash=flash)
+            LightGlue(None, input_dim=64, descriptor_dim=64, num_heads=1, n_layers=1, flash=flash)
+            assert torch.backends.cuda.flash_sdp_enabled() == enabled
     finally:
-        torch.backends.cuda.enable_flash_sdp(flash_sdp_was_enabled)
+        torch.backends.cuda.enable_flash_sdp(was_enabled)
 
 
 # ---------------------------------------------------------------------------
@@ -208,13 +208,23 @@ def test_attention_allow_flash_matches_on_cpu():
 # ---------------------------------------------------------------------------
 
 
+def _simulate_faulty_platform(monkeypatch) -> None:
+    defaults = scaled_dot_product_attention.__defaults__
+    monkeypatch.setattr(scaled_dot_product_attention, "__defaults__", (*defaults[:-1], True))
+
+
 class TestAttention(BaseTester):
+    @pytest.mark.applies_to(
+        devices=("cpu",),
+        dtypes=("float32", "float64"),
+        reason="regression for Windows CPU float64, with float32 as a control",
+    )
     @pytest.mark.parametrize("batch_size", [1, 2])
     @pytest.mark.parametrize("legacy_windows", [False, True])
     @pytest.mark.parametrize("masked", [False, True])
-    def test_cpu_attention_matches_explicit_softmax_5992(self, device, dtype, batch_size, legacy_windows, masked):
-        if device.type != "cpu" or dtype not in (torch.float32, torch.float64):
-            pytest.skip("regression for Windows CPU float64, with float32 as a control")
+    def test_cpu_attention_matches_explicit_softmax_5992(
+        self, device, dtype, monkeypatch, batch_size, legacy_windows, masked
+    ):
         g = torch.Generator().manual_seed(0)
         q, k, v = [torch.randn(batch_size, 4, 16, 64, generator=g, device=device, dtype=dtype) for _ in range(3)]
         mask = None
@@ -237,78 +247,94 @@ class TestAttention(BaseTester):
                 return torch.full_like(q, float("nan"))
             return sdpa(q, k, v, **kwargs)
 
-        flash_enabled = torch.backends.cuda.flash_sdp_enabled()
-        try:
-            attention = Attention(allow_flash=True)
-            if legacy_windows:
-                # Exercise the real fallback on every host, as well as the native platform selection above.
-                attention._windows_old_torch = True
-            backend_flags = (
-                torch.backends.cuda.flash_sdp_enabled(),
-                torch.backends.cuda.math_sdp_enabled(),
-                torch.backends.cuda.mem_efficient_sdp_enabled(),
-                torch.backends.cuda.cudnn_sdp_enabled(),
-            )
-            with unittest.mock.patch(
-                "kornia.feature.lightglue.F.scaled_dot_product_attention", side_effect=legacy_sdpa
-            ):
-                actual = attention(q, k, v, mask)
-            assert actual.isfinite().all()
-            self.assert_close(actual, expected)
-            assert backend_flags == (
-                torch.backends.cuda.flash_sdp_enabled(),
-                torch.backends.cuda.math_sdp_enabled(),
-                torch.backends.cuda.mem_efficient_sdp_enabled(),
-                torch.backends.cuda.cudnn_sdp_enabled(),
-            )
-        finally:
-            torch.backends.cuda.enable_flash_sdp(flash_enabled)
+        attention = Attention(allow_flash=True)
+        if legacy_windows:
+            # Exercise the real fallback on every host, as well as the native platform selection above.
+            _simulate_faulty_platform(monkeypatch)
+        backend_flags = (
+            torch.backends.cuda.flash_sdp_enabled(),
+            torch.backends.cuda.math_sdp_enabled(),
+            torch.backends.cuda.mem_efficient_sdp_enabled(),
+            torch.backends.cuda.cudnn_sdp_enabled(),
+        )
+        with unittest.mock.patch("kornia.core._compat.F.scaled_dot_product_attention", side_effect=legacy_sdpa):
+            actual = attention(q, k, v, mask)
+        assert actual.isfinite().all()
+        self.assert_close(actual, expected)
+        assert backend_flags == (
+            torch.backends.cuda.flash_sdp_enabled(),
+            torch.backends.cuda.math_sdp_enabled(),
+            torch.backends.cuda.mem_efficient_sdp_enabled(),
+            torch.backends.cuda.cudnn_sdp_enabled(),
+        )
 
+    @pytest.mark.applies_to(devices=("cpu",), reason="the fallback is CPU-only")
     @pytest.mark.parametrize("masked", [False, True])
-    def test_windows_float64_fallback_gradcheck(self, device, masked):
-        if device.type != "cpu":
-            pytest.skip("the fallback is CPU-only")
-        flash_enabled = torch.backends.cuda.flash_sdp_enabled()
-        try:
-            attention = Attention(allow_flash=True)
-            attention._windows_old_torch = True
-            q, k, v = [torch.rand(1, 1, 2, 4, device=device, dtype=torch.float64, requires_grad=True) for _ in range(3)]
-            mask = torch.tensor([[False, False], [True, True]], device=device) if masked else None
-            self.gradcheck(lambda q, k, v: attention(q, k, v, mask), (q, k, v))
-        finally:
-            torch.backends.cuda.enable_flash_sdp(flash_enabled)
+    def test_windows_float64_fallback_gradcheck(self, device, monkeypatch, masked):
+        _simulate_faulty_platform(monkeypatch)
+        attention = Attention(allow_flash=True)
+        q, k, v = [torch.rand(1, 1, 2, 4, device=device, dtype=torch.float64, requires_grad=True) for _ in range(3)]
+        mask = torch.tensor([[False, False], [True, True]], device=device) if masked else None
+        self.gradcheck(lambda q, k, v: attention(q, k, v, mask), (q, k, v))
 
-    def test_dynamo_windows_float64_fallback(self, device, torch_optimizer, optimizer_backend):
-        if device.type != "cpu" or not optimizer_backend or optimizer_backend == "jit":
-            pytest.skip("the fallback needs CPU torch.compile coverage")
-        flash_enabled = torch.backends.cuda.flash_sdp_enabled()
-        try:
-            attention = Attention(allow_flash=True)
-            attention._windows_old_torch = True
-            q, k, v = [torch.rand(1, 1, 2, 4, device=device, dtype=torch.float64) for _ in range(3)]
-            mask = torch.tensor([[False, False], [True, True]], device=device)
-            compiled = torch_optimizer(attention, fullgraph=True)
-            self.assert_close(compiled(q, k, v, mask), attention(q, k, v, mask))
-        finally:
-            torch.backends.cuda.enable_flash_sdp(flash_enabled)
+    @pytest.mark.applies_to(
+        devices=("cpu",),
+        when=lambda p: p["optimizer_backend"] not in ("", None, "jit"),
+        reason="the fallback needs CPU torch.compile coverage",
+    )
+    def test_dynamo_windows_float64_fallback(self, device, monkeypatch, torch_optimizer, optimizer_backend):
+        _simulate_faulty_platform(monkeypatch)
+        attention = Attention(allow_flash=True)
+        q, k, v = [torch.rand(1, 1, 2, 4, device=device, dtype=torch.float64) for _ in range(3)]
+        mask = torch.tensor([[False, False], [True, True]], device=device)
+        compiled = torch_optimizer(attention, fullgraph=True)
+        self.assert_close(compiled(q, k, v, mask), attention(q, k, v, mask))
 
+    @pytest.mark.applies_to(devices=("cpu",), reason="the fallback is CPU-only")
     @pytest.mark.skipif(not dynamo_is_available(), reason="no Dynamo on this torch/python pair")
-    def test_eager_backend_traces_windows_float64_fallback(self, device):
+    def test_eager_backend_traces_windows_float64_fallback(self, device, monkeypatch):
         # conftest deselects *dynamo* and *compile* tests unless KORNIA_TEST_OPTIMIZER is set, which CI does only on
         # torch 2.14. This name also runs on the scheduled torch 2.5.1 legs, where the fallback is live on Windows.
-        if device.type != "cpu":
-            pytest.skip("the fallback is CPU-only")
-        flash_enabled = torch.backends.cuda.flash_sdp_enabled()
-        try:
-            attention = Attention(allow_flash=True)
-            attention._windows_old_torch = True
-            q, k, v = [torch.rand(1, 1, 2, 4, device=device, dtype=torch.float64) for _ in range(3)]
-            mask = torch.tensor([[False, False], [True, True]], device=device)
-            torch._dynamo.reset()
-            compiled = torch.compile(attention, backend="eager", fullgraph=True)
-            self.assert_close(compiled(q, k, v, mask), attention(q, k, v, mask))
-        finally:
-            torch.backends.cuda.enable_flash_sdp(flash_enabled)
+        _simulate_faulty_platform(monkeypatch)
+        attention = Attention(allow_flash=True)
+        q, k, v = [torch.rand(1, 1, 2, 4, device=device, dtype=torch.float64) for _ in range(3)]
+        mask = torch.tensor([[False, False], [True, True]], device=device)
+        torch._dynamo.reset()
+        compiled = torch.compile(attention, backend="eager", fullgraph=True)
+        self.assert_close(compiled(q, k, v, mask), attention(q, k, v, mask))
+
+
+class TestCrossBlock(BaseTester):
+    @pytest.mark.parametrize("masked", [False, True])
+    def test_matches_shared_similarity_softmax(self, device, dtype, masked):
+        # both directions attend over one similarity matrix, 1 -> 0 over its transpose; fully masked rows give zero
+        # messages
+        g = torch.Generator().manual_seed(0)
+        block = CrossBlock(64, 4).to(device, dtype).eval()
+        x0 = torch.randn(2, 7, 64, generator=g).to(device, dtype)
+        x1 = torch.randn(2, 5, 64, generator=g).to(device, dtype)
+        mask = None
+        if masked:
+            mask = torch.rand(2, 1, 7, 5, generator=g) > 0.3
+            mask[:, :, 0] = False
+            mask[:, :, :, 0] = False
+            mask = mask.to(device)
+        with torch.no_grad():
+            out0, out1 = block(x0, x1, mask)
+            qk0, qk1, v0, v1 = (
+                t.unflatten(-1, (4, -1)).transpose(1, 2)
+                for t in (block.to_qk(x0), block.to_qk(x1), block.to_v(x0), block.to_v(x1))
+            )
+            sim = qk0 @ qk1.transpose(-2, -1) * qk0.shape[-1] ** -0.5
+            if mask is not None:
+                sim = sim.masked_fill(~mask, -float("inf"))
+            m0 = (sim.softmax(-1) @ v1).nan_to_num()
+            m1 = (sim.transpose(-2, -1).softmax(-1) @ v0).nan_to_num()
+            m0, m1 = (block.to_out(m.transpose(1, 2).flatten(start_dim=-2)) for m in (m0, m1))
+            expected0 = x0 + block.ffn(torch.cat([x0, m0], -1))
+            expected1 = x1 + block.ffn(torch.cat([x1, m1], -1))
+        self.assert_close(out0, expected0)
+        self.assert_close(out1, expected1)
 
 
 class TestLearnableFourierPositionalEncoding(BaseTester):
@@ -337,16 +363,10 @@ class TestLearnableFourierPositionalEncoding(BaseTester):
         op = torch_optimizer(enc)
         self.assert_close(op(x), enc(x))
 
-    def test_exception(self, device, dtype):
-        pass
-
-    def test_module(self, device, dtype):
-        enc = LearnableFourierPositionalEncoding(2, 32).to(device, dtype)
-        x = torch.rand(1, 1, 5, 2, device=device, dtype=dtype)
-        assert enc(x).shape[0] == 2
-
 
 class TestTokenConfidence(BaseTester):
+    # No gradcheck: TokenConfidence detaches its inputs, so it is not differentiable with respect to them.
+
     def test_smoke(self, device, dtype):
         tc = TokenConfidence(64).to(device, dtype)
         d0 = torch.rand(1, 10, 64, device=device, dtype=dtype)
@@ -374,9 +394,6 @@ class TestTokenConfidence(BaseTester):
         assert (s1 >= 0).all()
         assert (s1 <= 1).all()
 
-    def test_gradcheck(self, device):
-        pass  # TokenConfidence uses detach() on inputs; not differentiable w.r.t. inputs
-
     def test_dynamo(self, device, dtype, torch_optimizer):
         tc = TokenConfidence(32).to(device, dtype)
         d0 = torch.rand(1, 10, 32, device=device, dtype=dtype)
@@ -386,16 +403,6 @@ class TestTokenConfidence(BaseTester):
         s0, s1 = tc(d0, d1)
         self.assert_close(s0_jit, s0)
         self.assert_close(s1_jit, s1)
-
-    def test_exception(self, device, dtype):
-        pass
-
-    def test_module(self, device, dtype):
-        tc = TokenConfidence(32).to(device, dtype)
-        d0 = torch.rand(1, 5, 32, device=device, dtype=dtype)
-        d1 = torch.rand(1, 5, 32, device=device, dtype=dtype)
-        s0, _ = tc(d0, d1)
-        assert s0.shape == (1, 5)
 
 
 # ---------------------------------------------------------------------------
@@ -441,32 +448,24 @@ def _make_data(device, dtype, B=1, M=20, N=15, H=64, W=64, D=64):
 
 
 class TestLightGlue(BaseTester):
-    def test_smoke(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("LightGlue requires float32 or float64")
-        lg = _make_lightglue(device, dtype)
-        data = _make_data(device, dtype)
-        with torch.no_grad():
-            out = lg(data)
-        assert "matches0" in out
-        assert "matching_scores0" in out
+    # No gradcheck: LightGlue detaches the descriptors, so it is not differentiable end to end. No torch.compile
+    # test: its pruning and early stopping are data-dependent control flow.
 
+    @pytest.mark.applies_to(when=lambda p: p["dtype_name"] != "float16", reason="LightGlue requires float32 or float64")
     def test_cardinality(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("LightGlue requires float32 or float64")
         B, M, N = 1, 20, 15
         lg = _make_lightglue(device, dtype)
         data = _make_data(device, dtype, B=B, M=M, N=N)
         with torch.no_grad():
             out = lg(data)
+        assert isinstance(out, dict)
         assert out["matches0"].shape == (B, M)
         assert out["matches1"].shape == (B, N)
         assert out["matching_scores0"].shape == (B, M)
 
+    @pytest.mark.applies_to(when=lambda p: p["dtype_name"] != "float16", reason="LightGlue requires float32 or float64")
     def test_image_tensor_input(self, device, dtype):
         """Accept image tensor instead of image_size."""
-        if dtype == torch.float16:
-            pytest.skip("LightGlue requires float32 or float64")
         B, M, N, H, W, D = 1, 10, 8, 32, 32, 64
         lg = _make_lightglue(device, dtype)
         data = {
@@ -485,9 +484,8 @@ class TestLightGlue(BaseTester):
             out = lg(data)
         assert "matches0" in out
 
+    @pytest.mark.applies_to(when=lambda p: p["dtype_name"] != "float16", reason="LightGlue requires float32 or float64")
     def test_matches_are_valid_indices(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("LightGlue requires float32 or float64")
         B, M, N = 1, 30, 25
         lg = _make_lightglue(device, dtype)
         data = _make_data(device, dtype, B=B, M=M, N=N)
@@ -497,9 +495,8 @@ class TestLightGlue(BaseTester):
         assert (m0 >= -1).all()
         assert (m0 < N).all()
 
+    @pytest.mark.applies_to(when=lambda p: p["dtype_name"] != "float16", reason="LightGlue requires float32 or float64")
     def test_scores_in_range(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("LightGlue requires float32 or float64")
         lg = _make_lightglue(device, dtype)
         data = _make_data(device, dtype)
         with torch.no_grad():
@@ -508,40 +505,23 @@ class TestLightGlue(BaseTester):
         assert (scores >= 0).all()
         assert (scores <= 1).all()
 
+    @pytest.mark.applies_to(when=lambda p: p["dtype_name"] != "float16", reason="LightGlue requires float32 or float64")
     def test_exception_missing_key(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("LightGlue requires float32 or float64")
         lg = _make_lightglue(device, dtype)
         with pytest.raises(Exception):
             lg({"image0": {}})
 
-    def test_exception_wrong_features(self, device, dtype):
+    def test_exception_wrong_features(self):
         with pytest.raises(Exception):
             LightGlue(features="nonexistent_feature_type")
 
-    def test_gradcheck(self, device):
-        pass  # LightGlue uses detach() on descriptors; not differentiable end-to-end
-
-    def test_dynamo(self, device, dtype, torch_optimizer):
-        pass  # LightGlue uses dynamic control flow; not torch.compile compatible
-
-    def test_module(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("LightGlue requires float32 or float64")
-        lg = _make_lightglue(device, dtype)
-        data = _make_data(device, dtype)
-        with torch.no_grad():
-            out = lg(data)
-        assert isinstance(out, dict)
-
+    @pytest.mark.applies_to(when=lambda p: p["dtype_name"] != "float16", reason="LightGlue requires float32 or float64")
     def test_mp_forward_uses_input_device_type(self, device, dtype):
         """With ``mp=True``, ``forward`` derives the autocast ``device_type`` from the
         keypoints device (the computation device), not from a hardcoded ``\"cuda\"`` nor
         from the first tensor encountered while scanning the input dict (regression for
         #4624).
         """
-        if dtype == torch.float16:
-            pytest.skip("LightGlue requires float32 or float64")
         lg = _make_lightglue(device, dtype, mp=True)
         data = _make_data(device, dtype)
         # Put a non-keypoint tensor (image_size) first so a naive "first tensor wins"
@@ -563,6 +543,22 @@ class TestLightGlue(BaseTester):
         assert seen["device_type"] == data["image0"]["keypoints"].device.type
         assert "matches0" in out
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64")
+    def test_mp_keeps_a_float64_model_in_float64(self, device):
+        """Autocast does not cast float64, so ``mp=True`` leaves a float64 model as ``mp=False`` runs it.
+
+        On CUDA the descriptors used to be cast to float16 under autocast, which the float64 weights then met.
+        """
+        torch.manual_seed(0)
+        models = {mp: _make_lightglue(device, torch.float64, mp=mp) for mp in (False, True)}
+        models[True].load_state_dict(models[False].state_dict())
+        data = _make_data(device, torch.float64)
+        with torch.no_grad():
+            out = {mp: model(data) for mp, model in models.items()}
+        assert out[True]["matching_scores0"].dtype == torch.float64
+        assert torch.equal(out[True]["matches0"], out[False]["matches0"])
+        self.assert_close(out[True]["matching_scores0"], out[False]["matching_scores0"])
+
     @pytest.mark.slow
     def test_pretrained_smoke(self, device):
         """Instantiating with real feature type downloads and loads weights."""
@@ -574,6 +570,7 @@ class TestLightGlue(BaseTester):
         assert "matches0" in out
 
 
+@pytest.mark.uses_accelerator
 @pytest.mark.skipif(not torch.backends.mps.is_available(), reason="MPS is not available")
 @pytest.mark.parametrize(
     ("model_device", "autocast_device", "autocast_dtype"),
@@ -602,10 +599,11 @@ class TestKeypointRangeMessage:
     def test_check_accepts_normalized_keypoints_5724(self):
         _check_keypoints_normalized(torch.tensor([[[-1.0, 1.0], [0.0, 0.5]]]))
 
-    def test_forward_with_a_too_small_image_size_5724(self, device):
+    @pytest.mark.parametrize("image", ["image0", "image1"])
+    def test_forward_with_a_too_small_image_size_5724(self, device, image):
         lg = _make_lightglue(device, torch.float32)
         data = _make_data(device, torch.float32)
-        data["image0"]["image_size"] = torch.tensor([[8.0, 8.0]], device=device)  # keypoints reach 64
+        data[image]["image_size"] = torch.tensor([[8.0, 8.0]], device=device)  # keypoints reach 64
         with pytest.raises(Exception, match="Keypoints must lie inside the image"):
             lg(data)
 
@@ -698,11 +696,12 @@ class TestLightGluePruningDtype(BaseTester):
         for key in ("matching_scores0", "matching_scores1"):
             self.assert_close(out[key], ref[key].to(dtype))
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["dtype_name"] == "float64"), reason="MPS has no float64"
+    )
     def test_float32_keypoints_with_a_half_precision_model(self, device, dtype):
         # kornia's detectors return float32 keypoints for a float16 or bfloat16 model; the positional encoding runs in
         # the model's dtype, so wider keypoints give the result of keypoints in the model's dtype.
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS has no float64")
         data, _ = self._scene(device, dtype)
         wide = torch.promote_types(dtype, torch.float32)
         wide_data = {name: {**image, "keypoints": image["keypoints"].to(wide)} for name, image in data.items()}
@@ -746,15 +745,15 @@ class TestLightGluePruningDtype(BaseTester):
 
     def _mixed_precision_score_dtype(self, device, dtype):
         # With mp=True, autocast sets the dtype the scores are computed in: CPU computes the log assignment and its exp
-        # in bfloat16, MPS runs that exp in float32. The model without pruning gives the reference.
-        if dtype != torch.float32:
-            pytest.skip("mp=True autocasts a float32 model")
+        # in bfloat16, MPS runs that exp in float32. The model without pruning gives the reference. Its callers apply
+        # only to float32: mp=True autocasts a float32 model.
         plain = self._forward(self._model(device, dtype, mp=True, width_confidence=-1), self._scene(device, dtype)[0])
         score_dtype = plain["matching_scores0"].dtype
         if device.type in ("cpu", "mps"):
             assert score_dtype == (torch.bfloat16 if device.type == "cpu" else torch.float32)
         return score_dtype
 
+    @pytest.mark.applies_to(dtypes=("float32",), reason="mp=True autocasts a float32 model")
     def test_mixed_precision_prunes_in_the_score_dtype_5837(self, device, dtype):
         score_dtype = self._mixed_precision_score_dtype(device, dtype)
         data = self._scene(device, dtype)[0]
@@ -776,6 +775,7 @@ class TestLightGluePruningDtype(BaseTester):
         out = self._forward(self._model(device, dtype, mp=True), {"image0": empty, "image1": empty})
         assert self._floating_dtypes(out) == {dtype}
 
+    @pytest.mark.applies_to(dtypes=("float32",), reason="mp=True autocasts a float32 model")
     def test_mixed_precision_all_points_pruned_returns_the_score_dtype_5837(self, device, dtype):
         score_dtype = self._mixed_precision_score_dtype(device, dtype)
         self._skip_without_empty_attention(device, dtype)
@@ -919,13 +919,17 @@ class TestConventionsLightGlue(BaseTester):
             # Stands in for the network: a fixed assignment from image 0 to image 1 and its matching scores.
             def __init__(self, *args, **kwargs):
                 super().__init__()
+                self.conf = SimpleNamespace(add_scale_ori=False)  # as DISK's weights: no keypoint scales/orientations
 
             def forward(self, data):
                 calls.append(data)
                 # 0 -> 3, 2 -> 0, 3 -> 2: no pair is its own inverse, so swapped columns give other pairs
                 matches0 = torch.tensor([[3, -1, 0, 2]], device=device)
                 scores0 = torch.tensor([[0.9, 0.0, 0.35, 0.6]], device=device, dtype=dtype)
-                return {"matches0": matches0, "matching_scores0": scores0}
+                # LightGlue's compact form of the same assignment, one entry per pair of images
+                matches = [torch.tensor([[0, 3], [2, 0], [3, 2]], device=device)]
+                scores = [torch.tensor([0.9, 0.35, 0.6], device=device, dtype=dtype)]
+                return {"matches0": matches0, "matching_scores0": scores0, "matches": matches, "scores": scores}
 
         monkeypatch.setattr("kornia.feature.integrated.LightGlue", _FixedLightGlue)
         matcher = LightGlueMatcher("DISK")
@@ -952,13 +956,75 @@ class TestConventionsLightGlue(BaseTester):
         with pytest.raises(NotImplementedError, match="orb is not supported"):
             LightGlueMatcher("orb")
 
-    def test_convention_lightglue_features_configuration_wins_over_keyword_arguments(self, device, dtype, monkeypatch):
-        # "disk" sets input_dim, so the keyword argument loses; filter_threshold is not in its configuration, so the
-        # keyword argument stays
+    @pytest.mark.parametrize(
+        "params",
+        [{}, {"depth_confidence": 0.5}, {"width_confidence": 0.5}],
+        ids=["plain", "early_stopping", "point_pruning"],
+    )
+    def test_convention_lightglue_matcher_pairs_are_the_matches0_assignment(self, device, dtype, monkeypatch, params):
+        # LightGlueMatcher returns LightGlue's compact "matches"/"scores": the pairs (i, matches0[i]) of every matched
+        # keypoint i of image 0, in increasing i, with matching_scores0[i], also when pruning re-indexes the points.
         monkeypatch.setattr("kornia.feature.lightglue.load_state_dict_from_url", lambda *args, **kwargs: {})
-        lg = LightGlue("disk", input_dim=64, filter_threshold=0.3, n_layers=1)
-        assert lg.conf.input_dim == 128
-        assert lg.conf.filter_threshold == 0.3
+        monkeypatch.setattr(
+            LightGlue, "pruning_keypoint_thresholds", dict.fromkeys(("cpu", "mps", "cuda", "flash"), -1)
+        )
+        torch.manual_seed(0)
+        conf = {"n_layers": 3, "filter_threshold": 0.0, "depth_confidence": -1, "width_confidence": -1, **params}
+        matcher = LightGlueMatcher("disk", conf).to(device, dtype).eval()
+        lafs0 = laf_from_center_scale_ori(100 * torch.rand(1, 40, 2, device=device, dtype=dtype))
+        lafs1 = laf_from_center_scale_ori(100 * torch.rand(1, 30, 2, device=device, dtype=dtype))
+        desc0 = torch.randn(40, 128, device=device, dtype=dtype)
+        desc1 = torch.randn(30, 128, device=device, dtype=dtype)
+        outputs = []
+        matcher.matcher.register_forward_hook(lambda module, args, out: outputs.append(out))
+        with torch.no_grad():
+            scores, idxs = matcher(desc0, desc1, lafs0, lafs1, hw1=(100, 100), hw2=(100, 100))
+        matches0, scores0 = outputs[0]["matches0"][0], outputs[0]["matching_scores0"][0]
+        valid = matches0 > -1
+        assert valid.any()
+        assert torch.equal(idxs, torch.stack([torch.where(valid)[0], matches0[valid]], -1))
+        self.assert_close(scores, scores0[valid].reshape(-1, 1))
+
+    def test_convention_lightglue_keyword_arguments_win_over_features_configuration(self, monkeypatch):
+        # the configuration of the features gives the defaults, and an explicit keyword argument always wins: "xfeat"
+        # sets width_confidence and filter_threshold, "keynet_affnet_hardnet" turns off pruning and early stopping
+        monkeypatch.setattr("kornia.feature.lightglue.load_state_dict_from_url", lambda *args, **kwargs: {})
+        lg = LightGlue("xfeat", width_confidence=0.5, filter_threshold=0.3, n_layers=1)
+        assert (lg.conf.depth_confidence, lg.conf.width_confidence, lg.conf.filter_threshold) == (-1, 0.5, 0.3)
+        lg = LightGlue("keynet_affnet_hardnet", depth_confidence=0.95, width_confidence=0.99, n_layers=1)
+        assert (lg.conf.depth_confidence, lg.conf.width_confidence) == (0.95, 0.99)
+        assert LightGlue("keynet_affnet_hardnet", n_layers=1).conf.depth_confidence == -1
+        assert LightGlue("disk", n_layers=1).conf.input_dim == 128
+        assert LightGlue("disk", input_dim=64, n_layers=1).conf.input_dim == 64
+
+    def test_lightglue_weights_must_name_the_checkpoint_of_features(self, monkeypatch):
+        # the URL follows `features` and the cached file name `weights`: another checkpoint is cached under that name
+        monkeypatch.setattr("kornia.feature.lightglue.load_state_dict_from_url", lambda *args, **kwargs: {})
+        assert LightGlue("disk", weights="disk_lightglue", n_layers=1).conf.weights == "disk_lightglue"
+        # weights=None is the value of default_conf and means "not given", also when default_conf is passed on
+        assert LightGlue("disk", weights=None, n_layers=1).conf.weights == "disk_lightglue"
+        splat = LightGlue("superpoint", **{**LightGlue.default_conf, "n_layers": 1})
+        assert splat.conf.weights == "superpoint_lightglue"
+        with pytest.raises(BaseError, match="must name the checkpoint of `features`"):
+            LightGlue("disk", weights="superpoint_lightglue", n_layers=1)
+        # a plain raise: disable_checks() must not let another checkpoint be cached under this name
+        were_checks_enabled = are_checks_enabled()
+        disable_checks()
+        try:
+            with pytest.raises(BaseError, match="must name the checkpoint of `features`"):
+                LightGlue("disk", weights="superpoint_lightglue", n_layers=1)
+        finally:
+            if were_checks_enabled:
+                enable_checks()
+
+    @pytest.mark.parametrize("features", ["doghardnet", "dog_affnet_hardnet"])
+    def test_convention_lightglue_doghardnet_prunes_and_stops_early_by_default(self, features, monkeypatch):
+        # like the other LightGlue weights trained with token-confidence heads; -1 turns either off
+        monkeypatch.setattr("kornia.feature.lightglue.load_state_dict_from_url", lambda *args, **kwargs: {})
+        lg = LightGlue(features, n_layers=1)
+        assert (lg.conf.depth_confidence, lg.conf.width_confidence) == (0.95, 0.99)
+        lg = LightGlue(features, depth_confidence=-1, width_confidence=-1, n_layers=1)
+        assert (lg.conf.depth_confidence, lg.conf.width_confidence) == (-1, -1)
 
 
 class TestLightGlueAllPrunedScoreDtype(BaseTester):
@@ -1057,10 +1123,11 @@ class TestLightGlueAllPrunedScoreDtype(BaseTester):
         model.transformers[0].register_forward_pre_hook(hook)
         return seen
 
+    @pytest.mark.applies_to(
+        devices=("cpu",), reason="the rule is CPU's: MPS and CUDA autocast to float16 for every model"
+    )
     @pytest.mark.parametrize("input_dim", [16, 8], ids=["input_dim_eq_descriptor_dim", "input_dim_ne_descriptor_dim"])
     def test_convention_lightglue_mixed_precision_cpu_float16_model_autocasts_to_float16_5897(self, device, input_dim):
-        if device.type != "cpu":
-            pytest.skip("the rule is CPU's: MPS and CUDA autocast to float16 for every model")
         # With mp=True on CPU, a float16 model autocasts to float16, and any other model to bfloat16, CPU autocast's
         # default. Autocast's bfloat16 outputs meeting the float16 tensors of a float16 model raised in the first layer.
         model = self._model(device, torch.float16, input_dim, mp=True)
@@ -1082,12 +1149,13 @@ class TestLightGlueAllPrunedScoreDtype(BaseTester):
         self._forward(float32, True, device, torch.float32)
         assert seen == [(True, torch.bfloat16)]
 
+    @pytest.mark.applies_to(
+        devices=("cpu",), reason="the rule is CPU's: MPS and CUDA autocast to float16 for every model"
+    )
     @pytest.mark.parametrize("input_dim", [16, 8], ids=["input_dim_eq_descriptor_dim", "input_dim_ne_descriptor_dim"])
     def test_convention_lightglue_mixed_precision_cpu_float16_model_takes_float32_descriptors_5897(
         self, device, input_dim
     ):
-        if device.type != "cpu":
-            pytest.skip("the rule is CPU's: MPS and CUDA autocast to float16 for every model")
         # Float16 autocast takes float32 keypoints and descriptors too, and the scores stay float16. Both runs get the
         # same values, which float16 represents exactly.
         model = self._model(device, torch.float16, input_dim, mp=True)
@@ -1112,9 +1180,8 @@ class TestLightGlueAllPrunedScoreDtype(BaseTester):
         for key in ("matching_scores0", "matching_scores1"):
             self.assert_close(out[key], ref[key], rtol=0.0, atol=2e-3)
 
+    @pytest.mark.applies_to(devices=("cpu",), reason="MPS and CUDA cast the descriptors to float16 under autocast")
     def test_wart_lightglue_mixed_precision_cpu_other_half_dtype_descriptors_raise_5929(self, device):
-        if device.type != "cpu":
-            pytest.skip("MPS and CUDA cast the descriptors to float16 under autocast")
         # #5929: with input_proj an identity, descriptors of the other half dtype than autocast's reach a torch.cat of
         # the first layer, which autocast rejects: float16 ones with a float32 model, bfloat16 ones with a float16 one.
         for model_dtype, input_dtype in ((torch.float32, torch.float16), (torch.float16, torch.bfloat16)):
@@ -1122,9 +1189,10 @@ class TestLightGlueAllPrunedScoreDtype(BaseTester):
             with pytest.raises(RuntimeError, match="prioritize"):
                 self._forward(model, True, device, input_dtype)
 
+    @pytest.mark.applies_to(
+        devices=("cpu",), reason="the rule is CPU's: MPS and CUDA autocast to float16 for every model"
+    )
     def test_convention_lightglue_mixed_precision_cpu_float16_model_reads_lafs_5897(self, device):
-        if device.type != "cpu":
-            pytest.skip("the rule is CPU's: MPS and CUDA autocast to float16 for every model")
         # "keynet_affnet_hardnet" reads the LAFs before the layers, where bfloat16 autocast raised for a float16 model,
         # also for an image without descriptors.
 
@@ -1286,9 +1354,15 @@ class TestLightGlueBatchedPairs(BaseTester):
         out = self._forward(model, self._stack([data for data, _ in pairs]), pruning_threshold=1000)
         assert out["log_assignment"].shape == (2, self._M + 1, self._M + 1)
         assert out["stop"] == 2
+        # CUDA half matrix products accumulate in an order that depends on the batch size. The matches stay exact,
+        # but in bfloat16 a log-assignment entry of about -90 moves by up to two ulps (1.4 eps relative), about as
+        # far as bfloat16 log assignments are from float32 ones (1.2 eps); on CPU the half values are bitwise equal.
+        low_tolerance = device.type == "cuda" and dtype in (torch.float16, torch.bfloat16)
         for k in range(2):
             self._assert_pair(out, k, singles[k], exact=False)
-            self.assert_close(out["log_assignment"][k : k + 1], singles[k]["log_assignment"])
+            self.assert_close(
+                out["log_assignment"][k : k + 1], singles[k]["log_assignment"], low_tolerance=low_tolerance
+            )
         self.assert_close(out["prune0"], torch.ones(2, self._M, device=device, dtype=torch.long))
 
     def test_convention_lightglue_batch_stops_early_when_every_pair_meets_its_criterion_5898(self, device, dtype):
@@ -1371,12 +1445,16 @@ class TestLightGlueBatchedPairs(BaseTester):
         for k in range(b):
             self._assert_pair(out, k, singles[k], exact=True)
 
-    def test_wart_lightglue_static_lengths_early_stop_counts_padding_5930(self, device, dtype):
+    def test_lightglue_static_lengths_early_stop_ignores_padding_5930(self, device, dtype):
         # #5930: every point of this pair is confident, so it stops after layer 0. Padded to the static length 64, the
-        # padded positions, unconfident here, count against its 32 points, and it runs both layers.
+        # padded positions, unconfident here, are not counted, and it still stops after layer 0 with the same matches.
         model = TestLightGluePruningDtype._model(device, dtype, width_confidence=-1)
         everywhere = (1,) * self._M
         data, _ = self._pair(device, dtype, 0, everywhere, everywhere)
-        assert self._forward(model, data)["stop"] == 1
+        unpadded = self._forward(model, data)
+        assert unpadded["stop"] == 1
         model.static_lengths = (64,)  # what compile() sets; the padded layers run here without compiling
-        assert self._forward(model, data)["stop"] == 2
+        padded = self._forward(model, data)
+        assert padded["stop"] == 1
+        self.assert_close(padded["matches0"], unpadded["matches0"])
+        self.assert_close(padded["matching_scores0"], unpadded["matching_scores0"])

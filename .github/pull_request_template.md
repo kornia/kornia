@@ -9,11 +9,12 @@ For internal changes without a fragment, explain why and ask for the no-changelo
 
 ## Related issue or discussion
 
-<!-- Link one if it exists, for example: Fixes #123. This is optional. -->
+<!-- Link one if it exists, for example: Fixes #123. This is optional, except for a new public API,
+model mode, or separately maintained execution path: link the issue where a maintainer agreed to the scope. -->
 
 ## What did you check?
 
-<!-- List the tests, examples, or manual checks you ran, and include useful results. -->
+<!-- List the tests, examples, or manual checks you ran, including what changes for a caller (final output, task metric, timing of the public call), and include useful results. -->
 
 ```text
 $ pixi run test-module tests/...

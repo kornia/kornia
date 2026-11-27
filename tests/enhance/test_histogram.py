@@ -70,6 +70,10 @@ class TestImageHistogram2d(BaseTester):
         with pytest.raises(ShapeError, match=r"Input image must have shape \(H, W\), \(C, H, W\) or \(B, C, H, W\)"):
             TestImageHistogram2d.fcn(image, n_bins=2)
 
+    def test_rejects_none_image(self):
+        with pytest.raises(TypeError, match=r"Input image type is not a torch.Tensor"):
+            TestImageHistogram2d.fcn(None)
+
     @pytest.mark.parametrize("kernel", ["triangular", "gaussian", "uniform", "epanechnikov"])
     def test_gradcheck(self, device, kernel):
         sample = torch.ones(8, 8, device=device, dtype=torch.float64)
@@ -95,7 +99,10 @@ class TestImageHistogram2d(BaseTester):
         sample = torch.linspace(0, 255, 10, device=device, dtype=dtype)
         sample_x, _ = torch.meshgrid(sample, sample, indexing="ij")
         sample_x = sample_x.repeat(*size)
-        bandwidth = 2 * 0.4**2 if kernel == "gaussian" else None
+        # The samples sit on the centers, so the kernel's support must stay inside the smallest gap between them: the
+        # uniform kernel's support is closed (u <= 1), and half precision rounds these centers up to 0.4 % off even.
+        # 255 / 10 is the bandwidth these calls had before the default followed the centers' spacing (255 / 9).
+        bandwidth = 2 * 0.4**2 if kernel == "gaussian" else 25.5
         hist, _ = TestImageHistogram2d.fcn(sample_x, 0.0, 255.0, 10, bandwidth=bandwidth, centers=sample, kernel=kernel)
         ans = 10 * torch.ones_like(hist)
         self.assert_close(ans, hist)
@@ -106,7 +113,8 @@ class TestImageHistogram2d(BaseTester):
         sample = torch.linspace(0, 255, 10, device=device, dtype=dtype)
         sample_x, _ = torch.meshgrid(sample, sample, indexing="ij")
         sample_x = sample_x.repeat(*size)
-        bandwidth = 2 * 0.4**2 if kernel == "gaussian" else None
+        # See test_uniform_hist: keep the pre-#6662 bandwidth so each sample lands in one bin.
+        bandwidth = 2 * 0.4**2 if kernel == "gaussian" else 25.5
         hist, pdf = TestImageHistogram2d.fcn(
             sample_x, 0.0, 255.0, 10, bandwidth=bandwidth, centers=sample, kernel=kernel, return_pdf=True
         )
@@ -183,12 +191,11 @@ class TestImageHistogram2d(BaseTester):
         assert hist.max() > 255, "the bin counts must exceed what uint8 can hold for this input to discriminate"
         self.assert_close(hist, reference, atol=0.0, rtol=0.0)
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS has no float64")
     def test_float64_image_keeps_float64_bin_centers(self, device):
         """A hard-coded float32 arange would give a float64 image float32-precision centers. With a bandwidth that is
         not a power of two (1 / 1000) the centers differ from the float64 ones by about 1e-8 and the histogram moves
         by ~1e-4, so this discriminates; a power-of-two n_bins would not."""
-        if device.type == "mps":
-            pytest.skip("MPS has no float64")
         torch.manual_seed(0)
         n_bins = 1000
         image = torch.rand(1, 32, 32, device=device, dtype=torch.float64)
@@ -200,11 +207,10 @@ class TestImageHistogram2d(BaseTester):
         assert hist_auto.dtype == torch.float64
         self.assert_close(hist_auto, hist_explicit, atol=1e-12, rtol=0.0)
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS has no float64")
     def test_explicit_centers_keep_the_promoted_dtype(self, device):
         """Only the auto-built-centers path is cast back to the image dtype. With explicit float64 centers a float32
         image has always given float64 outputs, and the caller who supplied them to get that precision must keep it."""
-        if device.type == "mps":
-            pytest.skip("MPS has no float64")
         torch.manual_seed(2)
         image = torch.rand(1, 8, 8, device=device, dtype=torch.float32)
         centers = torch.linspace(0, 1, 16, device=device, dtype=torch.float64)
@@ -235,10 +241,84 @@ class TestImageHistogram2d(BaseTester):
             TestImageHistogram2d.fcn(torch.ones(4, 4), min=0.0, max=0.0, bandwidth=0.5)
 
     def test_negative_one_bandwidth_with_explicit_centers_needs_a_range(self):
-        # The automatic bandwidth is (max - min) / n_bins, so the sentinel needs the range even with explicit centers.
+        # The sentinel falls back to (max - min) / n_bins for centers without a spacing, so it still needs the range.
         centers = torch.tensor([0.25, 0.75])
         with pytest.raises(ValueError, match="automatically generated histogram range"):
             TestImageHistogram2d.fcn(torch.ones(4, 4), min=0.0, max=0.0, bandwidth=-1.0, centers=centers)
+
+    def test_negative_one_bandwidth_uses_the_spacing_of_explicit_centers(self, device, dtype):
+        image = torch.tensor([[0.25, 0.5, 0.625]], device=device, dtype=dtype)
+        centers = torch.tensor([0.25, 0.75], device=device, dtype=dtype)
+        # The range default 255 / 256 is not the 0.5 spacing of the centers, so only the spacing gives these counts.
+        hist, _ = TestImageHistogram2d.fcn(image, 0.0, 255.0, 256, bandwidth=-1.0, centers=centers)
+        # The spacing is 0.5: u to 0.25 is 0, 0.5, 0.75 and u to 0.75 is 1, 0.5, 0.25, so the weights are 1 - u.
+        expected = torch.tensor([1.75, 1.25], device=device, dtype=hist.dtype)
+        self.assert_close(hist, expected)
+
+    @pytest.mark.parametrize("centers", [[0.5], [0.5, 0.5], [0.5, 0.5, 0.5]])
+    def test_centers_without_spacing_keep_the_range_default(self, device, dtype, centers):
+        # One center, or centers that are all equal, have no spacing, so the bandwidth is (max - min) / n_bins = 0.5.
+        # With the triangular kernel the weights 1 - |x - 0.5| / 0.5 of the image below are 0, 0.5, 1 and 0.5.
+        image = torch.tensor([[0.0, 0.25, 0.5, 0.75]], device=device, dtype=dtype)
+        centers = torch.tensor(centers, device=device, dtype=dtype)
+        hist, _ = TestImageHistogram2d.fcn(image, 0.0, 1.0, 2, centers=centers)
+        self.assert_close(hist, torch.full_like(hist, 2.0))
+
+    def test_non_finite_spacing_keeps_the_range_default(self, device):
+        # An infinite center gives no spacing, so the range default applies instead of an error. The gaussian weight of
+        # the finite center, with u = |x - 0.5| / 0.5 = 1, 0.5, 0 and 0.5, is exp(-0.5) + 2 * exp(-0.125) + 1.
+        image = torch.tensor([[0.0, 0.25, 0.5, 0.75]], device=device, dtype=torch.float32)
+        centers = torch.tensor([0.5, float("inf")], device=device, dtype=torch.float32)
+        hist, _ = TestImageHistogram2d.fcn(image, 0.0, 1.0, 2, centers=centers, kernel="gaussian")
+        expected = torch.tensor([0.606531 + 2 * 0.882497 + 1.0, 0.0], device=device, dtype=hist.dtype)
+        self.assert_close(hist, expected)
+
+    @pytest.mark.parametrize("kernel", ["triangular", "gaussian", "uniform", "epanechnikov"])
+    @pytest.mark.parametrize("range_and_bins", [(0.0, 255.0, 256), (0.0, 1.0, 2), (0.0, 1.0, 8), (-3.0, 7.0, 3)])
+    def test_explicit_centers_default_bandwidth_is_their_spacing_6662(self, device, dtype, kernel, range_and_bins):
+        # Regression test for #6662: the default bandwidth came from min, max and n_bins, which explicit centers ignore.
+        # The centers are 0.5 apart, so the expected weights use u = |x - c| / 0.5 for the image below.
+        min_value, max_value, n_bins = range_and_bins
+        image = torch.tensor([[0.0, 0.25, 0.5, 0.625, 1.0]], device=device, dtype=dtype)
+        centers = torch.tensor([0.25, 0.75], device=device, dtype=dtype)
+        hist, pdf = TestImageHistogram2d.fcn(
+            image, min_value, max_value, n_bins, centers=centers, kernel=kernel, return_pdf=True
+        )
+        # u to 0.25 is 0.5, 0, 0.5, 0.75, 1.5; u to 0.75 is 1.5, 1, 0.5, 0.25, 0.5.
+        expected = {
+            "triangular": [0.5 + 1.0 + 0.5 + 0.25, 0.5 + 0.75 + 0.5],
+            "uniform": [4.0, 4.0],
+            "epanechnikov": [0.75 + 1.0 + 0.75 + 0.4375, 0.75 + 0.9375 + 0.75],
+            # exp(-u**2 / 2) = 0.882497, 1, 0.882497, 0.754840, 0.324652 and
+            # 0.324652, 0.606531, 0.882497, 0.969233, 0.882497.
+            "gaussian": [3.844486, 3.665410],
+        }[kernel]
+        expected_hist = torch.tensor(expected, device=device, dtype=hist.dtype)
+        self.assert_close(hist, expected_hist)
+        self.assert_close(pdf, expected_hist / expected_hist.sum())
+
+    def test_default_bandwidth_of_float16_centers_does_not_overflow(self, device):
+        # The center range, 80000, exceeds the float16 maximum of 65504, so subtracting in the centers' own dtype would
+        # give an infinite spacing and the range default instead of the spacing of these finite, distinct centers.
+        centers = torch.tensor([-40000.0, 0.0, 40000.0], device=device, dtype=torch.float16)
+        image = torch.tensor([[-40000.0, -20000.0, 0.0, 40000.0]], device=device, dtype=torch.float32)
+        hist, _ = TestImageHistogram2d.fcn(image, centers=centers, return_pdf=True)
+        # The spacing is 40000 and the kernel is triangular: the weights are 1 - |x - c| / 40000, so center -40000 gets
+        # 1.0 + 0.5, center 0 gets 0.5 + 1.0 and center 40000 gets 1.0.
+        expected = torch.tensor([1.5, 1.5, 1.0], device=device, dtype=hist.dtype)
+        assert torch.isfinite(hist).all()
+        self.assert_close(hist, expected)
+
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS has no float64")
+    def test_default_bandwidth_of_integer_centers_keeps_float64_precision(self, device):
+        # Rounding these int64 centers to float32 makes them equal, which would give a zero spacing and the range
+        # default, although a float64 image can represent them and their spacing of 1.
+        centers = torch.tensor([16777216, 16777217], device=device, dtype=torch.int64)
+        image = torch.tensor([[16777216.0, 16777216.5, 16777217.0]], device=device, dtype=torch.float64)
+        hist, _ = TestImageHistogram2d.fcn(image, centers=centers, return_pdf=True)
+        expected, _ = TestImageHistogram2d.fcn(image, bandwidth=1.0, centers=centers.double(), return_pdf=True)
+        assert torch.isfinite(hist).all()
+        self.assert_close(hist, expected)
 
     def test_rejects_zero_bins_for_automatic_values(self):
         with pytest.raises(ValueError, match="n_bins must be greater than zero"):
@@ -262,6 +342,34 @@ class TestImageHistogram2d(BaseTester):
         assert torch.isfinite(hist).all()
         assert torch.isfinite(pdf).all()
 
+    @pytest.mark.parametrize("kernel", ["triangular", "gaussian", "uniform", "epanechnikov"])
+    @pytest.mark.parametrize("bandwidth", [0.1, 0.5, 2.0])
+    def test_explicit_bandwidth_keeps_automatic_centers_on_the_range_6664(self, device, dtype, kernel, bandwidth):
+        # The automatic centers are the equal-width bin centers over [min, max], so they must match explicitly passed
+        # equal-width centers for any bandwidth. The bandwidth only sets the kernel width.
+        torch.manual_seed(0)
+        image = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
+        centers = torch.tensor([0.125, 0.375, 0.625, 0.875], device=device, dtype=dtype)
+
+        hist_auto, pdf_auto = TestImageHistogram2d.fcn(
+            image, 0.0, 1.0, 4, bandwidth=bandwidth, kernel=kernel, return_pdf=True
+        )
+        hist_explicit, pdf_explicit = TestImageHistogram2d.fcn(
+            image, 0.0, 1.0, 4, bandwidth=bandwidth, centers=centers, kernel=kernel, return_pdf=True
+        )
+
+        self.assert_close(hist_auto, hist_explicit)
+        self.assert_close(pdf_auto, pdf_explicit)
+
+    def test_explicit_bandwidth_does_not_change_which_range_the_bins_cover_6664(self, device, dtype):
+        # With the bandwidth fixed, moving max stretches the bins over [min, max]: [0, 2] gives centers 0.25, 0.75, 1.25
+        # and 1.75, so 0.25 and 1.75 each fall exactly on an outer center. The uniform kernel with bandwidth 0.25
+        # counts a pixel in a bin when it lies within 0.25 of the center, so each pixel lands in exactly one bin.
+        image = torch.tensor([[0.25, 1.75]], device=device, dtype=dtype)
+        hist, _ = TestImageHistogram2d.fcn(image, 0.0, 2.0, 4, bandwidth=0.25, kernel="uniform")
+        output_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+        self.assert_close(hist, torch.tensor([1.0, 0.0, 0.0, 1.0], device=device, dtype=output_dtype))
+
     def test_empty_centers_select_automatic_centers(self):
         image = torch.rand(4, 4)
         hist_none, pdf_none = TestImageHistogram2d.fcn(image, 0.0, 1.0, 4, return_pdf=True)
@@ -282,6 +390,62 @@ class TestImageHistogram2d(BaseTester):
 
 class TestHistogram2d(BaseTester):
     fcn = kornia.enhance.histogram2d
+
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), dtypes=("float16", "float32"), reason="float16 autocast")
+    def test_autocast_preserves_joint_probability_mass(self, device, dtype):
+        # Each pair votes only for (0, 0). Its count of 65536 overflows float16, but its probability is exactly 1.
+        samples = torch.zeros(1, 256 * 256, device=device, dtype=dtype)
+        bins = samples.new_tensor([0.0, 1.0])
+        with torch.autocast(device.type, dtype=torch.float16):
+            hist = TestHistogram2d.fcn(samples, samples, bins, samples.new_tensor(0.01))
+        assert hist.dtype == dtype
+        self.assert_close(hist, samples.new_tensor([[[1.0, 0.0], [0.0, 0.0]]]))
+
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), dtypes=("float32",), reason="mixed kernels under float16 autocast")
+    def test_autocast_mixed_kernel_dtypes(self, device, dtype):
+        x1 = torch.tensor([[0.0, 0.0, 0.0, 1.0]], device=device, dtype=dtype)
+        x2 = x1.new_tensor([[0.0, 1.0, 1.0, 1.0]], dtype=torch.float16)
+        bins = x2.new_tensor([0.0, 1.0])
+        # Off-center kernel weights underflow to zero. The four pairs give bin counts [[1, 2], [0, 1]].
+        with torch.autocast(device.type, dtype=torch.float16):
+            hist = TestHistogram2d.fcn(x1, x2, bins, x1.new_tensor(0.01))
+        assert hist.dtype == dtype
+        self.assert_close(hist, x1.new_tensor([[[0.25, 0.5], [0.0, 0.25]]]))
+
+    def test_convention_first_bin_axis_belongs_to_x1(self, device, dtype):
+        x1 = torch.tensor([[0.0, 0.0, 1.0], [1.0, 1.0, 1.0]], device=device, dtype=dtype)
+        x2 = torch.tensor([[1.0, 1.0, 0.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype)
+        bins = torch.tensor([0.0, 1.0], device=device, dtype=dtype)
+        bandwidth = torch.tensor(0.5, device=device, dtype=dtype)
+
+        # Independently sum paired Gaussian weights: a = math.exp(-2), n = 3 * (1 + a)**2 + 1e-10.
+        # Raw matrices are [[3*a, 2+a*a], [1+2*a*a, 3*a]] and [[2*a+a*a, a+2*a*a], [2+a, 1+2*a]].
+        expected = torch.tensor(
+            [
+                [[0.10499358540079136, 0.5219387739089568], [0.26807405526360023, 0.10499358540079136]],
+                [[0.07473216913994209, 0.044470752879092836], [0.552200190169806, 0.3285968877852987]],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        actual = TestHistogram2d.fcn(x1, x2, bins, bandwidth)
+
+        self.assert_close(actual, expected)
+
+    @pytest.mark.parametrize(
+        "epsilon,expected_value",
+        [(0.0, 0.25), (1e-10, 0.24998611622339154), (1e-6, 0.16073222839317233)],
+    )
+    def test_epsilon(self, device, dtype, epsilon, expected_value):
+        samples = torch.full((2, 4), 0.5, device=device, dtype=dtype)
+        bins = torch.tensor([0.0, 1.0], device=device, dtype=dtype)
+        bandwidth = torch.tensor(0.125, device=device, dtype=dtype)
+
+        actual = TestHistogram2d.fcn(samples, samples, bins, bandwidth, epsilon=epsilon)
+        # Each joint bin is 4 * exp(-16): raw / (4 * raw + epsilon), using Python's math.exp.
+        expected = torch.full((2, 2, 2), expected_value, device=device, dtype=dtype)
+        assert actual.dtype == dtype
+        self.assert_close(actual, expected)
 
     @pytest.mark.parametrize("num_samples,num_bins", [(1024, 64), (65536, 2)])
     def test_large_histogram_normalization(self, device, dtype, num_samples, num_bins):

@@ -21,6 +21,7 @@ import pickle
 import pytest
 import torch
 
+from kornia.core.exceptions import BaseError
 from kornia.geometry.plane import Hyperplane
 from kornia.geometry.vector import Scalar, Vector2, Vector3
 
@@ -57,6 +58,14 @@ class TestVector3(BaseTester):
         assert vec.x == 0.0
         assert vec.y == 1.0
         assert vec.z == 0.0
+
+    def test_exception(self, device, dtype):
+        with pytest.raises(BaseError, match=r"Vector3 needs a last dimension of 3, got shape \[4, 2\]"):
+            Vector3(torch.rand(4, 2, device=device, dtype=dtype))
+        with pytest.raises(BaseError, match="x, y and z must have the same type, got float, Tensor and float"):
+            Vector3.from_coords(0.0, torch.tensor(1.0, device=device, dtype=dtype), 0.0)
+        with pytest.raises(BaseError, match="x, y and z must be floats or tensors, got int"):
+            Vector3.from_coords(0, 1, 0)
 
     @pytest.mark.parametrize("shape", [(), (1,), (2, 4)])
     def test_from_coords_tensor(self, device, dtype, shape):
@@ -119,22 +128,6 @@ class TestVector3(BaseTester):
         expected = torch.zeros_like(zero) if dtype == torch.float16 else torch.full_like(zero, 1e12)
         self.assert_close(zero.grad, expected)
 
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_jit(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_exception(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_module(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_gradcheck(self, device):
-        pass
-
 
 class TestVector2(BaseTester):
     def test_smoke(self, device, dtype):
@@ -163,6 +156,14 @@ class TestVector2(BaseTester):
         assert vec.shape == (2,)
         assert vec.x == 0.0
         assert vec.y == 1.0
+
+    def test_exception(self, device, dtype):
+        with pytest.raises(BaseError, match=r"Vector2 needs a last dimension of 2, got shape \[4, 3\]"):
+            Vector2(torch.rand(4, 3, device=device, dtype=dtype))
+        with pytest.raises(BaseError, match="x and y must have the same type, got Tensor and float"):
+            Vector2.from_coords(torch.tensor(0.0, device=device, dtype=dtype), 1.0)
+        with pytest.raises(BaseError, match="x and y must be floats or tensors, got int"):
+            Vector2.from_coords(0, 1)
 
     @pytest.mark.parametrize("shape", [(), (1,), (2, 4)])
     def test_from_coords_tensor(self, device, dtype, shape):
@@ -209,22 +210,6 @@ class TestVector2(BaseTester):
         assert torch.isfinite(zero.grad).all()
         expected = torch.zeros_like(zero) if dtype == torch.float16 else torch.full_like(zero, 1e12)
         self.assert_close(zero.grad, expected)
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_jit(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_exception(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_module(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_gradcheck(self, device):
-        pass
 
 
 @pytest.mark.usefixtures("restore_torch_rng")
@@ -417,12 +402,11 @@ class TestConventionsVector(BaseTester):
         # A result that does not hold vectors falls back to the Scalar.
         assert type(torch.cat([v, s], -1)) is Scalar
 
+    @pytest.mark.applies_to(dtypes=("bfloat16", "float32", "float64"), reason="1e-13 underflows to 0 in float16")
     def test_convention_vector3_normalized_scales_below_eps_3952(self, device, dtype):
         # Convention (#3952, kept by maintainer decision): normalized() divides by max(norm, 1e-12), so a vector
         # shorter than 1e-12 is scaled by 1e12 instead of normalized: (1e-13, 0, 0) comes back with length 0.1.
         # float16 cannot hold 1e-13 (it underflows to the zero vector).
-        if dtype == torch.float16:
-            pytest.skip("1e-13 underflows to 0 in float16")
         short = Vector3(torch.tensor([1e-13, 0.0, 0.0], device=device, dtype=dtype))
         self.assert_close(short.normalized().data, torch.tensor([0.1, 0.0, 0.0], device=device, dtype=dtype))
         self.assert_close(

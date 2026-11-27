@@ -105,13 +105,13 @@ def _compiled_slice_resize(
     # Nearest normally uses float32 index arithmetic; handle ATen's CPU-double exception below.
     coordinate_dtype = torch.float64 if input.dtype == torch.float64 and mode != "nearest" else torch.float32
     src = src.to(device=input.device, dtype=torch.long)
-    # Match Python slicing for negative and out-of-bounds replay coordinates.
+    # Clip out-of-bounds coordinates to the image, as crop_by_indices does: a negative start must not wrap (#6312).
     x0, x1 = src[:, 0, 0:1], src[:, 1, 0:1] + 1
     y0, y1 = src[:, 0, 1:2], src[:, 3, 1:2] + 1
-    x0 = torch.where(x0 < 0, x0 + width, x0).clamp(0, width).to(coordinate_dtype)
-    x1 = torch.where(x1 < 0, x1 + width, x1).clamp(0, width).to(coordinate_dtype)
-    y0 = torch.where(y0 < 0, y0 + height, y0).clamp(0, height).to(coordinate_dtype)
-    y1 = torch.where(y1 < 0, y1 + height, y1).clamp(0, height).to(coordinate_dtype)
+    x0 = x0.clamp(0, width).to(coordinate_dtype)
+    x1 = x1.clamp(0, width).to(coordinate_dtype)
+    y0 = y0.clamp(0, height).to(coordinate_dtype)
+    y1 = y1.clamp(0, height).to(coordinate_dtype)
     x = _resize_coordinates(x0, x1, width, size[1], mode, align_corners)
     y = _resize_coordinates(y0, y1, height, size[0], mode, align_corners)
     if mode == "nearest" and input.device.type == "cpu" and input.dtype == torch.float64 and sum(size) > 128:
@@ -147,8 +147,10 @@ def _compiled_slice_resize(
     flat = work.reshape(batch, channels, height * width)
 
     def gather(x_index: torch.Tensor, y_index: torch.Tensor) -> torch.Tensor:
-        x_index = (x0 + x_index.clamp(min=0)).minimum(x1 - 1).long()
-        y_index = (y0 + y_index.clamp(min=0)).minimum(y1 - 1).long()
+        # ``clamp(min=0)``: a box entirely left of or above the image clips to an empty interval, whose ``x1 - 1`` is
+        # -1 and would read the previous row; it reads the image edge instead, as a box past the right edge does.
+        x_index = (x0 + x_index.clamp(min=0)).minimum(x1 - 1).clamp(min=0).long()
+        y_index = (y0 + y_index.clamp(min=0)).minimum(y1 - 1).clamp(min=0).long()
         indices = (y_index.unsqueeze(-1) * width + x_index.unsqueeze(-2)).reshape(batch, 1, -1)
         return flat.gather(2, indices.expand(-1, channels, -1)).reshape(batch, channels, *size)
 

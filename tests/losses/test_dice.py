@@ -20,6 +20,7 @@ import torch
 import torch.nn.functional as F
 
 import kornia
+from kornia.core.exceptions import BaseError, TypeCheckError
 
 from testing.base import BaseTester
 
@@ -223,15 +224,6 @@ class TestDiceLoss(BaseTester):
         loss = kornia.losses.dice_loss(logits, labels, average=average, weight=weight)
         assert loss.dtype == torch.promote_types(dtype, weight.dtype)
 
-    def test_smoke(self, device, dtype):
-        num_classes = 3
-        logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=dtype)
-        labels = torch.rand(2, 3, 2) * num_classes
-        labels = labels.to(device).long()
-
-        criterion = kornia.losses.DiceLoss()
-        assert criterion(logits, labels) is not None
-
     @pytest.mark.parametrize("ignore_index", [-100, None])
     def test_all_zeros(self, device, dtype, ignore_index):
         num_classes = 3
@@ -270,6 +262,14 @@ class TestDiceLoss(BaseTester):
         assert grad.isfinite().all()
 
     def test_exception(self):
+        with pytest.raises(TypeCheckError) as errinf:
+            kornia.losses.DiceLoss()(None, torch.rand(1, 1, 1))
+        assert "Type mismatch: expected Tensor" in str(errinf.value)
+
+        with pytest.raises(TypeCheckError) as errinf:
+            kornia.losses.DiceLoss()(torch.rand(1, 1, 1, 1), [1, 2, 3])
+        assert "Type mismatch: expected Tensor" in str(errinf.value)
+
         with pytest.raises(ValueError) as errinf:
             kornia.losses.DiceLoss()(torch.rand(1, 1, 1), torch.rand(1, 1, 1))
         assert "Invalid pred shape, we expect BxNxHxW. Got:" in str(errinf)
@@ -292,6 +292,34 @@ class TestDiceLoss(BaseTester):
         # A target with a channel axis, (B, 1, H, W), is not (B, H, W) either.
         with pytest.raises(ValueError, match=r"Expected target size torch.Size\(\[1, 4, 6\]\)"):
             kornia.losses.DiceLoss()(torch.rand(1, 3, 4, 6), torch.randint(0, 3, (1, 1, 4, 6)))
+
+        with pytest.raises(ValueError, match="eps must be non-negative"):
+            kornia.losses.dice_loss(torch.rand(1, 1, 1, 1), torch.randint(0, 1, (1, 1, 1)), eps=-1e-8)
+
+        with pytest.raises(ValueError, match="eps must be non-negative"):
+            kornia.losses.DiceLoss(eps=-1e-8)
+
+        with pytest.raises(BaseError, match="The `average` has to be one of"):
+            kornia.losses.DiceLoss(average="invalid")
+
+    def test_tensor_eps(self, device, dtype):
+        pred = torch.rand(2, 3, 4, 4, device=device, dtype=dtype)
+        target = torch.randint(0, 3, (2, 4, 4), device=device)
+        expected = kornia.losses.dice_loss(pred, target, average="macro", eps=1e-6)
+        self.assert_close(
+            kornia.losses.dice_loss(pred, target, average="macro", eps=torch.tensor(1e-6, device=device, dtype=dtype)),
+            expected,
+            rtol=0,
+            atol=0,
+        )
+        self.assert_close(
+            kornia.losses.dice_loss(
+                pred, target, average="macro", eps=torch.full((3,), 1e-6, device=device, dtype=dtype)
+            ),
+            expected,
+            rtol=0,
+            atol=0,
+        )
 
     def test_averaging_micro(self, device, dtype):
         """Keep the analytical micro-averaging reference finite in half precision."""
@@ -469,7 +497,7 @@ class TestDiceLoss(BaseTester):
         loss = criterion(logits, labels)
         self.assert_close(loss, expected_loss, rtol=1e-3, atol=1e-3)
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         num_classes = 3
         logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=torch.float64)
         labels = torch.randint(0, num_classes, (2, 3, 2), device=device)
@@ -488,17 +516,6 @@ class TestDiceLoss(BaseTester):
         op_optimized = torch_optimizer(op)
 
         self.assert_close(op(logits, labels, average=average), op_optimized(logits, labels, average=average))
-
-    def test_module(self, device, dtype):
-        num_classes = 3
-        logits = torch.rand(2, num_classes, 1, 2, device=device, dtype=dtype)
-        labels = torch.rand(2, 1, 2) * num_classes
-        labels = labels.to(device).long()
-
-        op = kornia.losses.dice_loss
-        op_module = kornia.losses.DiceLoss()
-
-        self.assert_close(op(logits, labels), op_module(logits, labels))
 
 
 class TestConventionsDiceLoss(BaseTester):

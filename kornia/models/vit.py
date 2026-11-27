@@ -96,7 +96,7 @@ class MultiHeadAttention(nn.Module):
 
         # sum up over the third axis
         out = torch.einsum("bhal, bhlv -> bhav ", att, v)
-        out = out.permute(0, 2, 1, 3).contiguous().view(B, N, -1)
+        out = out.permute(0, 2, 1, 3).flatten(2)
         out = self.projection(out)
         return self.projection_drop(out)
 
@@ -178,18 +178,28 @@ class PatchEmbedding(nn.Module):
         self.positions = nn.Parameter(torch.randn(feat_size + 1, out_channels))
 
     def _compute_feats_dims(self, image_size: tuple[int, int, int]) -> tuple[int, tuple[int, int]]:
-        out = self.backbone(torch.zeros(1, *image_size)).detach()
+        # A synthetic forward must not update training state. Restore each flag to preserve mixed modes.
+        backbone = self.backbone
+        modes = [(module, module.training) for module in backbone.modules()] if isinstance(backbone, nn.Module) else []
+        try:
+            for module, _ in modes:
+                module.training = False
+            with torch.no_grad():
+                out = backbone(torch.zeros(1, *image_size))
+        finally:
+            for module, training in modes:
+                module.training = training
         return out.shape[-3], (out.shape[-2], out.shape[-1])
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.backbone(x)
-        B, N, height, width = x.shape
+        B, _, height, width = x.shape
         if (height, width) != self.grid_size:
             raise ValueError(
                 f"The patch embedding gives a {height}x{width} token grid, but the position embeddings are built for "
                 f"the {self.grid_size[0]}x{self.grid_size[1]} grid of an image_size input."
             )
-        x = x.view(B, N, -1).permute(0, 2, 1)  # BxNxE
+        x = x.flatten(2).permute(0, 2, 1)  # BxNxE
         cls_tokens = self.cls_token.repeat(B, 1, 1)  # Bx1xE
         # prepend the cls token to the input
         x = torch.cat([cls_tokens, x], dim=1)  # Bx(N+1)xE
@@ -225,7 +235,8 @@ class VisionTransformer(nn.Module):
         dropout_rate: dropout rate.
         dropout_attn: attention dropout rate.
         backbone: an nn.Module to compute the image patches embeddings, as a :math:`(B, D, h, w)` map. The position
-            embeddings are sized from its output for an ``image_size`` input.
+            embeddings are sized by probing an ``image_size`` input in evaluation mode. The backbone must give
+            the same patch grid in training and evaluation modes for that input size.
 
     Example:
         >>> img = torch.rand(1, 3, 224, 224)
@@ -264,7 +275,7 @@ class VisionTransformer(nn.Module):
 
         Returns:
             List of tensors produced by the encoder blocks. Each tensor stores
-            token embeddings for a layer, typically shaped :math:`(B, N, D)`,
+            token embeddings for a layer, typically shaped ``(B, N, D)``,
             where :math:`B` is batch size, :math:`N` is token count, and
             :math:`D` is embedding dimension.
         """
@@ -274,7 +285,7 @@ class VisionTransformer(nn.Module):
         """Encode an image batch into Vision Transformer token embeddings.
 
         Args:
-            x: Image tensor with shape :math:`(B, C, H, W)`. Without a
+            x: Image tensor with shape ``(B, C, H, W)``. Without a
                 ``backbone``, :math:`C` must equal ``self.in_channels`` and
                 :math:`H` and :math:`W` must both equal ``self.image_size``;
                 with one, the backbone's token grid must be the one it gives
@@ -284,10 +295,10 @@ class VisionTransformer(nn.Module):
         Returns:
             Normalized token embedding tensor produced by patch embedding and
             the transformer encoder. The output shape follows the encoder
-            layout, usually :math:`(B, N, D)`.
+            layout, usually ``(B, N, D)``.
 
         Raises:
-            ValueError: without a ``backbone``, if :math:`C` is not ``in_channels`` or :math:`(H, W)` is not
+            ValueError: without a ``backbone``, if :math:`C` is not ``in_channels`` or ``(H, W)`` is not
                 ``(image_size, image_size)``; with one, if the backbone's token grid is not the one it gives for an
                 ``image_size`` input.
         """

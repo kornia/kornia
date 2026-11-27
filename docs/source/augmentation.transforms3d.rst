@@ -3,7 +3,11 @@
 
 .. currentmodule:: kornia.augmentation
 
-Operators for volumetric ``(B, C, D, H, W)`` tensors, e.g. medical volumes or video treated as 3D data.
+Operators for volumetric ``(B, C, D, H, W)`` tensors, such as medical volumes. For video, apply 2D transforms
+frame by frame with :class:`~kornia.augmentation.container.VideoSequential`. The geometric transforms order voxel
+coordinates ``(x, y, z)``, the reverse of the tensor's ``(D, H, W)``. Inside
+:class:`~kornia.augmentation.container.AugmentationSequential`, use :class:`RandomTransplantation3D` for volumes;
+:class:`RandomTransplantation` handles volumes only when called directly.
 
 Geometric
 ---------

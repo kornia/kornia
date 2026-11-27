@@ -37,7 +37,7 @@ TOP_PACKAGES = 30
 
 
 def load_data() -> dict:
-    return json.loads(DATA.read_text())
+    return json.loads(DATA.read_text(encoding="utf-8"))
 
 
 def load_counts(data: dict | None = None) -> dict[str, int | str]:
@@ -181,7 +181,7 @@ and a line about what it does.
 
 def main() -> dict[str, int | str]:
     data = load_data()
-    OUT.write_text(render_page(data))
+    OUT.write_text(render_page(data), encoding="utf-8", newline="\n")
     return load_counts(data)
 
 

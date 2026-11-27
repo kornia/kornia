@@ -20,11 +20,15 @@ import copy
 import pytest
 import torch
 
+import kornia.feature._normalization
 from kornia.feature import FilterResponseNorm2d, HyNet, LAFDescriptor, SOSNet, get_laf_descriptors
 from kornia.feature._normalization import _DescriptorSequential
 from kornia.feature.laf import extract_patches_from_pyramid, laf_from_center_scale_ori
 
 from testing.base import BaseTester
+
+_COMMON_SLICES = [slice(None), slice(None, -1), slice(1, None), slice(0, 0)]
+_SLICES = {SOSNet: [*_COMMON_SLICES, slice(None, 3)], HyNet: _COMMON_SLICES}
 
 
 class TestDescriptorNormalization(BaseTester):
@@ -205,9 +209,12 @@ class TestDescriptorNormalization(BaseTester):
         for name in ("running_mean", "running_var", "num_batches_tracked"):
             self.assert_close(getattr(model[-1], name), getattr(reference[-1], name), rtol=0.0, atol=0.0)
 
-    @pytest.mark.parametrize("model_cls", [SOSNet, HyNet])
-    @pytest.mark.parametrize("selection", [slice(None), slice(None, -1), slice(1, None), slice(0, 0), slice(None, 3)])
-    def test_sequential_slices(self, device, model_cls, selection):
+    @pytest.mark.parametrize(
+        "model_cls, selection",
+        # HyNet's layer7 has three modules, so slice(None, 3) would repeat slice(None) there.
+        [(model_cls, selection) for model_cls in (SOSNet, HyNet) for selection in _SLICES[model_cls]],
+    )
+    def test_sequential_slices(self, device, model_cls, selection, monkeypatch):
         model = model_cls(pretrained=False).to(device).eval()
         block = model.layers if model_cls is SOSNet else model.layer7
         block[-1].running_var.fill_(1e5)
@@ -220,7 +227,10 @@ class TestDescriptorNormalization(BaseTester):
             if isinstance(layer, torch.nn.BatchNorm2d):
                 assert torch.isfinite(layer.running_var).all()
         if model_cls is SOSNet and selection == slice(None, 3):
-            # An intermediate BatchNorm keeps ordinary Sequential half-precision behavior.
+            # An intermediate BatchNorm keeps ordinary Sequential half-precision behavior. The plain Sequential leaves
+            # the convolution layout alone, and cuDNN rounds a channels-last float16 convolution differently, so this
+            # bitwise comparison keeps both in the input's layout; test_patch_network_layout covers the layout.
+            monkeypatch.setattr(kornia.feature._normalization, "_patch_conv_layout", lambda x: x)
             reference = torch.nn.Sequential(*reference).half()
             self.assert_close(sliced(x), reference(x), rtol=0.0, atol=0.0)
         else:

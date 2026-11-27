@@ -15,14 +15,15 @@
 # limitations under the License.
 #
 
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Set, Tuple
 
 import torch
 from torch.distributions import Distribution
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _range_bound
-from kornia.core.utils import _extract_device_dtype
+from kornia.augmentation.utils.param_validation import _as_range_tensor
+from kornia.core.utils import _extract_device_dtype, _to_device_nonblocking
 
 __all__ = ["ParameterBound", "PlainUniformGenerator"]
 
@@ -79,22 +80,53 @@ class PlainUniformGenerator(RandomGeneratorBase):
         return ", ".join([f"{name}={factor}" for factor, name, _, _ in self.samplers])
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
-        self.sampler_dict: Dict[str, Distribution] = {}
+        # Built aside and assigned once: a module shared by threads may draw while another thread rebuilds it.
+        sampler_dict: Dict[str, Distribution] = {}
         for factor, name, center, bound in self.samplers:
+            # The attribute, not the tuple: ``torch.func.functional_call`` swaps a parameter and a parametrization moves
+            # it. Numbers stay in the tuple, to be read in ``dtype``.
+            if isinstance(factor, torch.nn.Parameter):
+                factor = getattr(self, name)
             if center is None and bound is None:
-                factor = torch.as_tensor(factor, device=device, dtype=dtype)
+                factor = _as_range_tensor(factor, device, dtype)
             elif center is None or bound is None:
                 raise ValueError(f"`center` and `bound` should be both None or provided. Got {center} and {bound}.")
             else:
                 factor = _range_bound(factor, name, center=center, bounds=bound, device=device, dtype=dtype)
-            self.sampler_dict.update({name: UniformDistribution(factor[0], factor[1], validate_args=False)})
+            sampler_dict[name] = UniformDistribution(factor[0], factor[1], validate_args=False)
+        self.sampler_dict = sampler_dict
+
+    def _ranges_loaded(self, names: Set[str]) -> None:
+        # ``make_samplers`` reads ``self.samplers``, whose numbers it needs in ``dtype`` as they were given, not rounded
+        # to float32 in a buffer. A loaded range is what the generator holds from now on, in the form and placement of
+        # the entry it replaces: ``forward`` returns the draws on the device and dtype of the entries, and a buffer
+        # moved with the module would leave the other entries, and a later move, behind.
+        held = {**self._parameters, **self._buffers}
+
+        def loaded(factor: Any, name: str) -> Any:
+            if name not in names:
+                return factor
+            value = held[name]
+            if isinstance(factor, torch.nn.Parameter):
+                return value
+            if isinstance(factor, torch.Tensor):
+                # The buffer itself when the module has not moved, which keeps a plain leaf that requires grad training.
+                return value.to(device=factor.device, dtype=factor.dtype)
+            return value.tolist()
+
+        self.samplers = tuple(
+            (loaded(factor, name), name, center, bound) for factor, name, center, bound in self.samplers
+        )
+        super()._ranges_loaded(names)
 
     def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([t for t, _, _, _ in self.samplers])
 
+        # The draws are made on the generator's device and returned on the device of the ranges. The two differ for a
+        # learnable range made on CUDA in a module left on the CPU; the copy to CUDA then does not wait for the GPU.
         return {
-            name: _adapted_rsampling((batch_size,), dist, same_on_batch).to(device=_device, dtype=_dtype)
+            name: _to_device_nonblocking(_adapted_rsampling((batch_size,), dist, same_on_batch), _device, _dtype)
             for name, dist in self.sampler_dict.items()
         }

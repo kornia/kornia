@@ -26,7 +26,10 @@ from kornia.geometry.bbox import bbox_generator, bbox_to_mask
 
 
 class RandomErasing(IntensityAugmentationBase2D):
-    r"""Erase a random rectangle of a torch.Tensor image according to a probability p value.
+    r"""Erase a random rectangle of the image, applied per sample with probability ``p`` (default 0.5).
+
+    ``output = RandomErasing(scale, ratio, value, ...)(input)`` replaces one sampled rectangle in each selected
+    image ``(B, C, H, W)``.
 
     .. image:: _static/img/RandomErasing.png
 
@@ -43,13 +46,13 @@ class RandomErasing(IntensityAugmentationBase2D):
         ratio: range of aspect ratio of erased area.
         value: the value to fill the erased area.
         same_on_batch: apply the same transformation across the batch.
-        p: probability that the random erasing operation will be performed.
+        p: probability of applying the transformation to each sample.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``, Optional: ``(B, 3, 3)``
+        - Output: ``(B, C, H, W)``
 
     Convention:
         - this operation is range-independent: it does not clamp the input into ``[0, 1]``.
@@ -71,8 +74,12 @@ class RandomErasing(IntensityAugmentationBase2D):
           in the same rectangle, but the mask is filled with ``0`` whatever ``value`` is.
 
     Note:
-        This function accepts another transformation torch.Tensor (:math:`(B, 3, 3)`), then the
+        This function accepts another transformation torch.Tensor (``(B, 3, 3)``), then the
         applied transformation will be merged int to the input transformation torch.Tensor and returned.
+
+    See Also:
+        - :class:`RandomChannelDropout`: fills selected complete channels instead of one rectangle.
+        - :class:`RandomDissolving`: creates semantic image-to-image occlusion with a diffusion model.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -138,9 +145,10 @@ class RandomErasing(IntensityAugmentationBase2D):
         # small tensors instead of two image-sized ones.
         bboxes = bbox_generator(params["xs"], params["ys"], params["widths"], params["heights"])
         # The (B, 4, 2) boxes cross to the device, not the (B, H, W) mask: a large pageable copy stalls the host while
-        # the driver stages it. The mask is 0 or 1 by exact comparisons, so it is the same on either device.
-        bboxes = _to_device_nonblocking(bboxes, input.device)
-        mask = bbox_to_mask(bboxes, w, h).unsqueeze(1).to(input.dtype)  # (B, 1, H, W)
+        # the driver stages it. The mask is 0 or 1 by exact comparisons, so it is the same on either device. The boxes
+        # hold whole pixels, exact in float32, and cross in at least float32: float64 boxes do not fit on MPS.
+        bboxes = _to_device_nonblocking(bboxes, input.device, torch.promote_types(input.dtype, torch.float32))
+        mask = bbox_to_mask(bboxes, size=(h, w)).unsqueeze(1).to(input.dtype)  # (B, 1, H, W)
         return torch.where(mask == 1.0, values, input)
 
     def apply_transform_mask(
@@ -159,7 +167,8 @@ class RandomErasing(IntensityAugmentationBase2D):
 
         bboxes = bbox_generator(params["xs"], params["ys"], params["widths"], params["heights"])
         # The (B, 4, 2) boxes cross to the device, not the (B, H, W) mask: a large pageable copy stalls the host while
-        # the driver stages it. The mask is 0 or 1 by exact comparisons, so it is the same on either device.
-        bboxes = _to_device_nonblocking(bboxes, input.device)
-        mask = bbox_to_mask(bboxes, w, h).unsqueeze(1).to(input.dtype)  # (B, 1, H, W)
+        # the driver stages it. The mask is 0 or 1 by exact comparisons, so it is the same on either device. The boxes
+        # hold whole pixels, exact in float32, and cross in at least float32: float64 boxes do not fit on MPS.
+        bboxes = _to_device_nonblocking(bboxes, input.device, torch.promote_types(input.dtype, torch.float32))
+        mask = bbox_to_mask(bboxes, size=(h, w)).unsqueeze(1).to(input.dtype)  # (B, 1, H, W)
         return torch.where(mask == 1.0, values, input)

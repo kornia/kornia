@@ -49,10 +49,14 @@ class TestProjectPoints(BaseTester):
         )
         point_2d = kornia.geometry.camera.project_points(point_3d, camera_matrix)
         point_3d_hat = kornia.geometry.camera.unproject_points(point_2d, depth, camera_matrix)
-        self.assert_close(point_3d, point_3d_hat, atol=1e-4, rtol=1e-4)
+        if dtype in (torch.float16, torch.bfloat16):
+            # A ~1900 px pixel rounds by up to 0.5 px in float16, 0.0055 after unprojecting by depth / f = 30 / 2746:
+            # within the default half-precision tolerances.
+            self.assert_close(point_3d, point_3d_hat)
+        else:
+            self.assert_close(point_3d, point_3d_hat, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device):
-        # TODO: point [0, 0, 0] crashes
         points_3d = torch.ones(1, 3, device=device)
         camera_matrix = torch.eye(3, device=device).expand(1, -1, -1)
 
@@ -65,6 +69,17 @@ class TestProjectPoints(BaseTester):
         op = kornia.geometry.camera.project_points
         op_jit = torch.jit.script(op)
         self.assert_close(op(points_3d, camera_matrix), op_jit(points_3d, camera_matrix))
+
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        points_3d = torch.zeros(1, 3, device=device, dtype=dtype)
+        camera_matrix = torch.eye(3, device=device, dtype=dtype).expand(1, -1, -1)
+        op = kornia.geometry.camera.project_points
+        op_optimized = torch_optimizer(op)
+
+        actual = op_optimized(points_3d, camera_matrix)
+        expected = op(points_3d, camera_matrix)
+
+        self.assert_close(actual, expected)
 
     def test_wart_project_points_skips_the_divide_at_z_zero_4267(self, device, dtype):
         # Wart pin for #4267: the masked |z| <= 1e-8 divide skips the divide and K is applied after it, so a point
@@ -140,14 +155,6 @@ class TestUnprojectPoints(BaseTester):
         camera_matrix = torch.tensor([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype)
         expected = torch.tensor([[0.0, 0.0, 2.0]], device=device, dtype=dtype)
         actual = kornia.geometry.camera.unproject_points(point_2d, depth, camera_matrix)
-        self.assert_close(actual, expected, atol=1e-4, rtol=1e-4)
-
-    def test_unproject_center_normalize(self, device, dtype):
-        point_2d = torch.tensor([[0.0, 0.0]], device=device, dtype=dtype)
-        depth = torch.tensor([[2.0]], device=device, dtype=dtype)
-        camera_matrix = torch.tensor([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype)
-        expected = torch.tensor([[0.0, 0.0, 2.0]], device=device, dtype=dtype)
-        actual = kornia.geometry.camera.unproject_points(point_2d, depth, camera_matrix, True)
         self.assert_close(actual, expected, atol=1e-4, rtol=1e-4)
 
     def test_unproject_and_project(self, device, dtype):

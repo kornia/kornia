@@ -31,11 +31,6 @@ median_module = importlib.import_module("kornia.filters.median")
 
 
 class TestMedianBlur(BaseTester):
-    def test_smoke(self, device, dtype):
-        inp = torch.zeros(1, 3, 4, 4, device=device, dtype=dtype)
-        actual = median_blur(inp, 3)
-        assert isinstance(actual, torch.Tensor)
-
     @pytest.mark.parametrize("batch_size", [0, 1, 2])
     @pytest.mark.parametrize("channels", [0, 3])
     @pytest.mark.parametrize("kernel_size", [3, (5, 7)])
@@ -94,17 +89,13 @@ class TestMedianBlur(BaseTester):
         actual_module_constant = MedianBlur(kernel_size, "constant")(inp)
         self.assert_close(actual_constant, actual_module_constant)
 
-        ky = kernel_size if isinstance(kernel_size, int) else kernel_size[0]
         kx = kernel_size if isinstance(kernel_size, int) else kernel_size[1]
-        pad_y = (ky - 1) // 2
         pad_x = (kx - 1) // 2
-        if pad_y >= inp.shape[-2] or pad_x >= inp.shape[-1]:
-            with pytest.raises(RuntimeError, match="Padding size should be less"):
-                median_blur(inp, kernel_size)
-        else:
-            actual_default = median_blur(inp, kernel_size)
-            actual_reflect = median_blur(inp, kernel_size, "reflect")
-            self.assert_close(actual_default, actual_reflect)
+        # Every reflected row on a singleton height is identical, so the 2D median equals the row median.
+        padded = torch.nn.functional.pad(inp.cpu().double(), [pad_x, pad_x, 0, 0], mode="reflect")
+        expected = padded.unfold(-1, kx, 1).median(-1).values.to(inp)
+        self.assert_close(median_blur(inp, kernel_size), expected)
+        self.assert_close(MedianBlur(kernel_size)(inp), expected)
 
     @pytest.mark.parametrize("border_type", ["constant", "reflect", "replicate", "circular"])
     def test_border_type(self, border_type, device, dtype):

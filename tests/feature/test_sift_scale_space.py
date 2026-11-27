@@ -124,9 +124,8 @@ class TestSharedSIFTScaleSpace(BaseTester):
         expected[2, 1:3, 2:4] = 0.5
         self.assert_close(actual, expected, atol=2e-6, rtol=2e-6)
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="float64 is unavailable on MPS")
     def test_float64_bin_centre_angles_fill_one_bin_5127(self, device):
-        if device.type == "mps":
-            pytest.skip("float64 is unavailable on MPS")
         angle = torch.arange(36, device=device, dtype=torch.float64).view(1, 36, 1) * (2 * torch.pi / 36)
         # The gradient angles arrive in [2 pi, 4 pi), where the `%` takes part as well.
         for offset in (0.0, 2 * torch.pi):
@@ -135,9 +134,8 @@ class TestSharedSIFTScaleSpace(BaseTester):
             eye = torch.eye(36, device=device, dtype=torch.float64)
             self.assert_close(histogram[0], eye, rtol=0.0, atol=1e-12)
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="float64 is unavailable on MPS")
     def test_float64_bin_centre_angles_fill_one_descriptor_bin_5127(self, device):
-        if device.type == "mps":
-            pytest.skip("float64 is unavailable on MPS")
         # One sample per frame at the patch centre, whose angle sits on one of the 8 bin centres.
         angle = 2 * torch.pi + torch.arange(8, device=device, dtype=torch.float64).view(1, 8, 1) * (torch.pi / 4)
         centre = torch.zeros(1, device=device, dtype=torch.float64)
@@ -146,9 +144,8 @@ class TestSharedSIFTScaleSpace(BaseTester):
         histogram = votes.reshape(8, 8, 16).sum(2)
         self.assert_close(histogram, torch.eye(8, device=device, dtype=torch.float64), rtol=0.0, atol=1e-12)
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64 gradcheck")
     def test_histogram_gradcheck(self, device):
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64 gradcheck")
         xx = torch.tensor([-0.8, -0.15, 0.35, 0.9], device=device, dtype=torch.float64)
         yy = xx.flip(0)
         mag = xx.new_tensor([0.3, 0.6, 1.0, 0.4]).view(1, 1, -1)
@@ -193,9 +190,8 @@ class TestSharedSIFTScaleSpace(BaseTester):
         self.assert_close(actual_mag.grad, expected_mag.grad)
         self.assert_close(actual_angle.grad, expected_angle.grad)
 
+    @pytest.mark.applies_to(devices=("cpu",), reason="covers the CPU float64 derivative of the separable path")
     def test_separable_histogram_gradcheck_cpu_double(self, device):
-        if device.type != "cpu":
-            pytest.skip("covers the CPU float64 derivative of the separable path")
         coordinate = torch.tensor([-0.6, 0.0, 0.6], device=device, dtype=torch.float64)
         yy, xx = torch.meshgrid(coordinate, coordinate, indexing="ij")
         xx, yy = xx.reshape(-1), yy.reshape(-1)
@@ -290,9 +286,8 @@ class TestSharedSIFTScaleSpace(BaseTester):
         self.assert_close(desc[0, 0], desc[0, 1], atol=0.002, rtol=0.002)
         self.assert_close(desc.norm(dim=-1), torch.ones(1, 2, device=device, dtype=dtype))
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="float64 is unavailable on MPS")
     def test_float64_vertical_gradient_orientation_5127(self, device):
-        if device.type == "mps":
-            pytest.skip("float64 is unavailable on MPS")
         axis = torch.arange(64, device=device, dtype=torch.float64)
         pyramid = [torch.stack([axis[None, :].expand(64, 64), axis[:, None].expand(64, 64)])[None, None]]
         lafs = torch.tensor([[[[6.0, 0, 16], [0, 6.0, 16]]] * 2], device=device, dtype=torch.float64)
@@ -342,9 +337,8 @@ class TestSharedSIFTScaleSpace(BaseTester):
         assert torch.isfinite(image.grad).all()
         assert not image.grad.any()
 
+    @pytest.mark.applies_to(dtypes=("float16",), reason="exercises mask preservation across float16 detector promotion")
     def test_float16_tiny_float32_mask_is_suppressed(self, device, dtype):
-        if dtype != torch.float16:
-            pytest.skip("exercises mask preservation across float16 detector promotion")
         image = torch.zeros(1, 1, 32, 32, device=device, dtype=dtype)
         dog = _quadratic_dog(device, dtype)
         detector = _SIFTScaleSpaceDetector(1, _FixedPyramid(dog)).to(device, dtype)
@@ -430,9 +424,8 @@ class TestSharedSIFTScaleSpace(BaseTester):
         autograd, _, _ = _SIFTScaleSpaceDescriptor._grid(lafs.detach().clone().requires_grad_(), layers, 9, 11, 27, 19)
         self.assert_close(inference, autograd)
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64 gradcheck")
     def test_upright_image_gradcheck(self, device):
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64 gradcheck")
         image = torch.rand(1, 1, 1, 12, 12, device=device, dtype=torch.float64)
         lafs = torch.tensor([[[[1.0, 0, 3], [0, 1.0, 3]]]], device=device, dtype=torch.float64)
         ids = torch.zeros(1, 1, device=device, dtype=torch.long)
@@ -460,14 +453,13 @@ class TestSharedSIFTScaleSpace(BaseTester):
         assert responses.dtype == descriptors.dtype == dtype
         assert lafs.dtype == torch.promote_types(dtype, torch.float32)  # float32 LAFs for a half-precision image
 
+    @pytest.mark.applies_to(dtypes=("float16", "bfloat16"), reason="half-precision rule")
     @pytest.mark.parametrize("backend", ["patch", "pyramid"])
     def test_half_image_gives_float32_lafs(self, device, dtype, backend):
         # bfloat16 holds only even values in [256, 512) and float16 only multiples of 0.25 there, so half-precision
         # LAFs put every refined centre past x = 256 on that grid. The LAFs are float32 on both backends; the responses
         # and descriptors keep the image dtype. An empty batch gives float32 LAFs as well (pyramid backend; the patch
         # backend's ScaleSpaceDetector does not take an empty batch).
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("half-precision rule")
         half_padding = supports_replicate_padding(device, dtype) and supports_reflect_padding(device, dtype)
         if backend == "patch" and not half_padding:
             pytest.skip("the patch backend pads the half-precision image; the pyramid backend promotes it")
@@ -536,11 +528,10 @@ class TestSIFTScalePyramid(BaseTester):
             self.assert_close(current[:, :, 0], previous[:, :, 3, : 2 * (h // 2) : 2, : 2 * (w // 2) : 2])
             assert current.shape[2] == 6
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64")
     def test_reference_kernels_keep_double_precision(self, device):
         from kornia.feature.sift.scale_space import _SIFTScalePyramid
 
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64")
         pyramid = _SIFTScalePyramid().to(device)
         for index in range(6):
             kernel = getattr(pyramid, f"kernel_{index}")
@@ -673,12 +664,14 @@ def _quadratic_dog(
 
 
 class TestSIFTScaleSpaceDetector(BaseTester):
+    @pytest.mark.applies_to(
+        devices=("cpu", "cuda"), reason="CUDA implementation; CPU checks its arithmetic against the reference"
+    )
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="the specialized detector promotes reduced precision before refinement"
+    )
     @pytest.mark.parametrize("case", ["random", "quadratic", "singular", "outside", "ramp", "flat_scale", "saddle"])
     def test_cuda_refinement_matches_reference(self, device, dtype, case):
-        if device.type not in ("cpu", "cuda"):
-            pytest.skip("CUDA implementation; CPU checks its arithmetic against the reference")
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("the specialized detector promotes reduced precision before refinement")
         generator = torch.Generator().manual_seed(23)
         dog = torch.rand(1, 5, 32, 32, generator=generator, dtype=dtype)
         index = torch.arange(24)
@@ -761,9 +754,10 @@ class TestSIFTScaleSpaceDetector(BaseTester):
         result = detector._octave(gaussian, 0, None)
         assert all(value.numel() == 0 for value in result)
 
+    @pytest.mark.applies_to(
+        devices=("cpu", "mps"), dtypes=("float32",), reason="exercises the CPU/MPS sparse-screening chunk limits"
+    )
     def test_scale_rejected_spikes_screen_neighbourhoods_in_bounded_chunks(self, device, dtype, monkeypatch):
-        if device.type not in ("cpu", "mps") or dtype != torch.float32:
-            pytest.skip("exercises the CPU/MPS sparse-screening chunk limits")
         size = 512
         coordinates = torch.arange(6, size - 5, 3, device=device)
         dog = torch.zeros(1, 5, size, size, device=device, dtype=dtype)
@@ -788,9 +782,8 @@ class TestSIFTScaleSpaceDetector(BaseTester):
         assert max(calls) <= limit
         assert all(value.numel() == 0 for value in result)
 
+    @pytest.mark.applies_to(devices=("cpu",), dtypes=("float32",), reason="exercises the CPU refinement chunk limit")
     def test_many_middle_scale_extrema_refine_in_chunks(self, device, dtype, monkeypatch):
-        if device.type != "cpu" or dtype != torch.float32:
-            pytest.skip("exercises the CPU refinement chunk limit")
         size = 512
         coordinates = torch.arange(6, size - 5, 3, device=device)
         dog = torch.zeros(1, 5, size, size, device=device, dtype=dtype)

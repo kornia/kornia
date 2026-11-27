@@ -32,34 +32,35 @@ def ssim3d_loss(
     reduction: str = "mean",
     padding: str = "same",
 ) -> torch.Tensor:
-    r"""Compute a loss based on the SSIM measurement.
+    r"""Compute the DSSIM loss between two volumes from their SSIM map.
 
-    The loss is the structural dissimilarity (DSSIM) of each voxel, clamped to :math:`[0, 1]`:
+    ``loss = ssim3d_loss(img1, img2, window_size)`` maps the SSIM of two ``(B, C, D, H, W)`` volumes to a
+    dissimilarity in :math:`[0, 1]`, as :func:`~kornia.losses.ssim_loss` does for images.
 
     .. math::
 
-      \text{loss}(x, y) = \frac{1 - \text{SSIM}(x, y)}{2}
+      \text{loss}(x, y) = \operatorname{clamp}\left(\frac{1 - \text{SSIM}(x, y)}{2}, 0, 1\right)
 
     Convention:
-        - See the Convention block of :func:`~kornia.metrics.ssim3d` for the window, the border and ``max_val``.
-        - The default ``reduction='mean'`` averages every element; ``'none'`` keeps the shape of the SSIM map.
-        - The per-voxel loss is ``clamp((1 - SSIM) / 2, 0, 1)``, as in :func:`~kornia.losses.ssim_loss`.
+        See the Convention block of :func:`~kornia.metrics.ssim3d` for the window, the border and ``max_val``, and
+        that of :func:`~kornia.losses.ssim_loss` for the loss.
 
     Args:
-        img1: the first input image with shape :math:`(B, C, D, H, W)`.
-        img2: the second input image with shape :math:`(B, C, D, H, W)`.
-        window_size: the size of the gaussian kernel to smooth the images.
-        max_val: the dynamic range of the images.
-        eps: Small value for numerically stability when dividing.
-        reduction : Specifies the reduction to apply to the
-         output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction will be applied,
-         ``'mean'``: the sum of the output will be divided by the number of elements
-         in the output, ``'sum'``: the output will be summed.
-        padding: ``'same'`` | ``'valid'``. Whether to only use the "valid" convolution
-         area to compute SSIM to match the MATLAB implementation of original SSIM paper.
+        img1: first volume with shape ``(B, C, D, H, W)``.
+        img2: second volume with the same shape.
+        window_size: size of the Gaussian window in voxels, a positive odd integer.
+        max_val: data range :math:`L` of the volumes, a Python float or int.
+        eps: term added to the denominator of the SSIM.
+        reduction: ``'mean'`` (default) averages the loss, ``'sum'`` adds it, ``'none'`` keeps the SSIM map's shape.
+        padding: ``'same'`` or ``'valid'``, as in :func:`~kornia.metrics.ssim3d`.
 
     Returns:
-        The loss based on the ssim index.
+        the loss, a scalar or, for ``reduction='none'``, with the shape of the SSIM map.
+
+    See Also:
+        - :class:`~kornia.losses.SSIM3DLoss`: the module form.
+        - :func:`~kornia.metrics.ssim3d`: the SSIM map itself, not the dissimilarity.
+        - :func:`~kornia.losses.ssim_loss`: the same loss for images.
 
     Examples:
         >>> input1 = torch.rand(1, 4, 5, 5, 5)
@@ -67,6 +68,9 @@ def ssim3d_loss(
         >>> loss = ssim3d_loss(input1, input2, 5)
 
     """
+    if isinstance(max_val, int):
+        max_val = float(max_val)
+
     # compute the ssim map
     ssim_map: torch.Tensor = metrics.ssim3d(img1, img2, window_size, max_val, eps, padding)
 
@@ -86,30 +90,30 @@ def ssim3d_loss(
 
 
 class SSIM3DLoss(nn.Module):
-    r"""Create a criterion that computes a loss based on the SSIM measurement.
+    r"""Compute the DSSIM loss between two volumes from their SSIM map (module form).
 
-    The loss is the structural dissimilarity (DSSIM) of each voxel, clamped to :math:`[0, 1]`:
-
-    .. math::
-
-      \text{loss}(x, y) = \frac{1 - \text{SSIM}(x, y)}{2}
+    ``criterion = SSIM3DLoss(window_size, ...)`` stores its arguments, and ``loss = criterion(img1, img2)`` is
+    :func:`~kornia.losses.ssim3d_loss` on two ``(B, C, D, H, W)`` volumes.
 
     Convention:
-        - See the Convention block of :func:`~kornia.losses.ssim3d_loss`.
+        See the Convention block of :func:`~kornia.losses.ssim3d_loss`.
 
     Args:
-        window_size: the size of the gaussian kernel to smooth the images.
-        max_val: the dynamic range of the images.
-        eps: Small value for numerically stability when dividing.
-        reduction : Specifies the reduction to apply to the
-         output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction will be applied,
-         ``'mean'``: the sum of the output will be divided by the number of elements
-         in the output, ``'sum'``: the output will be summed.
-        padding: ``'same'`` | ``'valid'``. Whether to only use the "valid" convolution
-         area to compute SSIM to match the MATLAB implementation of original SSIM paper.
+        window_size: size of the Gaussian window in voxels, a positive odd integer.
+        max_val: data range :math:`L` of the volumes, a Python float or int.
+        eps: term added to the denominator of the SSIM.
+        reduction: ``'mean'`` (default), ``'sum'`` or ``'none'``, as in :func:`~kornia.losses.ssim3d_loss`.
+        padding: ``'same'`` or ``'valid'``, as in :func:`~kornia.metrics.ssim3d`.
 
-    Returns:
-        The loss based on the ssim index.
+    Shape:
+        - img1: ``(B, C, D, H, W)``.
+        - img2: ``(B, C, D, H, W)``.
+        - Output: a scalar or, for ``reduction='none'``, the shape of the SSIM map.
+
+    See Also:
+        - :func:`~kornia.losses.ssim3d_loss`: the one-call form.
+        - :class:`~kornia.metrics.SSIM3D`: the SSIM map itself, not the dissimilarity.
+        - :class:`~kornia.losses.SSIMLoss`: the same loss for images.
 
     Examples:
         >>> input1 = torch.rand(1, 4, 5, 5, 5)
@@ -133,7 +137,7 @@ class SSIM3DLoss(nn.Module):
         """Compute SSIM loss between two 3D image or volume tensors.
 
         Args:
-            img1: First volume batch with shape :math:`(B, C, D, H, W)`, where
+            img1: First volume batch with shape ``(B, C, D, H, W)``, where
                 :math:`B` is batch size, :math:`C` is channel count,
                 :math:`D` is depth, :math:`H` is height, and :math:`W` is
                 width.

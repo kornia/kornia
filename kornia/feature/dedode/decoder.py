@@ -43,7 +43,7 @@ class Decoder(nn.Module):
         r"""Run this DeDoDe module forward.
 
         Args:
-            features: Encoded feature map with shape :math:`(B, C, H, W)`, or concatenated with context.
+            features: Encoded feature map with shape ``(B, C, H, W)``, or concatenated with context.
             context: Optional context feature map from previous scale, shape
                 :math:`(B, C_{\text{ctx}}, H, W)`, or ``None``.
             scale: String key selecting the decoder layer for this scale (e.g. ``"8"``, ``"4"``, ``"2"``, ``"1"``).

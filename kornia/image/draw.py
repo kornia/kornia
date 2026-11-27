@@ -72,18 +72,21 @@ def _rectangle_bands(
 
 
 def draw_point2d(image: Tensor, points: Tensor, color: Tensor) -> Tensor:
-    r"""Set one or more coordinates in a Tensor to a color.
+    r"""Color the pixels at a set of (x, y) points of one image, in place.
+
+    ``image = draw_point2d(image, points, color)`` writes ``color`` into the pixel nearest to each :math:`(x, y)`
+    point of ``points``, ``(N, 2)`` or ``(2,)``, in one ``(C, H, W)`` or ``(H, W)`` image, and returns the same tensor.
 
     Convention:
-        See the Convention block of :func:`~kornia.image.draw_line` for the coordinates, the rounding, the colour
-        and the in-place drawing. The image is :math:`(C, H, W)` or :math:`(H, W)`.
+        See the Convention block of :func:`draw_line` for the coordinates, the rounding, the color and the in-place
+        drawing.
 
     Args:
-        image: the input image on which to draw the points with shape :math:`(C,H,W)` or :math:`(H,W)`.
-        points: the [x, y] points to be drawn on the image with shape :math:`(N, 2)`, a single
-            point with shape :math:`(2,)`, or an empty tensor with shape :math:`(0, 2)`.
-        color: the color of the pixel with :math:`(C)` where :math:`C` is the number of channels of the image,
-            or a single value with shape :math:`(1)` or 0-d.
+        image: the input image on which to draw the points with shape ``(C,H,W)`` or ``(H,W)``.
+        points: the [x, y] points to be drawn on the image with shape ``(N, 2)``, a single
+            point with shape ``(2,)``, or an empty tensor with shape ``(0, 2)``.
+        color: the color of the pixel with ``(C)`` where :math:`C` is the number of channels of the image,
+            or a single value with shape ``(1)`` or 0-d.
 
     Return:
         The image with points set to the color. This operation modifies image inplace but also
@@ -91,7 +94,18 @@ def draw_point2d(image: Tensor, points: Tensor, color: Tensor) -> Tensor:
 
     Raises:
         ValueError: if the image is not ``(C, H, W)`` or ``(H, W)``, or a point lies outside the image after rounding.
-        BaseError: if ``color`` has neither 1 nor ``C`` values, or ``points`` is not ``(2,)`` or ``(N, 2)``.
+        BaseError: if ``color`` has neither 1 nor ``C`` values (an ``(H, W)`` image has one channel), or ``points``
+            is not ``(2,)`` or ``(N, 2)``.
+
+    See Also:
+        - :func:`draw_line`: draws the pixels between two points, and states the rules both functions follow.
+
+    Example:
+        >>> image = torch.zeros(1, 3, 4)
+        >>> draw_point2d(image, torch.tensor([[0, 1], [3, 2]]), torch.tensor([1.0]))
+        tensor([[[0., 0., 0., 0.],
+                 [1., 0., 0., 0.],
+                 [0., 0., 0., 1.]]])
 
     """
     if image.dim() not in (2, 3):
@@ -99,10 +113,14 @@ def draw_point2d(image: Tensor, points: Tensor, color: Tensor) -> Tensor:
     # A 0-d scalar has no channel dimension for the check below to read; treat it as one channel, as draw_line does.
     if color.ndim == 0:
         color = color.unsqueeze(0)
-    # A single value is written to every channel (see the docstring).
+    # An (H, W) image has a single channel: its axis 0 is a height, not a channel count, so the count comes from
+    # the rank. A longer color used to pass here and fail later at the indexing, with a raw RuntimeError (#6689).
+    channels = 1 if image.dim() == 2 else image.shape[0]
+    color_length = color.shape[0]
     KORNIA_CHECK(
-        (len(image.shape) == 2 and len(color.shape) == 1) or color.shape[0] in (1, image.shape[0]),
-        "Color dim must match the channel dims of the provided image",
+        color_length in (1, channels),
+        f"Color dim must match the channel dims of the provided image: "
+        f"expected a single value or {channels} (one per channel), got {color_length}",
     )
     # round on the points' own device: MPS has no float64, and float64 points from NumPy are common
     points = _round_to_pixel(points).to(image.device)
@@ -135,10 +153,10 @@ def _draw_pixel(image: torch.Tensor, x: int, y: int, color: torch.Tensor) -> Non
     r"""Draw a pixel into an image.
 
     Args:
-        image: the input image to where to draw the lines with shape :math:`(C,H,W)`.
+        image: the input image to where to draw the lines with shape ``(C,H,W)``.
         x: the x coordinate of the pixel.
         y: the y coordinate of the pixel.
-        color: the color of the pixel with :math:`(C)` where :math:`C` is the number of channels of the image.
+        color: the color of the pixel with ``(C)`` where :math:`C` is the number of channels of the image.
 
     Return:
         Nothing is returned.
@@ -148,7 +166,11 @@ def _draw_pixel(image: torch.Tensor, x: int, y: int, color: torch.Tensor) -> Non
 
 
 def draw_line(image: torch.Tensor, p1: torch.Tensor, p2: torch.Tensor, color: torch.Tensor) -> torch.Tensor:
-    r"""Draw a line, or one line per row of ``(B, 2)`` endpoints, into an image.
+    r"""Draw one-pixel segments between pairs of (x, y) points into one image, in place.
+
+    ``image = draw_line(image, p1, p2, color)`` draws the segment from ``p1`` to ``p2``, two :math:`(x, y)` points of
+    shape ``(2,)``, or one segment per row of ``(B, 2)`` endpoints, into one ``(C, H, W)`` image and returns the same
+    tensor. For a box outline thicker than one pixel, use :func:`draw_rectangle` with ``line_width``.
 
     Convention:
         - Points are :math:`(x, y)`, x the column and y the row, with pixel centres at integer coordinates, as in
@@ -157,19 +179,18 @@ def draw_line(image: torch.Tensor, p1: torch.Tensor, p2: torch.Tensor, color: to
         - A line has one pixel per step along its longer axis: the pixel whose centre is nearest to the segment
           between the two endpoint pixels, a tie going to the larger coordinate. The line is therefore the same from
           ``p1`` to ``p2`` as from ``p2`` to ``p1``, and both endpoints are drawn.
-        - The image is one :math:`(C, H, W)` tensor, and ``(B, 2)`` endpoints draw ``B`` lines into it. An endpoint
-          outside the image raises ``ValueError``; nothing is clipped.
-        - The colour is cast to the image's dtype without rescaling or a range check, and a single value is written
+        - Nothing is clipped: an endpoint must lie in the image after rounding.
+        - The color is cast to the image's dtype without rescaling or a range check, and a single value is written
           to every channel.
         - The image is drawn in place and returned.
         - :ref:`Drawing <drawing-conventions>` compares these rules with OpenCV, Pillow and torchvision.
 
     Args:
-        image: the input image to where to draw the lines with shape :math:`(C,H,W)`.
+        image: the input image to where to draw the lines with shape ``(C,H,W)``.
         p1: the start point [x y] of the line with shape (2, ) or (B, 2).
         p2: the end point [x y] of the line, with the same shape as ``p1``.
-        color: the color of the line with shape :math:`(C)` where :math:`C` is the number of channels
-            of the image, or a single value with shape :math:`(1)` or 0-d.
+        color: the color of the line with shape ``(C)`` where :math:`C` is the number of channels
+            of the image, or a single value with shape ``(1)`` or 0-d.
 
     Return:
         The image containing the line.
@@ -178,6 +199,10 @@ def draw_line(image: torch.Tensor, p1: torch.Tensor, p2: torch.Tensor, color: to
         ValueError: if ``p1`` and ``p2`` differ in shape, or their last dimension is not 2.
         ValueError: if an endpoint lies outside the image after rounding, or the image is not ``(C, H, W)``.
         ValueError: if ``color`` has neither 1 nor ``C`` values.
+
+    See Also:
+        - :func:`draw_point2d`: colors the given points only, also in an ``(H, W)`` image.
+        - :func:`draw_convex_polygon`: fills a polygon instead of drawing its edges.
 
     Examples:
         >>> image = torch.zeros(1, 8, 8)
@@ -263,24 +288,28 @@ def draw_rectangle(
     fill: Optional[bool] = None,
     line_width: int = 1,
 ) -> torch.Tensor:
-    r"""Draw N rectangles on a batch of image tensors.
+    r"""Draw or fill axis-aligned rectangles on a batch of images, in place.
+
+    ``image = draw_rectangle(image, rectangle, color)`` draws ``N`` rectangles per image, ``(B, N, 4)`` as
+    ``[x1, y1, x2, y2]``, on ``(B, C, H, W)`` images and returns the same tensor: outlines ``line_width`` pixels thick,
+    or filled boxes with ``fill=True``. A rectangle that leaves the image is clipped instead of raising.
 
     Convention:
         - A rectangle is ``[x1, y1, x2, y2]``, its two corners in either order and both included, with the
           coordinates rounded as in :func:`~kornia.image.draw_line`. Each side of the outline is ``line_width`` pixels
           thick and grows inward, so the outline stays inside the rectangle; a side thicker than the rectangle covers
           it. The outline and a fill are clipped to the image: the part of a side that lies outside the image is not
-          drawn, and neither raises.
+          drawn.
         - The corners are rounded and the vertices of :func:`~kornia.image.draw_convex_polygon` are not, so a filled
           rectangle and the same polygon always agree for integer corners; for fractional ones each side can be one
           row or column apart, so a polygon thinner than a pixel can fill nothing.
-        - The colour and the in-place drawing follow :func:`~kornia.image.draw_line`.
+        - The color and the in-place drawing follow :func:`~kornia.image.draw_line`.
 
     Args:
-        image: the images, :math:`(B, C, H, W)`.
-        rectangle: the rectangles, :math:`(B, N, 4)`: ``N`` per image, each ``[x1, y1, x2, y2]``.
-        color: the colour, :math:`(C)` or :math:`(B, N, C)`, or a single value (0-d, :math:`(1)` or
-            :math:`(B, N, 1)`). Black by default.
+        image: the images, ``(B, C, H, W)``.
+        rectangle: the rectangles, ``(B, N, 4)``: ``N`` per image, each ``[x1, y1, x2, y2]``.
+        color: the color, ``(C)`` or ``(B, N, C)``, or a single value (0-d, ``(1)`` or
+            ``(B, N, 1)``). Black by default.
         fill: whether to fill the rectangles instead of drawing their outlines.
         line_width: the thickness of each side of the outline in pixels, a positive integer. Ignored when
             ``fill=True``.
@@ -289,10 +318,15 @@ def draw_rectangle(
         ShapeError: if the image is not ``(B, C, H, W)``. It is also a ``ValueError``.
         ValueError: if ``rectangle`` is not ``(B, N, 4)``, or its batch size differs from the image's.
         ValueError: if ``line_width`` is not a positive ``int``.
+        BaseError: if ``color`` has neither 1 nor ``C`` values per rectangle.
 
     Returns:
         This operation modifies image inplace but also returns the drawn tensor for
-        convenience, with the shape of the input :math:`(B, C, H, W)`.
+        convenience, with the shape of the input ``(B, C, H, W)``.
+
+    See Also:
+        - :func:`draw_convex_polygon`: fills any convex shape, one per image, with unrounded vertices.
+        - :func:`draw_line`: draws one-pixel segments, whose endpoints must lie in the image.
 
     Note:
         The rectangle coordinates are read back to the host once, and ``torch.compile`` breaks the graph there: a
@@ -325,6 +359,15 @@ def draw_rectangle(
 
     if color is None:
         color = torch.tensor([0.0] * c).expand(batch, num_rectangle, c)
+
+    # The color must hold one value or one per channel. A wrong length used to reach the expand below and fail
+    # there with a raw RuntimeError instead of a kornia check (#6689).
+    color_length = color.numel() if color.ndim == 0 else color.shape[-1]
+    KORNIA_CHECK(
+        color_length in (1, c),
+        f"Color dim must match the channel dims of the provided image: "
+        f"expected a single value or {c} (one per channel), got {color_length}",
+    )
 
     if fill is None:
         fill = False
@@ -369,8 +412,8 @@ def _get_convex_edges(polygon: Tensor, h: int, w: int) -> Tuple[Tensor, Tensor]:
     if polygon.shape[-2] == 1:
         polygon = torch.cat((polygon, polygon), dim=-2)
 
-    # Check if polygons are in loop closed format, if not -> make it so
-    if not torch.allclose(polygon[..., -1, :], polygon[..., 0, :]):
+    # Only identical endpoints close the loop; nearby points can still straddle a scanline.
+    if not torch.equal(polygon[..., -1, :], polygon[..., 0, :]):
         polygon = torch.cat((polygon, polygon[..., :1, :]), dim=-2)  # (B, N+1, 2)
 
     # Partition points into edges
@@ -432,7 +475,11 @@ def _batch_polygons(polygons: List[Tensor]) -> Tensor:
 
 
 def draw_convex_polygon(images: Tensor, polygons: Union[Tensor, List[Tensor]], colors: Tensor) -> Tensor:
-    r"""Draws convex polygons on a batch of image tensors.
+    r"""Fill one convex polygon per image on a batch of images, in place.
+
+    ``images = draw_convex_polygon(images, polygons, colors)`` fills polygon ``b`` on image ``b`` of a
+    ``(B, C, H, W)`` batch and returns the same tensor. The :math:`(x, y)` vertices are a ``(B, N, 2)`` tensor or a list
+    of ``B`` tensors of shape ``(N_b, 2)``.
 
     Convention:
         - Vertices are :math:`(x, y)` in the pixel frame of :func:`~kornia.image.draw_line`, used as given, without
@@ -440,26 +487,31 @@ def draw_convex_polygon(images: Tensor, polygons: Union[Tensor, List[Tensor]], c
           ``skimage.draw.polygon`` fills; ``cv2.fillConvexPoly`` fills more. The part outside the image is clipped.
         - The polygon is taken to be convex: each row is filled from its leftmost to its rightmost edge crossing, so
           in a concave polygon a gap between two edges within a row is filled too.
-        - The polygons and the colours must already be on the images' device; the other draw functions move theirs.
-        - The colour and the in-place drawing follow :func:`~kornia.image.draw_line`.
+        - The polygons and the colors must already be on the images' device; the other draw functions move theirs.
+        - The color and the in-place drawing follow :func:`~kornia.image.draw_line`.
 
     Args:
         images: is tensor of BxCxHxW.
         polygons: represents polygons as points, either BxNx2 or List of variable length polygons.
             N is the number of points.
             2 is (x, y).
-        colors: the fill colours, :math:`(B, C)` or :math:`(C)`, or a single value (0-d, :math:`(1)` or
-            :math:`(B, 1)`).
+        colors: the fill colors, ``(B, C)`` or ``(C)``, or a single value (0-d, ``(1)`` or
+            ``(B, 1)``).
 
     Returns:
         This operation modifies image inplace but also returns the drawn tensor for
-        convenience, with the shape of the input :math:`(B, C, H, W)`.
+        convenience, with the shape of the input ``(B, C, H, W)``.
 
     Raises:
         ShapeError: if the images are not ``(B, C, H, W)``. It is also a ``ValueError``.
         ValueError: if ``polygons`` is a tensor that is not three dimensional.
+        BaseError: if ``colors`` has neither 1 nor ``C`` values per polygon.
         BaseError: if the vertices are not ``(x, y)`` points.
         BaseError: if the images, polygons and colors differ in batch size or device.
+
+    See Also:
+        - :func:`draw_rectangle`: draws outlines as well as fills, and several rectangles per image.
+        - :func:`draw_line`: draws the edges of a polygon as one-pixel segments.
 
     Example:
         >>> img = torch.rand(1, 3, 12, 16)
@@ -477,6 +529,16 @@ def draw_convex_polygon(images: Tensor, polygons: Union[Tensor, List[Tensor]], c
         # `[]` has no polygon to take a dtype or device from; an empty (0, 0, 2) batch returns below.
         polygons = _batch_polygons(polygons) if polygons else images.new_zeros(0, 0, 2)
     b_p, _, xy, device_p = *polygons.shape, polygons.device
+    # The colors must hold one value or one per image channel. A wrong length used to reach the fill below and
+    # fail there with a raw RuntimeError instead of a kornia check (#6689).
+    color_length = colors.numel() if colors.ndim == 0 else colors.shape[-1]
+    KORNIA_CHECK(
+        color_length in (1, c_i),
+        lambda: (
+            f"Color dim must match the channel dims of the provided image: "
+            f"expected a single value or {c_i} (one per channel), got {color_length}"
+        ),
+    )
     if len(colors.shape) <= 1:
         colors = colors.expand(b_i, c_i)
     b_c, _, device_c = *colors.shape, colors.device

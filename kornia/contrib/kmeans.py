@@ -19,23 +19,31 @@
 
 from __future__ import annotations
 
+import operator
+
 import torch
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_SIZE, KORNIA_CHECK_SHAPE
+from kornia.core.utils import _autocast_disabled
 from kornia.geometry.linalg import euclidean_distance
 
 
 class KMeans:
-    r"""Implements the kmeans clustering algorithm with euclidean distance as similarity measure.
+    r"""Cluster ``(N, D)`` points into ``num_clusters`` groups by k-means with Euclidean distance.
+
+    ``kmeans = KMeans(num_clusters, cluster_centers)`` stores the settings, and ``kmeans.fit(X)`` alternates
+    nearest-centre assignment and centre means on the ``(N, D)`` points ``X``. ``labels = kmeans.predict(x)`` returns
+    the ``int64`` index of the nearest centre for each row of ``(M, D)`` points. After :meth:`fit`,
+    :attr:`cluster_centers` is ``(num_clusters, D)`` and :attr:`cluster_assignments` holds the ``(N,)`` labels of ``X``.
 
     Convention:
         - :meth:`fit` stops after the first update whose squared total centre shift,
           :math:`(\sum_k \lVert c_k^{\text{new}} - c_k \rVert)^2`, is at most ``tolerance``, or after ``max_iterations``
           updates. ``max_iterations=0`` sets no limit, so ``tolerance`` must not be ``None`` then.
-        - ``seed`` calls ``torch.manual_seed(seed)``, which reseeds the global generator. The initial centres, sampled
-          from the data of each :meth:`fit` when ``cluster_centers`` is ``None``, and the points that empty clusters
-          move to are drawn from it; there is no ``generator`` argument. A second :meth:`fit` on the same data
-          therefore starts from other centres unless the global generator is reseeded first.
+        - ``seed`` calls ``torch.manual_seed(seed)``, which reseeds the global generator. The initial centres and the
+          points that empty clusters move to are drawn from it; there is no ``generator`` argument. A second
+          :meth:`fit` on the same data therefore starts from other centres unless the global generator is reseeded
+          first.
         - A point at the same distance from two centres goes to the one with the lower index. A cluster that gets no
           point moves to a random data point.
         - Distances and means are computed in the promoted dtype of the data and the centres, at least ``float32``
@@ -43,13 +51,18 @@ class KMeans:
           truncated toward zero.
 
     Args:
-        num_clusters: number of clusters the data has to be assigned to. Required, also with ``cluster_centers``.
+        num_clusters: number of clusters the data has to be assigned to, a positive integer. Required, also with
+            ``cluster_centers``; without them, :meth:`fit` needs at least ``num_clusters`` samples.
         cluster_centers: the ``(num_clusters, D)`` starting centres, or ``None`` to sample them from the data in
-            each :meth:`fit`.
+            each :meth:`fit`. Pass ``None`` explicitly; the argument has no default.
         tolerance: the bound on the squared total centre shift that stops :meth:`fit`, or ``None`` to stop only after
             ``max_iterations`` updates.
         max_iterations: the maximum number of updates; 0 sets no limit.
         seed: if given, passed to ``torch.manual_seed`` when the object is created.
+
+    Raises:
+        BaseError: if ``num_clusters`` is not a positive integer, ``max_iterations`` or ``tolerance`` is negative,
+            ``tolerance=None`` comes with ``max_iterations=0``, or ``cluster_centers`` is not ``(num_clusters, D)``.
 
     Example:
         >>> kmeans = kornia.contrib.KMeans(3, None, 10e-4, 100, 0)
@@ -66,7 +79,17 @@ class KMeans:
         max_iterations: int = 0,
         seed: int | None = None,
     ) -> None:
-        KORNIA_CHECK(num_clusters != 0, "num_clusters can't be 0")
+        # Any integer count, such as a NumPy integer or a 0-d integer tensor, is accepted and stored as an int; a
+        # bool is not a count.
+        try:
+            count = operator.index(num_clusters)
+        except TypeError:
+            count = 0
+        is_bool = isinstance(num_clusters, bool) or (
+            isinstance(num_clusters, torch.Tensor) and num_clusters.dtype == torch.bool
+        )
+        KORNIA_CHECK(not is_bool and count > 0, f"num_clusters must be a positive int, got {num_clusters!r}")
+        num_clusters = count
         KORNIA_CHECK(max_iterations >= 0, f"max_iterations must be >= 0, got {max_iterations}")
         KORNIA_CHECK(tolerance is None or tolerance >= 0, f"tolerance must be None or >= 0, got {tolerance}")
         KORNIA_CHECK(
@@ -99,7 +122,7 @@ class KMeans:
         """Return the current cluster centers.
 
         Returns:
-            A tensor with shape :math:`(C, D)`:
+            A tensor with shape ``(C, D)``:
             - ``C`` is the number of clusters.
             - ``D`` is the feature dimension of each sample.
 
@@ -121,7 +144,7 @@ class KMeans:
         """Return cluster labels assigned during the most recent ``fit`` call.
 
         Returns:
-            A 1D tensor with shape :math:`(N,)`, where ``N`` is the number of
+            A 1D tensor with shape ``(N,)``, where ``N`` is the number of
             samples given to :meth:`fit`. Each value is the cluster index
             nearest to the corresponding sample in the final centers, matching
             :meth:`predict` on the training data even when fitting stops early.
@@ -191,17 +214,21 @@ class KMeans:
         return euclidean_distance(A, B)
 
     def fit(self, X: torch.Tensor) -> None:
-        """Fit iterative KMeans clustering till a threshold for shift in cluster centers or a maximum no of iterations
-        have reached.
+        """Cluster the rows of ``X`` and store the final centres and assignments.
 
         Args:
-            X: 2D input torch.Tensor to be clustered
+            X: the ``(N, D)`` points to cluster, with the ``D`` of ``cluster_centers`` when those are given.
 
-        """  # noqa: D205
+        """
         # X should have only 2 dimensions
         KORNIA_CHECK_SHAPE(X, ["N", "D"])
 
         if self._initial_cluster_centers is None:
+            # The starting centres are distinct samples of X, so there must be at least num_clusters of them.
+            KORNIA_CHECK(
+                len(X) >= self.num_clusters,
+                lambda: f"num_clusters={self.num_clusters} needs at least as many samples, but X has {len(X)}",
+            )
             current_centers = self._initialise_cluster_centers(X, self.num_clusters)
         else:
             # X and cluster_centers should have same number of columns
@@ -241,11 +268,15 @@ class KMeans:
             one_hot = torch.nn.functional.one_hot(cluster_assignment, num_classes=self.num_clusters)
             cluster_counts = one_hot.sum(0)
             if work_dtype.is_floating_point:
-                cluster_sums = one_hot.to(work_dtype).t() @ X_work
+                with _autocast_disabled(X.device.type):
+                    cluster_sums = one_hot.to(work_dtype).t() @ X_work
             else:
                 # integer sums are exact with scatter_add_; MPS lacks integer matmul and index_add_ on torch 2.5
                 index = cluster_assignment[:, None].expand(-1, X_work.shape[1])
                 cluster_sums = X_work.new_zeros(self.num_clusters, X_work.shape[1]).scatter_add_(0, index, X_work)
+
+            # Release the assignment buffer before the next iteration builds its distance tensors.
+            del one_hot
 
             # edge case when a certain cluster centre has no points assigned to it:
             # just choose a random point as its update. A random index is drawn for every
@@ -279,13 +310,13 @@ class KMeans:
         self._final_cluster_assignments = self.predict(X)
 
     def predict(self, x: torch.Tensor) -> torch.Tensor:
-        """Find the cluster center closest to each point in x.
+        """Return the index of the nearest cluster centre for each row of ``x``.
 
         Args:
-            x: 2D torch.Tensor
+            x: the ``(M, D)`` points, with the ``D`` of :attr:`cluster_centers`.
 
         Returns:
-            1D torch.Tensor containing cluster id assigned to each data point in x
+            The ``(M,)`` ``int64`` cluster indices.
 
         """
         KORNIA_CHECK_SHAPE(x, ["N", "D"])

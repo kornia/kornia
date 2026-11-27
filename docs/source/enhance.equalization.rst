@@ -3,10 +3,6 @@ Equalization and histograms
 
 .. currentmodule:: kornia.enhance
 
-:func:`image_histogram2d` preserves leading batch and channel axes and reduces the final two
-spatial axes. The KDE helpers :func:`histogram` and :func:`histogram2d` share one bin-center
-grid across the batch.
-
 Equalization
 ------------
 
@@ -20,6 +16,12 @@ as the ``[0, 1]`` adjustment functions do; convert 8-bit data with ``image.float
 
 Histograms
 ----------
+
+The three histograms are kernel estimates and differ in their input:
+
+- :func:`histogram`: rows of samples ``(B, D)``, giving one normalized histogram per row.
+- :func:`histogram2d`: two rows of samples, giving their normalized joint histogram.
+- :func:`image_histogram2d`: an image, giving one histogram of the pixel values per channel.
 
 .. autofunction:: histogram
 .. autofunction:: histogram2d

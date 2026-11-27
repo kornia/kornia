@@ -20,6 +20,7 @@ from __future__ import annotations
 import copy
 import gc
 import io
+import math
 import pickle
 import weakref
 from functools import wraps
@@ -57,6 +58,12 @@ class InheritedFlip(K.RandomHorizontalFlip):
     pass
 
 
+class InheritedComputeFlip(K.RandomHorizontalFlip):
+    # Overriding compute_transformation, even only to call super(), drops the promise that it ignores pixels.
+    def compute_transformation(self, input, params, flags):
+        return super().compute_transformation(input, params, flags)
+
+
 def make_augmentation(name):
     factories = {
         "hflip": lambda: K.RandomHorizontalFlip(p=1.0),
@@ -91,16 +98,19 @@ class TestLazyMatrixState(BaseTester):
         other_input = input.flip(-1)
         self.assert_close(exported(other_input), augmentation(other_input))
 
-    @pytest.mark.parametrize("name", LAZY_OPS)
-    def test_forward_releases_input_4482(self, name, device, dtype):
-        augmentation = make_augmentation(name)
-        input = torch.linspace(0, 1, 2 * 3 * 8 * 10, device=device, dtype=dtype).reshape(2, 3, 8, 10)
-        reference = weakref.ref(input)
-        augmentation(input)
-        assert augmentation._transform_matrix is None  # matrix evaluation stays lazy
-        del input
+    def test_forward_releases_input_4482(self, device, dtype):
+        # One collection for every operation: a full collection costs far more than the calls themselves.
+        augmentations, references = {}, {}
+        for name in LAZY_OPS:
+            augmentations[name] = make_augmentation(name)
+            input = torch.linspace(0, 1, 2 * 3 * 8 * 10, device=device, dtype=dtype).reshape(2, 3, 8, 10)
+            references[name] = weakref.ref(input)
+            augmentations[name](input)
+            assert augmentations[name]._transform_matrix is None, name  # matrix evaluation stays lazy
+            del input
+        # The augmentations stay alive until the collection, so that one holding its input would show.
         gc.collect()
-        assert reference() is None
+        assert [name for name, reference in references.items() if reference() is not None] == []
 
     @pytest.mark.parametrize("serializer", ["pickle", "torch"])
     def test_serialized_size_does_not_scale_with_pixels_4482(self, serializer, device, dtype):
@@ -203,8 +213,9 @@ class TestLazyMatrixState(BaseTester):
     @pytest.mark.parametrize("shape", [(4, 6), (1, 4, 6), (0, 1, 4, 6)])
     def test_unbatched_and_empty_input(self, shape, device, dtype):
         augmentation = K.RandomHorizontalFlip(p=1.0, keepdim=True)
-        input = torch.zeros(shape, device=device, dtype=dtype)
-        self.assert_close(augmentation(input), input)
+        # A zero image is its own flip; a ramp shows that the unbatched input is flipped, not passed through.
+        input = torch.arange(math.prod(shape), device=device, dtype=dtype).reshape(shape)
+        self.assert_close(augmentation(input), input.flip(-1))
         batch = 0 if len(shape) == 4 else 1
         expected = torch.tensor([[-1, 0, 5], [0, 1, 0], [0, 0, 1]], device=device, dtype=dtype).expand(batch, 3, 3)
         self.assert_close(augmentation.transform_matrix, expected)
@@ -237,22 +248,28 @@ class TestLazyMatrixState(BaseTester):
 
         self.gradcheck(matrix_from_destination, (destination,))
 
-    @pytest.mark.parametrize("mode", ["image", "silent", "skip"])
-    def test_container_releases_input(self, mode, device, dtype):
-        child = K.RandomHorizontalFlip(p=1.0)
-        augmentation = (
-            K.ImageSequential(child)
-            if mode == "image"
-            else K.AugmentationSequential(child, transformation_matrix_mode=mode)
-        )
-        input = torch.linspace(0, 1, 24, device=device, dtype=dtype).reshape(1, 1, 4, 6)
-        reference = weakref.ref(input)
-        output = augmentation(input)
-        self.assert_close(output, input.flip(-1))
-        del input, output
+    def test_container_releases_input(self, device, dtype):
+        # One collection for every mode, as in test_forward_releases_input_4482.
+        children, containers, references = {}, {}, {}
+        for mode in ("image", "silent", "skip", "silent-custom"):
+            # A subclass that overrides the matrix path may read pixels, so its lazy matrix keeps the input.
+            child = children[mode] = (
+                InheritedComputeFlip(p=1.0) if mode == "silent-custom" else K.RandomHorizontalFlip(p=1.0)
+            )
+            # Kept alive until the collection, so that a container holding its input would show.
+            augmentation = containers[mode] = (
+                K.ImageSequential(child)
+                if mode == "image"
+                else K.AugmentationSequential(child, transformation_matrix_mode=mode.split("-")[0])
+            )
+            input = torch.linspace(0, 1, 24, device=device, dtype=dtype).reshape(1, 1, 4, 6)
+            references[mode] = weakref.ref(input)
+            output = augmentation(input)
+            self.assert_close(output, input.flip(-1))
+            del input, output
         gc.collect()
-        assert reference() is None
-        assert child.transform_matrix is not None
+        assert [mode for mode, reference in references.items() if reference() is not None] == []
+        assert [mode for mode, child in children.items() if child.transform_matrix is None] == []
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         augmentation = K.RandomHorizontalFlip(p=0.5)
@@ -281,3 +298,66 @@ class TestLazyMatrixState(BaseTester):
         expected = torch.tensor([[-1, 0, 5], [0, 1, 0], [0, 0, 1]], device=device, dtype=dtype).expand(2, 3, 3)
         self.assert_close(restored.transform_matrix, expected)
         self.assert_close(restored(input, params=restored._params), output)
+
+    def test_container_defers_child_matrices(self, device, dtype):
+        def pipeline(*data_keys):
+            torch.manual_seed(0)
+            children = [K.RandomHorizontalFlip(p=0.5), make_augmentation("resized_crop"), K.RandomBrightness(p=1.0)]
+            return K.AugmentationSequential(*children, data_keys=list(data_keys)), children
+
+        input = torch.rand(4, 3, 8, 10, device=device, dtype=dtype)
+        points = torch.rand(4, 5, 2, device=device, dtype=dtype) * 8
+        augmentation, (flip, crop, _) = pipeline("input")
+        augmentation(input)
+        # The container keeps the children's matrices lazy until its own matrix is read.
+        assert flip._transform_matrix is None
+        assert crop._transform_matrix is None
+        actual = augmentation.transform_matrix
+        # Read first, the container builds each matrix through its child, which keeps it for its own reads.
+        assert flip._transform_matrix is not None
+        assert crop._transform_matrix is not None
+        # Keypoints read every child's matrix during the forward, so this container builds them eagerly.
+        eager, _ = pipeline("input", "keypoints")
+        eager(input, points)
+        self.assert_close(actual, eager.transform_matrix)
+
+    def test_container_matrix_keeps_the_call_gradient_mode(self, device, dtype):
+        augmentation = K.AugmentationSequential(K.Resize((4, 6)))
+        input = torch.rand(2, 1, 8, 10, device=device, dtype=dtype)
+        augmentation(input)
+        item = augmentation._params[0]
+        destination = item.data["dst"].clone().requires_grad_(True)
+        augmentation(input, params=[type(item)(item.name, {**item.data, "dst": destination})])
+        # Read under no_grad, the matrix still carries the graph of the call that ran with gradients enabled.
+        with torch.no_grad():
+            matrix = augmentation.transform_matrix
+        assert matrix.requires_grad
+        matrix.sum().backward()
+        assert destination.grad is not None
+
+    def test_container_matrix_survives_a_later_child_call(self, device, dtype):
+        flip = K.RandomHorizontalFlip(p=1.0)
+        augmentation = K.AugmentationSequential(flip, make_augmentation("resized_crop"))
+        augmentation(torch.rand(2, 1, 8, 10, device=device, dtype=dtype))
+        # Calling the child again, on an input of another width, must not change the container's unread matrix.
+        flip(torch.rand(3, 1, 5, 7, device=device, dtype=dtype))
+        crop = augmentation[1]
+        flip_10 = torch.tensor([[-1.0, 0.0, 9.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype)
+        self.assert_close(augmentation.transform_matrix, crop.transform_matrix @ flip_10.expand(2, 3, 3))
+        self.assert_close(flip.transform_matrix[:, 0, 2], torch.full((3,), 6.0, device=device, dtype=dtype))
+
+    @pytest.mark.parametrize("serializer", ["pickle", "deepcopy", "torch"])
+    def test_container_serialization_preserves_unread_matrix(self, serializer, device, dtype):
+        augmentation = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), make_augmentation("resized_crop"))
+        input = torch.rand(2, 1, 8, 10, device=device, dtype=dtype)
+        augmentation(input)
+        if serializer == "pickle":
+            restored = pickle.loads(pickle.dumps(augmentation))  # noqa: S301
+        elif serializer == "deepcopy":
+            restored = copy.deepcopy(augmentation)
+        else:
+            stream = io.BytesIO()
+            torch.save(augmentation, stream)
+            stream.seek(0)
+            restored = torch.load(stream, weights_only=False)
+        self.assert_close(restored.transform_matrix, augmentation.transform_matrix)

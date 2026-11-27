@@ -1,0 +1,245 @@
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+import pytest
+import torch
+from torch import nn
+from torch.utils._python_dispatch import TorchDispatchMode
+
+import kornia.feature._normalization
+import kornia.feature.affine_shape
+import kornia.feature.hardnet
+import kornia.feature.hynet
+import kornia.feature.orientation
+import kornia.feature.tfeat
+from kornia.feature import HardNet, HardNet8, HyNet, LAFAffNetShapeEstimator, OriNet, SOSNet, TFeat
+from kornia.feature._layout import _patch_conv_layout
+from kornia.feature.laf import laf_from_center_scale_ori
+
+from testing.base import BaseTester
+
+NETWORKS = {
+    "HardNet": HardNet,
+    "HardNet8": HardNet8,
+    "SOSNet": SOSNet,
+    "TFeat": TFeat,
+    "HyNet": HyNet,
+    "AffNet": LAFAffNetShapeEstimator,
+    "OriNet": OriNet,
+}
+
+# Every module that calls the helper imports it by name.
+CALLERS = [
+    kornia.feature._normalization,
+    kornia.feature.affine_shape,
+    kornia.feature.hardnet,
+    kornia.feature.hynet,
+    kornia.feature.orientation,
+    kornia.feature.tfeat,
+]
+
+
+# The layer loops that set the layout per convolution: eager finds the convolutions by type, a scripted loop by type or
+# by the mark ``__prepare_scriptable__`` sets.
+LOOPS = {"SOSNet": "layers", "TFeat": "features", "HyNet": "layer7"}
+
+# A model unpickled from a kornia without the convolution marks, and one with a convolution swapped in after building.
+CHANGES = ("unmarked", "swapped")
+
+
+def _change(name, net, change):
+    """Return the layer loop of ``net``, after removing its convolution marks or swapping in a new first convolution."""
+    loop = getattr(net, LOOPS[name])
+    if change == "unmarked":
+        # As in a model pickled by a kornia whose layers carried no marks.
+        for layer in loop:
+            layer.__dict__.pop("_patch_conv_input", None)
+    elif change == "swapped":
+        index = next(i for i, layer in enumerate(loop) if isinstance(layer, nn.Conv2d))
+        conv = loop[index]
+        loop[index] = nn.Conv2d(
+            conv.in_channels, conv.out_channels, conv.kernel_size, conv.stride, conv.padding, bias=conv.bias is not None
+        )
+    return loop
+
+
+def _call_sites(scripted):
+    return [
+        node
+        for module in scripted.modules()
+        for node in module.graph.findAllNodes("prim::CallFunction")
+        if node.inputsAt(0).node().s("name") == "_patch_conv_layout"
+    ]
+
+
+class _ConvolutionLayouts(TorchDispatchMode):
+    """Record the layout of each convolution output: ``c`` channels-last, ``n`` the default, ``b`` either."""
+
+    def __init__(self):
+        super().__init__()
+        self.layouts = []
+
+    def __torch_dispatch__(self, func, types, args=(), kwargs=None):
+        out = func(*args, **(kwargs or {}))
+        if func is torch.ops.aten.convolution.default:
+            channels_last = out.is_contiguous(memory_format=torch.channels_last)
+            self.layouts.append(("b" if out.is_contiguous() else "c") if channels_last else "n")
+        return out
+
+
+def _run(name, net, device, dtype):
+    if name == "AffNet":
+        img = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
+        centers = torch.tensor([[[20.0, 24.0], [40.0, 36.0], [31.0, 30.0]]], device=device, dtype=dtype)
+        lafs = laf_from_center_scale_ori(centers, torch.full((1, 3, 1, 1), 6.0, device=device, dtype=dtype))
+        return net(lafs, img)
+    return net(torch.rand(3, 1, 32, 32, device=device, dtype=dtype))
+
+
+class TestPatchConvLayout(BaseTester):
+    def test_cpu_float32_follows_onednn(self):
+        x = torch.rand(2, 4, 3, 3)
+        converted = _patch_conv_layout(x, cpu_has_onednn=True)
+        assert converted.is_contiguous(memory_format=torch.channels_last)
+        assert not converted.is_contiguous()
+        assert _patch_conv_layout(x, cpu_has_onednn=False) is x
+
+    @pytest.mark.parametrize("other", [torch.float64, torch.float16, torch.bfloat16])
+    def test_cpu_other_dtypes_keep_layout(self, other):
+        x = torch.rand(2, 4, 3, 3, dtype=other)
+        assert _patch_conv_layout(x, cpu_has_onednn=True) is x
+
+    def test_values_unchanged(self, device, dtype):
+        x = torch.rand(2, 4, 3, 3, device=device, dtype=dtype)
+        assert torch.equal(_patch_conv_layout(x), x)
+
+    def test_device_decision(self, device, dtype):
+        # The layout measured fastest on each device: MPS float32/float16 (Apple M1), CUDA float16/bfloat16 (RTX 4090;
+        # float32 is slower there under TF32), CPU float32 with oneDNN (x86).
+        expected = {
+            "mps": dtype in (torch.float32, torch.float16),
+            "cuda": dtype in (torch.float16, torch.bfloat16),
+            "cpu": dtype == torch.float32 and torch.backends.mkldnn.is_available(),
+        }.get(device.type, False)
+        x = torch.rand(2, 4, 3, 3, device=device, dtype=dtype)
+        converted = _patch_conv_layout(x)
+        assert (converted is not x) == expected
+        if expected:
+            assert converted.is_contiguous(memory_format=torch.channels_last)
+            assert not converted.is_contiguous()
+
+    @pytest.mark.parametrize("name", NETWORKS)
+    def test_convolutions_receive_device_layout(self, name, device, dtype):
+        torch.manual_seed(0)
+        net = NETWORKS[name](pretrained=False).eval().to(device, dtype)
+        probe = torch.empty(1, 2, 3, 3, device=device, dtype=dtype)
+        channels_last = _patch_conv_layout(probe) is not probe
+        convs = [m for m in net.modules() if isinstance(m, nn.Conv2d)]
+        seen: list[tuple[str, bool, bool]] = []
+
+        def record(module, args):
+            x = args[0]
+            seen.append((repr(module), x.is_contiguous(memory_format=torch.channels_last), x.is_contiguous()))
+
+        hooks = [conv.register_forward_pre_hook(record) for conv in convs]
+        try:
+            with torch.no_grad():
+                _run(name, net, device, dtype)
+        finally:
+            for hook in hooks:
+                hook.remove()
+        assert len(seen) == len(convs)
+        # A single-channel input is contiguous in both layouts, so the first convolution says nothing; every later one
+        # must see the layout the helper picks for the device.
+        for conv, is_channels_last, is_contiguous in seen[1:]:
+            assert (is_channels_last and not is_contiguous) == channels_last, conv
+            assert is_contiguous != channels_last, conv
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize(
+        ("name", "change"),
+        [("HardNet", None), ("HardNet8", None)] + [(name, change) for name in LOOPS for change in (None, *CHANGES)],
+    )
+    def test_scripted_network_sets_the_layout_where_eager_does(self, name, change, monkeypatch):
+        # TorchScript resolves ``isinstance(layer, nn.Conv2d)`` against the one Conv2d class type it compiled first in
+        # the process, and every Conv2d with other constants gets a mangled type that fails the test. A scripted SOSNet
+        # or TFeat, which loop over their layers, therefore set the layout before none of their convolutions once
+        # another Conv2d had been scripted, and convolved in a different layout from eager. Scripting a Conv2d first
+        # sets up that state. Eager must find a loop's convolutions by type, so that one without the mark still gets the
+        # layout. Counting the calls discriminates on every CPU, also where ``_patch_conv_layout`` keeps the layout.
+        torch.jit.script(nn.Conv2d(3, 5, 7))
+        net = NETWORKS[name](pretrained=False).eval()
+        convs = [layer for layer in _change(name, net, change) if isinstance(layer, nn.Conv2d)] if name in LOOPS else []
+        calls = []
+        inputs = []
+
+        def count(x):
+            calls.append(_patch_conv_layout(x))
+            return calls[-1]
+
+        hooks = [conv.register_forward_pre_hook(lambda module, args: inputs.append(args[0])) for conv in convs]
+        try:
+            with monkeypatch.context() as patch:
+                for module in CALLERS:
+                    patch.setattr(module, "_patch_conv_layout", count)
+                with torch.no_grad():
+                    _run(name, net, "cpu", torch.float32)
+        finally:
+            for hook in hooks:
+                hook.remove()
+        assert len(inputs) == len(convs)
+        assert all(any(x is call for call in calls) for x in inputs)
+        assert len(_call_sites(torch.jit.script(net))) == len(calls)
+
+    @pytest.mark.parametrize("change", [None, *CHANGES])
+    @pytest.mark.parametrize("name", LOOPS)
+    def test_scripted_convolutions_run_in_the_eager_layout(self, name, change, device, dtype):
+        # The layouts the convolutions run in, eager and scripted, after another Conv2d was scripted first. Where
+        # ``_patch_conv_layout`` keeps the layout (CPU without oneDNN, float64, CUDA float32) every layout is the
+        # default, so they cannot tell a skipped call; test_scripted_network_sets_the_layout_where_eager_does can.
+        torch.jit.script(nn.Conv2d(3, 5, 7))
+        torch.manual_seed(0)
+        net = NETWORKS[name](pretrained=False).eval()
+        _change(name, net, change)
+        net = net.to(device, dtype)
+        probe = torch.empty(1, 2, 3, 3, device=device, dtype=dtype)
+        expected = "c" if _patch_conv_layout(probe) is not probe else "n"
+        x = torch.rand(3, 1, 32, 32, device=device, dtype=dtype)
+        with torch.no_grad():
+            with _ConvolutionLayouts() as eager:
+                expected_out = net(x)
+            scripted = torch.jit.script(net)
+            scripted(x)
+            with _ConvolutionLayouts() as script:
+                actual = scripted(x)
+        assert {layout for layout in eager.layouts if layout != "b"} == {expected}
+        assert script.layouts == eager.layouts
+        self.assert_close(actual, expected_out)
+
+    @pytest.mark.parametrize("name", NETWORKS)
+    def test_layout_keeps_outputs(self, name, device, dtype, monkeypatch):
+        torch.manual_seed(0)
+        net = NETWORKS[name](pretrained=False).eval().to(device, dtype)
+        torch.manual_seed(1)
+        with torch.no_grad():
+            expected = _run(name, net, device, dtype)
+        for module in CALLERS:
+            monkeypatch.setattr(module, "_patch_conv_layout", lambda x: x)
+        torch.manual_seed(1)
+        with torch.no_grad():
+            actual = _run(name, net, device, dtype)
+        self.assert_close(actual, expected)

@@ -42,14 +42,23 @@ urls: dict[str, list[str]] = {
 
 
 class DISK(nn.Module):
-    r"""nn.Module which detects and describes local features in an image using the DISK method.
+    r"""Detect integer-pixel keypoints and describe them with the dense maps of one U-Net (DISK).
+
+    ``disk = DISK.from_pretrained("depth")`` loads trained weights in evaluation mode.
+    ``features = disk(images, n=2048)`` takes RGB images ``(B, 3, H, W)`` and returns one :class:`DISKFeatures`
+    per image: up to ``n`` integer-pixel keypoints ``(N, 2)``, scores ``(N,)`` and L2-normalised descriptors
+    ``(N, 128)``. Image dimensions must be multiples of 16 unless ``pad_if_not_divisible=True``.
+    Use :class:`ALIKED` for subpixel keypoints or :class:`DeDoDe` for a fixed keypoint budget per image.
 
     See :cite:`tyszkiewicz2020disk` for details.
 
     .. image:: _static/img/disk_outdoor_depth.jpg
 
     Convention:
-        - ``images`` are RGB, :math:`(B, 3, H, W)`, which the U-Net sees as given, without normalisation. With the
+        - ``DISK()`` creates random weights in training mode. For matching, construct LAFs with
+          :func:`~kornia.feature.laf_from_center_scale_ori` on ``keypoints[None]`` and pass them with the descriptors
+          to :class:`LightGlueMatcher` in ``"disk"`` mode.
+        - ``images`` are RGB, ``(B, 3, H, W)``, which the U-Net sees as given, without normalisation. With the
           default U-Net, a common positive gain of the input, such as :math:`[0, 255]` instead of :math:`[0, 1]`,
           changes the outputs only through the instance norms' ``eps``, which weighs more the lower the image's
           contrast. At ordinary contrast the maps barely change, though a keypoint can still swap where scores nearly
@@ -58,9 +67,11 @@ class DISK(nn.Module):
           bark ``img1`` differ in 0 to 2 keypoints, in 2 to 6 % of them with the intensities multiplied by 0.1, and
           in about 30 % multiplied by 0.01. ``H`` and ``W`` must be multiples of 16, unless
           ``pad_if_not_divisible=True`` zero-pads the bottom and right, in which case the maps are cropped back to the
-          image before the suppression and no keypoint lies in the padding.
-        - Each image gives a :class:`DISKFeatures`. Keypoints are the integer ``(x, y)`` pixels of the strict heatmap
-          maxima (see the note), in the pixel frame of :func:`~kornia.feature.laf_from_center_scale_ori`
+          image before the suppression and no keypoint lies in the padding. The image must have the network's
+          dtype: a float16, bfloat16 or float64 image raises on a float32 model, so cast the model first,
+          ``disk.to(images.dtype)``.
+        - Keypoints are the integer ``(x, y)`` pixels of the strict heatmap
+          maxima (see the note), using the pixel convention of :func:`~kornia.feature.laf_from_center_scale_ori`
           (see :ref:`Local features <local-features-conventions>`), listed in raster order (row by row, then column
           by column) rather than by score, in float32 for a float16 or bfloat16 network and otherwise in the dtype
           of the network's output. ``detection_scores`` are the heatmap values there, in the network's dtype, and
@@ -74,9 +85,8 @@ class DISK(nn.Module):
         desc_dim: The dimension of the descriptor.
         unet: The U-Net to use. If None, a default U-Net is used. Kornia doesn't provide the training code for DISK
               so this is only useful when using a custom checkpoint trained using the code released with the paper.
-              The unet should take as input a torch.Tensor of shape :math:`(B, C, H, W)` and output
-              a torch.Tensor of shape
-              :math:`(B, \mathrm{desc\_dim} + 1, H, W)`.
+              The unet should take as input a torch.Tensor of shape ``(B, C, H, W)`` and output
+              a torch.Tensor of shape ``(B, desc_dim + 1, H, W)``: the descriptors, then the heatmap.
 
     Note:
         Keypoints are the strict local maxima of the heatmap: :func:`~kornia.geometry.subpix.nms2d` keeps a position
@@ -90,6 +100,18 @@ class DISK(nn.Module):
         ``(n + 1)``-th largest, which drops the weakest maximum, with every maximum tied with it, of an image with
         ``n`` maxima or fewer, and every maximum tied across the cut. kornia's ``n`` is an upper bound, so such an
         image keeps every maximum, and a tie at the cut is filled in raster order.
+
+    See Also:
+        - :class:`DISKFeatures`: the per-image result of :meth:`forward`.
+        - :class:`ALIKED`: learned sub-pixel keypoints for RGB images of any size, also as padded LAF tensors.
+        - :class:`XFeat`: learned keypoints with 64-D descriptors, and its own mutual-nearest-neighbour and refined
+          matching of image pairs.
+        - :class:`DeDoDe`: separate learned detector and descriptor networks, with ``n`` keypoints in every image.
+        - :class:`LocalFeature`: a classical detector and LAF descriptor in one call, returning padded LAF tensors
+          instead of a list per image.
+        - :func:`laf_from_center_scale_ori`: turns the keypoints of one image into the LAFs that
+          :class:`LightGlueMatcher` and :class:`LAFDescriptor` take.
+        - :class:`LightGlueMatcher`: matches DISK's descriptors and keypoints with the ``"disk"`` weights.
 
     Example:
         >>> disk = DISK.from_pretrained('depth')
@@ -113,12 +135,12 @@ class DISK(nn.Module):
         .. image:: _static/img/DISK.png
 
         Args:
-            images: The image to detect features in. Shape :math:`(B, 3, H, W)`.
+            images: The image to detect features in. Shape ``(B, 3, H, W)``.
 
         Returns:
             A tuple of dense detection scores and descriptors.
-            Shapes are :math:`(B, 1, H, W)` and :math:`(B, D, H, W)`, where
-            :math:`D` is the descriptor dimension.
+            Shapes are ``(B, 1, H, W)`` and ``(B, D, H, W)``, where
+            ``D`` is the descriptor dimension; the descriptors are not normalised.
 
         """
         unet_output = self.unet(images)
@@ -144,7 +166,7 @@ class DISK(nn.Module):
         """Detect features in an image, returning keypoint locations, descriptors and detection scores.
 
         Args:
-            images: The image to detect features in. Shape :math:`(B, 3, H, W)`.
+            images: The image to detect features in. Shape ``(B, 3, H, W)``.
             n: The maximum number of keypoints per image, counted among the maxima above ``score_threshold``. An
                image with ``n`` such maxima or fewer keeps all of them; with more, its ``n`` strongest, where maxima
                tied at the ``n``-th score are taken in raster order. If None, all keypoints are returned.

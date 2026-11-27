@@ -33,16 +33,18 @@ def mean_average_precision(
     n_classes: int,
     threshold: float = 0.5,
 ) -> Tuple[torch.Tensor, Dict[int, float]]:
-    """Calculate the Mean Average Precision (mAP) of detected objects.
+    """Compute the PASCAL VOC mean average precision (mAP) of detections over a set of images.
 
-    Code altered from https://github.com/sgrvinod/a-PyTorch-Tutorial-to-Object-Detection/blob/master/utils.py#L271.
+    ``mAP, ap = mean_average_precision(pred_boxes, pred_labels, pred_scores, gt_boxes, gt_labels, n_classes)`` takes
+    one tensor per image in each list. It returns the mean over the scored classes of their 11-point interpolated AP
+    as a 0-d tensor, and a dict of the per-class APs. Both are fractions in :math:`[0, 1]`, or ``-1.0`` where there
+    is no object to score.
 
     Convention:
-        - Every argument but ``n_classes`` and ``threshold`` is a list with one tensor per image. The call raises when
-          the five lists differ in length, when the boxes, labels and scores of an image differ in their number of
-          rows, or when a label lies outside ``[0, n_classes)`` or is not a whole number: a floating-point label
-          such as ``1.0`` counts as class 1, and ``1.5`` raises. Boxes are exclusive ``xyxy``, the default format of
-          :func:`~kornia.metrics.mean_iou_bbox`, which computes the overlaps.
+        - The call raises when the five lists differ in length, when the boxes, labels and scores of an image differ
+          in their number of rows, or when a label lies outside ``[0, n_classes)`` or is not a whole number: a
+          floating-point label such as ``1.0`` counts as class 1, and ``1.5`` raises. Boxes are exclusive ``xyxy``,
+          the default format of :func:`~kornia.metrics.mean_iou_bbox`, which computes the overlaps.
         - Class 0 is background: its objects and detections are never scored, and ``n_classes`` counts it, so the
           classes ``1`` to ``n_classes - 1`` are scored.
         - The detections of a class are ranked by score over all images at once, so the AP is not a mean of
@@ -54,29 +56,36 @@ def mean_average_precision(
           object the mAP is ``-1.0`` too.
         - The AP is the 11-point interpolated AP of PASCAL VOC2007: the mean, over the recall levels
           ``0, 0.1, ..., 1``, of the highest precision at a recall of at least that level.
-        - The result is a 0-d tensor and a dict of Python floats, fractions in :math:`[0, 1]` apart from that
-          ``-1.0``. The tensor takes the floating dtype of the boxes: integer boxes count as float32, and predicted
-          and ground-truth boxes of different dtypes give the promotion of those two floating dtypes (float32 when one
+        - The mAP takes the floating dtype of the boxes: integer boxes count as float32, and predicted and
+          ground-truth boxes of different dtypes give the promotion of those two floating dtypes (float32 when one
           set is integer and the other float16). :ref:`Losses and metrics <losses-metrics-conventions>` compares the
           match rule with the VOC devkit and COCO.
+        - Matching IoUs, detection counts, precision and recall use at least float32 before each class's AP is rounded
+          to the output dtype. Rounding before the threshold comparisons can change the match or recall decision.
 
     Args:
-        pred_boxes: a torch.Tensor list of predicted bounding boxes.
-        pred_labels: a torch.Tensor list of predicted labels in ``[0, n_classes)``.
-        pred_scores: a torch.Tensor list of predicted labels' scores.
-        gt_boxes: a torch.Tensor list of ground truth bounding boxes.
-        gt_labels: a torch.Tensor list of ground truth labels in ``[0, n_classes)``.
+        pred_boxes: per-image predicted boxes, each with shape ``(N, 4)``.
+        pred_labels: per-image predicted class labels, each with shape ``(N,)``.
+        pred_scores: per-image confidence scores, each with shape ``(N,)``.
+        gt_boxes: per-image ground-truth boxes, each with shape ``(M, 4)``.
+        gt_labels: per-image ground-truth class labels, each with shape ``(M,)``.
         n_classes: the number of classes, background (class 0) included.
-        threshold: count as a positive if the overlap is greater than the threshold.
+        threshold: the IoU a detection must exceed to be a true positive.
 
     Returns:
-        the mAP, and a dict mapping each scored class id to its average precision.
+        the mAP and a dict mapping each foreground class id, 1 to ``n_classes - 1``, to its AP.
+
+    See Also:
+        - :func:`~kornia.metrics.mean_iou_bbox`: the pairwise box IoU the matching uses, as a matrix.
 
     Examples:
         >>> boxes, labels, scores = torch.tensor([[100, 50, 150, 100.]]), torch.tensor([1]), torch.tensor([.7])
         >>> gt_boxes, gt_labels = torch.tensor([[100, 50, 150, 100.]]), torch.tensor([1])
         >>> mean_average_precision([boxes], [labels], [scores], [gt_boxes], [gt_labels], 2)
         (tensor(1.), {1: 1.0})
+
+    Reference:
+        Adapted from https://github.com/sgrvinod/a-PyTorch-Tutorial-to-Object-Detection/blob/master/utils.py#L271.
 
     """
     # these are all lists of tensors of the same length, i.e. number of images
@@ -119,6 +128,14 @@ def mean_average_precision(
         _pred_boxes.dtype if _pred_boxes.is_floating_point() else torch.float32,
         _gt_boxes.dtype if _gt_boxes.is_floating_point() else torch.float32,
     )
+    # Recall comparisons are discrete decisions: bfloat16 rounds 512/513 to 1 and incorrectly gives a missed
+    # object full recall. Keep counts and their ratios in at least float32, rounding only the final class AP.
+    statistics_dtype = torch.promote_types(ap_dtype, torch.float32)
+    # mean_iou_bbox returns the promoted box dtype. Widen half-precision boxes once so a true overlap just above
+    # the matching threshold cannot round down to it before the strict comparison.
+    if ap_dtype in (torch.float16, torch.bfloat16):
+        _pred_boxes = _pred_boxes.float()
+        _gt_boxes = _gt_boxes.float()
 
     # These data-dependent checks break the compiled graph; in a helper function they would also break it at each call.
     for name, labels in (("pred_labels", _pred_labels), ("gt_labels", _gt_labels)):
@@ -159,30 +176,38 @@ def mean_average_precision(
         pred_class_images = pred_class_images[sort_ind]  # (n_class_detections)
         pred_class_boxes = pred_class_boxes[sort_ind]  # (n_class_detections, 4)
 
-        # In the order of decreasing scores, check if true or false positive
-        gt_positives = torch.zeros((n_class_detections,), dtype=ap_dtype, device=pred_class_boxes.device)
-        false_positives = torch.zeros((n_class_detections,), dtype=ap_dtype, device=pred_class_boxes.device)
-        for d in range(n_class_detections):
-            this_detection_box = pred_class_boxes[d].unsqueeze(0)  # (1, 4)
-            this_image = pred_class_images[d]  # (), scalar
+        # Ground truth was concatenated image by image, and the class mask preserves that order. Its image groups
+        # are therefore contiguous slices. Record their bounds once instead of scanning every class object and
+        # allocating a full class-sized index tensor for every detection, including detections in other images.
+        gt_image_ids: List[int] = gt_class_images.tolist()
+        image_ranges: Dict[int, Tuple[int, int]] = {}
+        start = 0
+        for end in range(1, len(gt_image_ids) + 1):
+            if end == len(gt_image_ids) or gt_image_ids[end] != gt_image_ids[start]:
+                image_ranges[gt_image_ids[start]] = (start, end)
+                start = end
+        pred_image_ids: List[int] = pred_class_images.tolist()
 
-            # Find objects in the image with this class, their difficulties, and whether they have been detected before
-            object_boxes = gt_class_boxes[gt_class_images == this_image]  # (n_class_objects_in_img)
+        # In the order of decreasing scores, check if true or false positive
+        gt_positives = torch.zeros((n_class_detections,), dtype=statistics_dtype, device=pred_class_boxes.device)
+        false_positives = torch.zeros((n_class_detections,), dtype=statistics_dtype, device=pred_class_boxes.device)
+        for d, this_image in enumerate(pred_image_ids):
+            this_detection_box = pred_class_boxes[d].unsqueeze(0)  # (1, 4)
+
             # If no such object in this image, then the detection is a false positive
-            if object_boxes.size(0) == 0:
+            bounds = image_ranges.get(this_image)
+            if bounds is None:
                 false_positives[d] = 1
                 continue
+            start, end = bounds
+            object_boxes = gt_class_boxes[start:end]  # (n_class_objects_in_img), a view
 
             # Find maximum overlap of this detection with objects in this image of this class
             overlaps = mean_iou_bbox(this_detection_box, object_boxes)  # (1, n_class_objects_in_img)
             max_overlap, ind = torch.max(overlaps.squeeze(0), dim=0)  # (), () - scalars
 
-            # 'ind' is the index of the object in these image-level tensors 'object_boxes', 'object_difficulties'
-            # In the original class-level tensors 'gt_class_boxes', etc., 'ind' corresponds to object with index...
-            original_ind = torch.tensor(
-                range(gt_class_boxes.size(0)), device=gt_class_boxes_detected.device, dtype=torch.long
-            )[gt_class_images == this_image][ind]
-            # We need 'original_ind' to update 'gt_class_boxes_detected'
+            # Convert the image-local index back to the class-level detected-object flags.
+            original_ind = ind + start
 
             # If the maximum overlap is greater than the threshold of 0.5, it's a match
             if max_overlap.item() > threshold:
@@ -209,7 +234,7 @@ def mean_average_precision(
         # Exact tenths as Python floats: each comparison below casts them to the recall dtype. A float32 arange widened
         # to Python floats gives 0.10000000149..., which a float64 recall of exactly 1/10 never reaches (#5083).
         recall_thresholds = [i / 10 for i in range(11)]  # (11)
-        precisions = torch.zeros((len(recall_thresholds)), device=_gt_boxes.device, dtype=ap_dtype)  # (11)
+        precisions = torch.zeros((len(recall_thresholds)), device=_gt_boxes.device, dtype=statistics_dtype)  # (11)
         for i, t in enumerate(recall_thresholds):
             recalls_above_t = cumul_recall >= t
             if recalls_above_t.any():

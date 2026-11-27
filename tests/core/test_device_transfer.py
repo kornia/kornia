@@ -24,9 +24,9 @@ import kornia.augmentation.utils.helpers as augmentation_helpers
 from kornia.core import ops as core_ops
 from kornia.core.utils import _to_device_nonblocking, _torch_inverse_cast
 
-from testing.base import BaseTester
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
 
-requires_cuda = pytest.mark.skipif(not torch.cuda.is_available(), reason="needs a CUDA device")
+requires_cuda = pytest.mark.applies_to(devices=("cuda",), reason="needs a CUDA device")
 
 # About 3 ms of queued GPU work on a current GPU, so that a copy which waited for the queue would be visible.
 _SLEEP_CYCLES = 5_000_000
@@ -71,11 +71,24 @@ class TestToDeviceNonblocking(BaseTester):
         assert _to_device_nonblocking(src, device, dtype) is src
         assert _to_device_nonblocking(src, device) is src
 
+    @pytest.mark.applies_to(devices=("mps",), reason="only MPS lacks float64")
+    def test_float64_cast_across_mps(self, device) -> None:
+        # MPS has no float64. On torch 2.14 a single MPS -> CPU float64 copy, and the backward of a single
+        # CPU float64 -> MPS copy, leave the destination unwritten; on 2.15 they raise (pytorch/pytorch#197715).
+        out = _to_device_nonblocking(torch.tensor([0.25, 0.5, 0.75], device=device), torch.device("cpu"), torch.float64)
+        assert out.dtype == torch.float64
+        self.assert_close(out, torch.tensor([0.25, 0.5, 0.75], dtype=torch.float64))
+        leaf = torch.tensor([1.0, 2.0, 3.0], dtype=torch.float64, requires_grad=True)
+        weights = torch.tensor([2.0, 3.0, 4.0], device=device)
+        (_to_device_nonblocking(leaf, device, torch.float32) * weights).sum().backward()
+        self.assert_close(leaf.grad, torch.tensor([2.0, 3.0, 4.0], dtype=torch.float64))
+
     def test_scriptable(self, device, dtype) -> None:
         scripted = torch.jit.script(_to_device_nonblocking)
         src = torch.rand(3, dtype=torch.float64)
         assert torch.equal(scripted(src, device, dtype).cpu(), src.to(device, dtype).cpu())
 
+    @pytest.mark.uses_accelerator
     @requires_cuda
     def test_cpu_to_cuda_does_not_sync(self) -> None:
         src = torch.rand(8, 3)
@@ -87,6 +100,7 @@ class TestToDeviceNonblocking(BaseTester):
         finally:
             torch.cuda.set_sync_debug_mode(0)
 
+    @pytest.mark.uses_accelerator
     @requires_cuda
     def test_source_mutation_after_copy(self) -> None:
         cuda = torch.device("cuda")
@@ -100,6 +114,7 @@ class TestToDeviceNonblocking(BaseTester):
                 torch.cuda.synchronize()
                 assert torch.equal(out.cpu(), expected)
 
+    @pytest.mark.uses_accelerator
     @requires_cuda
     def test_pinned_source_mutation_after_copy(self) -> None:
         # A pinned source is copied asynchronously by a non-blocking copy, so it must be copied blocking: a caller may
@@ -114,6 +129,7 @@ class TestToDeviceNonblocking(BaseTester):
             torch.cuda.synchronize()
             assert torch.equal(out.cpu(), expected)
 
+    @pytest.mark.uses_accelerator
     @requires_cuda
     @pytest.mark.parametrize("dst_dtype", [torch.float16, torch.bfloat16, torch.float32])
     def test_cast_bits_equal_blocking_copy_including_nan_payloads(self, dst_dtype) -> None:
@@ -133,6 +149,7 @@ class TestToDeviceNonblocking(BaseTester):
                 expected.view(torch.int16 if dst_dtype != torch.float32 else torch.int32),
             )
 
+    @pytest.mark.uses_accelerator
     @requires_cuda
     def test_cuda_to_cpu_is_blocking(self) -> None:
         x = torch.rand(256, 256)
@@ -201,3 +218,48 @@ class TestDeviceLiteral(BaseTester):
             core_ops._device_literal(65505.0, device=device, dtype=torch.float16),
             torch.tensor(65505.0, device=device, dtype=torch.float16),
         )
+
+
+class TestCopiedLiteral(BaseTester):
+    # Distinct values that round differently in float16 and bfloat16, as a pyramid's level table has.
+    _DATA = [[-1.0 + 1.0 / 97.0, 1.0 / 3.0, 65.0 / 773.0], [0.1, -0.0, 2.0**-11 + 1.0]]
+
+    def test_values_equal_torch_tensor(self, device, dtype) -> None:
+        expected = torch.tensor(self._DATA, device=device, dtype=dtype)
+        out = core_ops._copied_literal(self._DATA, device=device, dtype=dtype)
+        assert out.device == expected.device
+        assert out.dtype == dtype
+        assert torch.equal(out, expected)
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    def test_graph_capture_keeps_a_device_literal(self, device, dtype) -> None:
+        # Captured, the literal stays torch.tensor(..., device=device): a host tensor moved inside the graph is no graph
+        # constant to Inductor, which made compiled CUDA extract_patches_from_pyramid 1.2-1.6x slower.
+        graphs = []
+
+        def backend(gm, example_inputs):
+            graphs.append(gm.graph)
+            return gm.forward
+
+        def fn(x):
+            return x + core_ops._copied_literal(self._DATA, device=x.device, dtype=x.dtype)
+
+        x = torch.zeros(2, 3, device=device, dtype=dtype)
+        torch._dynamo.reset()
+        out = torch.compile(fn, backend=backend, fullgraph=True)(x)
+        assert torch.equal(out, torch.tensor(self._DATA, device=device, dtype=dtype))
+        (graph,) = graphs
+        targets = [node.target for node in graph.nodes if node.op in ("call_function", "call_method")]
+        assert torch.tensor in targets
+        assert "to" not in targets
+
+    @pytest.mark.uses_accelerator
+    @requires_cuda
+    def test_cuda_eager_does_not_sync(self) -> None:
+        torch.cuda.synchronize()
+        try:
+            torch.cuda.set_sync_debug_mode("error")
+            for dtype in (torch.float32, torch.float16, torch.float64):
+                core_ops._copied_literal(self._DATA, device=torch.device("cuda"), dtype=dtype)
+        finally:
+            torch.cuda.set_sync_debug_mode(0)

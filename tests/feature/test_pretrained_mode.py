@@ -31,6 +31,7 @@ from torch import nn
 
 from kornia.feature import (
     ALIKED,
+    CLIDD,
     DISK,
     SOLD2,
     DeDoDe,
@@ -83,6 +84,7 @@ _RANDOM_INIT = [
     pytest.param(lambda: LoFTR(pretrained=None), id="LoFTR"),
     pytest.param(XFeat, id="XFeat"),
     pytest.param(lambda: ALIKED(model_name="aliked-n16"), id="ALIKED"),
+    pytest.param(lambda: CLIDD("A48"), id="CLIDD"),
     pytest.param(DISK, id="DISK", marks=pytest.mark.slow),
     # The B descriptor: the default G one downloads the DINOv2 backbone in its constructor.
     pytest.param(lambda: DeDoDe(descriptor_model="B"), id="DeDoDe", marks=pytest.mark.slow),
@@ -95,6 +97,7 @@ _WEIGHTED = [
     pytest.param(lambda: LoFTR("outdoor"), id="LoFTR"),
     pytest.param(XFeat.from_pretrained, id="XFeat"),
     pytest.param(lambda: ALIKED.from_pretrained("aliked-n16"), id="ALIKED"),
+    pytest.param(lambda: CLIDD.from_pretrained("A48"), id="CLIDD"),
     pytest.param(lambda: GFTTAffNetHardNet(num_features=8), id="GFTTAffNetHardNet"),
     pytest.param(lambda: HesAffNetHardNet(num_features=8), id="HesAffNetHardNet"),
     pytest.param(lambda: DoGHardNet(num_features=8), id="DoGHardNet"),

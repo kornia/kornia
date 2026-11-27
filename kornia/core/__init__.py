@@ -15,9 +15,28 @@
 # limitations under the License.
 #
 
-"""Kornia Core — Core tensor operations, backends, and utilities for Kornia.
+"""Fetch weights, subclass the image and ONNX base classes, and build small batched tensors.
 
-This subpackage provides core functionality, device management, and backend support.
+The device and autocast helpers and :func:`~kornia.core.utils.batched_forward` are imported from
+``kornia.core.utils``; the ``KORNIA_CHECK*`` input checks from ``kornia.core.check``, and the errors they raise from
+``kornia.core.exceptions``.
+
+Which function to use:
+
+- A checkpoint :func:`torch.load` reads, from one URL or a list of fallback URLs: :func:`load_state_dict_from_url`.
+- A file downloaded into the cache and returned as a path, without loading it: :func:`download_file_from_url`; one
+  file of a Hugging Face repository: :func:`download_hf_file`; only that file's URL: :func:`hf_url`.
+- A ``.safetensors`` checkpoint read into a state dict: :func:`load_safetensors`; its header checked without
+  reading tensors, as the ``validate`` of a download: :func:`check_safetensors`.
+- An ``nn.Module`` whose call also takes NumPy arrays, PIL images and image paths and returns tensors, arrays or PIL
+  images: subclass :class:`ImageModule`, or chain modules in :class:`ImageSequential`; the conversions alone, for
+  any function: :class:`ImageModuleMixIn`.
+- ONNX: a ``to_onnx`` export method for a module, :class:`ONNXExportMixin`; an ONNX Runtime session with a call on
+  arrays and tensors, :class:`ONNXRuntimeMixin`; loading and chaining ONNX graphs, :class:`ONNXMixin`.
+- Batched identity matrices or zero vectors with another tensor's batch size, dtype and device: :func:`eye_like`,
+  :func:`vec_like`.
+- A tensor wrapper whose torch functions and operators return the wrapper's class: :class:`TensorWrapper`.
+- The lazily imported optional dependencies (NumPy, Pillow, ``onnx``, ``onnxruntime``, ``diffusers``): ``external``.
 """
 
 from . import external
