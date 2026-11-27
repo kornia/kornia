@@ -537,6 +537,8 @@ def reproject_disparity_to_3D(
         conversion to the returned disparity dtype. The matrix multiplication and
         homogeneous conversion use Q's dtype, which a caller's autocast region does not
         change, outside TorchScript, where a scripted call keeps the caller's precision.
+        With float32 or float64 Q, half-precision disparity uses Q's dtype for the pixel
+        grid, so rounding the disparity values does not also round the pixel indices.
         The absolute W cutoff is the existing coordinate policy: scaling Q can change
         validity near the cutoff, while Q and -Q have the same mask.
 
@@ -562,7 +564,12 @@ def reproject_disparity_to_3D(
     if Q_matrix.shape[0] != batch_size and Q_matrix.shape[0] != 1:
         raise ValueError("Q_matrix batch size must match disparity_tensor or be 1.")
 
-    uv = create_meshgrid(rows, cols, normalized_coordinates=False, device=device, dtype=dtype)
+    # Match the precision of wide Q before forming the grid. Casting rounded half-precision
+    # coordinates to Q's dtype after stacking cannot distinguish adjacent pixels again.
+    grid_dtype = dtype
+    if dtype in (torch.float16, torch.bfloat16) and Q_matrix.dtype in (torch.float32, torch.float64):
+        grid_dtype = Q_matrix.dtype
+    uv = create_meshgrid(rows, cols, normalized_coordinates=False, device=device, dtype=grid_dtype)
     uv = uv.expand(batch_size, -1, -1, -1)
     # create_meshgrid(normalized_coordinates=False) returns (x, y), so uv[..., 0] is the
     # column and uv[..., 1] is the row. u is the column and v the row, as in
@@ -572,11 +579,13 @@ def reproject_disparity_to_3D(
     u, v = torch.unbind(uv, dim=-1)
     u, v = torch.unsqueeze(u, -1), torch.unsqueeze(v, -1)
     # The pixel count is spelled out: a ``-1`` cannot be inferred for an empty batch.
-    uvd = torch.stack((u, v, disparity_tensor), 1).reshape(batch_size, 3, rows * cols).permute(0, 2, 1)
+    # Make the cast explicit because ONNX Concat requires inputs of one dtype.
+    disparity = disparity_tensor.to(grid_dtype)
+    uvd = torch.stack((u, v, disparity), 1).reshape(batch_size, 3, rows * cols).permute(0, 2, 1)
     # Preserve transform_points' empty point-set path, including its lack of a Q
     # gradient connection. There are no entries to diagnose in the empty mask.
     if rows * cols == 0:
-        points = uvd.reshape(batch_size, rows, cols, 3)
+        points = uvd.to(dtype).reshape(batch_size, rows, cols, 3)
         if return_mask:
             return points, torch.empty_like(disparity_tensor, dtype=torch.bool)
         return points
