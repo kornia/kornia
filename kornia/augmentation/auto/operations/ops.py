@@ -34,6 +34,7 @@ import kornia.augmentation as K
 from kornia.augmentation._2d.intensity.brightness import RandomBrightness
 from kornia.augmentation._2d.intensity.contrast import RandomContrast
 from kornia.augmentation._2d.intensity.saturation import RandomSaturation
+from kornia.augmentation._2d.intensity.solarize import RandomSolarize
 from kornia.augmentation.auto.operations.base import OperationBase
 from kornia.core.utils import _clamp_unit_range, _to_device_nonblocking
 from kornia.enhance import (
@@ -433,14 +434,34 @@ class Solarize(OperationBase):
         )
 
 
-class SolarizeAdd(OperationBase):
-    """Add an intensity offset, then invert values above a random threshold.
+class _RandomSolarizeAdd(RandomSolarize):
+    def apply_transform(
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """Apply the reference solarize-add without solarization's inversion."""
+        input = _clamp_unit_range(input)
+        additions = params["additions"]
+        if additions.ndim != 0 and (additions.ndim != 1 or additions.shape[0] != input.shape[0]):
+            raise AssertionError(
+                "additions must be a scalar or a 1-d vector matching the input batch. "
+                f"Got {additions.shape} for input {input.shape}."
+            )
+        additions = _to_device_nonblocking(additions, input.device, input.dtype).reshape(-1, 1, 1, 1)
+        # Compare in the input dtype, without rounding the fixed threshold through the generator's float32 draw.
+        return torch.where(input < 128 / 255, (input + additions).clamp(0, 1), input)
 
-    ``output = SolarizeAdd(magnitude, probability)(input)`` clamps selected floating images ``(B, C, H, W)`` into
-    ``[0, 1]``, adds the magnitude to every pixel, clamps again, then inverts values at or above a sampled threshold.
-    The threshold is sampled from ``[0, 1]`` per selected image. This is a known defect tracked in
-    `#6561 <https://github.com/kornia/kornia/issues/6561>`_: reference solarize-add adds only below a fixed
-    ``128 / 255`` threshold and never inverts pixels.
+
+class SolarizeAdd(OperationBase):
+    """Add an intensity offset only to pixels below a fixed threshold of ``128 / 255``.
+
+    Following ``timm.data.auto_augment.solarize_add``, the comparison uses the original
+    pixel value, the sum is clamped to ``[0, 1]``, and pixels at or above the threshold
+    stay unchanged. Unlike :class:`~kornia.augmentation.RandomSolarize`, this operation
+    never inverts pixels.
 
     Args:
         initial_magnitude: the initial magnitude.
@@ -463,7 +484,12 @@ class SolarizeAdd(OperationBase):
         symmetric_megnitude: bool = False,
     ) -> None:
         super().__init__(
-            K.RandomSolarize(thresholds=0.5, additions=magnitude_range, same_on_batch=False, p=initial_probability),
+            _RandomSolarizeAdd(
+                thresholds=(128 / 255, 128 / 255),
+                additions=magnitude_range,
+                same_on_batch=False,
+                p=initial_probability,
+            ),
             initial_magnitude=[("additions", initial_magnitude)],
             temperature=temperature,
             symmetric_megnitude=symmetric_megnitude,
