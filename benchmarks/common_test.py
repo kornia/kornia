@@ -22,6 +22,7 @@ from __future__ import annotations
 import json
 import math
 import sys
+import time
 from pathlib import Path
 
 import torch
@@ -36,6 +37,41 @@ def test_time_us_returns_median_and_spread():
     assert median > 0
     assert not math.isnan(median)
     assert iqr >= 0
+
+
+def _spy_merge(monkeypatch) -> list:
+    merged: list = []
+    merge = common.bench.Measurement.merge
+
+    def spy(measurements):
+        result = merge(measurements)
+        merged.extend(result)
+        return result
+
+    monkeypatch.setattr(common.bench.Measurement, "merge", staticmethod(spy))
+    return merged
+
+
+def test_time_us_times_a_call_slower_than_the_budget_more_than_once(monkeypatch):
+    # blocked_autorange alone times a call longer than min_run_time once and reports an IQR of 0.
+    merged = _spy_merge(monkeypatch)
+    durations = iter([0.03 + 0.005 * i for i in range(50)])  # each call slower than the 0.01 s budget, all distinct
+    median, iqr = time_us(lambda: time.sleep(next(durations)), min_run_time=0.01)
+    assert len(merged) == 1
+    assert len(merged[0].times) >= common.MIN_TIMED_SAMPLES
+    assert median >= 0.03 * 1e6
+    assert iqr > 0
+
+
+def test_time_us_keeps_blocked_autorange_when_it_has_enough_samples(monkeypatch):
+    timer = common.bench.Timer(stmt="pass")
+    (enough,) = common.bench.Measurement.merge([timer.timeit(number=10) for _ in range(5)])
+    monkeypatch.setattr(common.bench.Timer, "blocked_autorange", lambda self, min_run_time: enough)
+    merged = _spy_merge(monkeypatch)
+    median, iqr = time_us(lambda: None, min_run_time=0.05)
+    assert merged == []  # no extra timing
+    assert median == enough.median * 1e6
+    assert iqr == enough.iqr * 1e6
 
 
 def test_time_us_failure_is_nan():
