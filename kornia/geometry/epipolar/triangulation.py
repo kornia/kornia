@@ -23,12 +23,13 @@ import torch
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.utils import (
+    _adjugate_closed_form,
     _autocast_disabled,
+    _det_perm_closed_form,
     _normalize_to_float32_or_float64,
     _torch_svd_in_work_dtype,
     is_mps_tensor_safe,
 )
-from kornia.geometry.conversions import convert_points_from_homogeneous
 
 # https://github.com/opencv/opencv_contrib/blob/master/modules/sfm/src/triangulation.cpp#L68
 
@@ -98,6 +99,82 @@ def _sub_system_null_vectors(A: torch.Tensor) -> torch.Tensor:
     return h.flatten(-3, -2)
 
 
+def _camera_center(P: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    """Compute finite camera centers ``c = -M^{-1} p`` from projection matrices ``P = [M | p]``."""
+    dtype = P.dtype
+    tiny = torch.finfo(dtype).tiny
+    eps = torch.finfo(dtype).eps
+    M = P[..., :3, :3]
+    p = P[..., :3, 3:4]
+
+    # Guard Frobenius norm before sqrt so degenerate zero M keeps zero backward gradients across PyTorch versions.
+    m_norm_sq = M.square().sum(dim=(-2, -1), keepdim=True)
+    m_nonzero = m_norm_sq > tiny
+    safe_m_sq = torch.where(m_nonzero, m_norm_sq, torch.ones_like(m_norm_sq))
+    m_scale = torch.where(m_nonzero, safe_m_sq.sqrt(), torch.ones_like(m_norm_sq))
+
+    adj, det = _adjugate_closed_form(M / m_scale)
+    _, perm = _det_perm_closed_form(M / m_scale)
+    invertible = (det.abs() > 64.0 * eps * perm) & torch.isfinite(det) & torch.isfinite(p).all(dim=(-2, -1))
+    safe_det = torch.where(invertible, det, torch.ones_like(det))
+    c_raw = -(adj @ (p / m_scale)) / safe_det[..., None, None]
+    c = torch.where(invertible[..., None, None], c_raw, torch.zeros_like(c_raw))
+    return c, invertible
+
+
+def _local_triangulation_frame(
+    P1: torch.Tensor, P2: torch.Tensor, in_eps: float
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Return local origin midpoint ``c``, baseline ``s``, and zero-baseline minor tolerance."""
+    tiny = torch.finfo(P1.dtype).tiny
+    c_pair, inv_pair = _camera_center(torch.stack((P1, P2), dim=0))
+    c1, c2 = c_pair.unbind(0)
+    inv1, inv2 = inv_pair.unbind(0)
+
+    inv1_col = inv1[..., None, None]
+    inv2_col = inv2[..., None, None]
+    both_inv = inv1_col & inv2_col
+
+    diff_sq = (c2 - c1).square().sum(dim=(-2, -1), keepdim=True)
+    c_mid = 0.5 * (c1 + c2)
+    scale_ref_sq = (
+        c1.square().sum(dim=(-2, -1), keepdim=True) + c2.square().sum(dim=(-2, -1), keepdim=True)
+    ).clamp_min(tiny)
+
+    # Guard against roundoff-level or zero baselines using the input dtype's precision, scaled by camera extent
+    # so small-unit scenes (e.g. 1/1000 scale near the origin) and resolvable half/bfloat16 offset baselines
+    # (e.g. unit baseline at C=+/-200 in float16 or -13 in bfloat16) keep has_baseline=True.
+    has_baseline = both_inv & (diff_sq > (2.0 * in_eps) ** 2 * scale_ref_sq)
+    zero_baseline = both_inv & ~has_baseline
+
+    safe_diff_sq = torch.where(has_baseline, diff_sq, torch.ones_like(diff_sq))
+    s = torch.where(has_baseline, safe_diff_sq.sqrt(), torch.ones_like(diff_sq))
+
+    # Preserve exact [0, 0, 0] origin behavior near the world origin for zero-baseline pairs, while leaving
+    # an O(1) offset when shifted far away so DLT column 3 stays non-zero and lines of sight remain conditioned.
+    offset_unit = torch.zeros_like(c1)
+    offset_unit[..., 0, 0] = 1.0
+    far_origin = c_mid.square().sum(dim=(-2, -1), keepdim=True) > 100.0
+    c_zb = torch.where(far_origin, c_mid - offset_unit, torch.zeros_like(c1))
+
+    # Shifting a far float32/float64 zero-baseline pair to an O(1) offset shrinks column 3 from ||c_mid|| to ~1
+    # without removing O(in_eps * ||c_mid||) center roundoff, so cofactor's rank test scales with that bound
+    # (clamped well below 1.0 and skipped for half precision, where row roundoff already breaks rank-2 detection).
+    if in_eps < 0.0005:
+        zb_tol = torch.where(
+            zero_baseline & far_origin,
+            (4.0 * in_eps * scale_ref_sq.sqrt()).clamp_max(0.05),
+            torch.zeros_like(diff_sq),
+        )
+    else:
+        zb_tol = torch.zeros_like(diff_sq)
+
+    c = torch.where(inv1_col, c1, torch.where(inv2_col, c2, torch.zeros_like(c1)))
+    c = torch.where(both_inv, c_mid, c)
+    c = torch.where(zero_baseline, c_zb, c)
+    return c, s, zb_tol
+
+
 def triangulate_points(
     P1: torch.Tensor,
     P2: torch.Tensor,
@@ -120,6 +197,12 @@ def triangulate_points(
         - ``P1`` pairs with ``points1`` and ``P2`` with ``points2``. Input and output points are Euclidean;
           :ref:`Two-view geometry <two-view-conventions>` maps this onto OpenCV. The leading
           dimensions of ``P1`` and ``P2`` broadcast against those of the points.
+        - Internally centers the world frame at the camera-centre midpoint ``0.5 * (C1 + C2)`` and scales by the
+          baseline ``||C2 - C1||`` in working precision (``float64`` on CPU/CUDA, ``float32`` on MPS) before
+          solving, keeping noisy and noise-free reconstructions consistent across world translations, unit changes,
+          and view swaps ``(P1, P2, points1, points2) <-> (P2, P1, points2, points1)``. Cameras with singular left
+          :math:`3 \times 3` blocks or zero/roundoff-level baselines fall back without dividing by the baseline (so
+          derivatives with respect to the camera matrices across an exact zero baseline are not smooth).
         - Cheirality and baseline are not checked: a point behind a camera is returned with negative depth, and with
           zero baseline the depth is undefined: ``"svd"`` and ``"eigh"`` return an arbitrary point on the line of
           sight, possibly behind the camera or at infinity (NaN), and ``"cofactor"`` returns NaN.
@@ -198,20 +281,40 @@ def _triangulate_points(
 ) -> torch.Tensor:
     dtype1 = torch.promote_types(P1.dtype, points1.dtype)
     dtype2 = torch.promote_types(P2.dtype, points2.dtype)
+    # Record the coarser projection-matrix precision using constant literals so TorchScript/compile remain happy.
+    if torch.bfloat16 in (P1.dtype, P2.dtype):
+        in_eps = 0.0078125
+    elif torch.float16 in (P1.dtype, P2.dtype):
+        in_eps = 0.0009765625
+    elif torch.float32 in (P1.dtype, P2.dtype):
+        in_eps = 1.1920928955078125e-07
+    else:
+        in_eps = 2.220446049250313e-16
+
     half_dtypes = (torch.float16, torch.bfloat16)
     # A half product u * P[2] can overflow or round before subtraction, even when the constraint row is in range.
     # Form the rows in the solver's float32 precision and retain the original dtype for the output and infinity test.
+    row1_dtype = torch.float64 if dtype1 == torch.float64 else torch.float32
+    row2_dtype = torch.float64 if dtype2 == torch.float64 else torch.float32
     if dtype1 in half_dtypes:
-        P1, points1 = P1.float(), points1.float()
+        points1 = points1.float()
     if dtype2 in half_dtypes:
-        P2, points2 = P2.float(), points2.float()
+        points2 = points2.float()
+
+    # Translate to the camera midpoint and scale by the baseline in working precision so large -M @ C offsets
+    # cancel cleanly before constructing DLT rows, while keeping row tensors in float32 unless input is float64.
+    shift_dtype = torch.float32 if is_mps_tensor_safe(P1) else torch.float64
+    P1_w, P2_w = torch.broadcast_tensors(P1.to(shift_dtype), P2.to(shift_dtype))
+    c, s, zb_tol = _local_triangulation_frame(P1_w, P2_w, in_eps)
+    P1_loc = torch.cat([P1_w[..., :3, :3], (P1_w[..., :3, :3] @ c + P1_w[..., :3, 3:4]) / s], dim=-1).to(row1_dtype)
+    P2_loc = torch.cat([P2_w[..., :3, :3], (P2_w[..., :3, :3] @ c + P2_w[..., :3, 3:4]) / s], dim=-1).to(row2_dtype)
 
     # Build the four DLT constraint rows (each (*, N, 4)) via vectorized broadcasting.
     # P[..., r:r+1, :] broadcasts with points[..., c:c+1] → (*, N, 4).
-    row0 = points1[..., 0:1] * P1[..., 2:3, :] - P1[..., 0:1, :]  # (*, N1, 4)
-    row1 = points1[..., 1:2] * P1[..., 2:3, :] - P1[..., 1:2, :]  # (*, N1, 4)
-    row2 = points2[..., 0:1] * P2[..., 2:3, :] - P2[..., 0:1, :]  # (*, N2, 4)
-    row3 = points2[..., 1:2] * P2[..., 2:3, :] - P2[..., 1:2, :]  # (*, N2, 4)
+    row0 = points1[..., 0:1] * P1_loc[..., 2:3, :] - P1_loc[..., 0:1, :]  # (*, N1, 4)
+    row1 = points1[..., 1:2] * P1_loc[..., 2:3, :] - P1_loc[..., 1:2, :]  # (*, N1, 4)
+    row2 = points2[..., 0:1] * P2_loc[..., 2:3, :] - P2_loc[..., 0:1, :]  # (*, N2, 4)
+    row3 = points2[..., 1:2] * P2_loc[..., 2:3, :] - P2_loc[..., 1:2, :]  # (*, N2, 4)
     # Unify N1 and N2: one may be 1 when points1/points2 are broadcast-compatible.
     row0, row1, row2, row3 = torch.broadcast_tensors(row0, row1, row2, row3)
 
@@ -219,8 +322,7 @@ def _triangulate_points(
     if is_mps_tensor_safe(row0):
         compute_dtype = torch.float32
     elif solver == "eigh" or dtype1 == torch.float32:
-        # Even float32 rows from half inputs can lose the solution in X^T X, for example when the
-        # world origin is tens of meters from the cameras.
+        # Even float32 rows from half inputs can lose the solution in X^T X.
         compute_dtype = torch.float64
     else:
         compute_dtype = _normalize_to_float32_or_float64(dtype1)
@@ -230,6 +332,7 @@ def _triangulate_points(
         # SVD: last right singular vector minimises ||Ax|| s.t. ||x||=1.
         _, _, V = _torch_svd_in_work_dtype(X, work_dtype=torch.float32 if out_dtype in half_dtypes else None)
         points3d_h = V[..., -1]  # (*, N, 4)
+        degenerate = torch.zeros_like(points3d_h[..., :1], dtype=torch.bool)
 
     elif solver == "eigh":
         X = torch.stack([row0, row1, row2, row3], dim=-2)  # (*, N, 4, 4)
@@ -247,6 +350,7 @@ def _triangulate_points(
         flat = XTX.flatten(0, -3)  # (M, 4, 4)
         v_flat = _eigh_smallest_vec(flat)  # (M, 4)
         points3d_h = v_flat.reshape(*batch_shape, 4)  # (*, N, 4)
+        degenerate = torch.zeros_like(points3d_h[..., :1], dtype=torch.bool)
 
     elif solver == "cofactor":
         # The null vectors of the four 3x4 sub-systems (each DLT row left out once) are, up to sign, the columns
@@ -271,28 +375,37 @@ def _triangulate_points(
         # baseline): judge each against the product of its row norms, and return NaN when none has full rank.
         h_norms = H.norm(dim=-1)  # (*, N, 4)
         sub_row_norms = row_norms.prod(dim=-1, keepdim=True) / row_norms.flip(-1).clamp_min(tiny)
-        full_rank = (h_norms > 8.0 * torch.finfo(compute_dtype).eps * sub_row_norms).any(dim=-1, keepdim=True)
+        rank_tol = zb_tol.to(compute_dtype).clamp_min(8.0 * torch.finfo(compute_dtype).eps)
+        full_rank = (h_norms > rank_tol * sub_row_norms).any(dim=-1, keepdim=True)
         longest = h_norms.argmax(dim=-1, keepdim=True)[..., None].expand(*H.shape[:-2], 1, 4)
-        c = H.gather(-2, longest).squeeze(-2) / h_norms.amax(dim=-1, keepdim=True).clamp_min(tiny)
-        w = (H @ c[..., None]).squeeze(-1)  # adj(A)^T c, up to the signs of its entries
+        c_vec = H.gather(-2, longest).squeeze(-2) / h_norms.amax(dim=-1, keepdim=True).clamp_min(tiny)
+        w = (H @ c_vec[..., None]).squeeze(-1)  # adj(A)^T c, up to the signs of its entries
         w = w / w.norm(dim=-1, keepdim=True).clamp_min(tiny)
         v = (H.mT @ w[..., None]).squeeze(-1)  # adj(A) adj(A)^T c: the signs cancel
         v = v / v.norm(dim=-1, keepdim=True).clamp_min(tiny)
-        points3d_h = torch.where(full_rank, v, torch.full_like(v, float("nan")))
+        points3d_h = v
+        degenerate = ~full_rank
 
     else:
         raise NotImplementedError(f"Unknown solver '{solver}'. Choose from: 'svd', 'eigh', 'cofactor'.")
 
-    # Keep both the numerator and denominator in float32 through the divide for half outputs.
-    points3d_h = points3d_h.to(torch.float32 if out_dtype in half_dtypes else out_dtype)
+    # Dehomogenize and restore the world frame in working precision before masking NaNs so shared s / c never
+    # receive 0 * NaN during backward when an invalid row is masked out before a loss.
+    h_dtype = torch.float32 if (out_dtype in half_dtypes or is_mps_tensor_safe(points3d_h)) else shift_dtype
+    points3d_h = points3d_h.to(h_dtype)
 
-    # A correspondence at infinity (parallel rays) has w = 0 up to roundoff: the rows carry the input dtype's
-    # roundoff and the solver the compute dtype's, which eigh amplifies by squaring the conditioning (about 25
-    # epsilons on the two-view fixture against 2 for svd). Flag it as NaN instead of dividing by that roundoff.
+    # A correspondence at infinity (parallel rays) has w = 0 up to roundoff; in baseline-normalized local coords
+    # (||t_hat|| = 1), 3 * eps(out_dtype) catches parallel half-precision rays while keeping unit-baseline Z/b = 32
+    # finite in bfloat16.
     w_scale = 128.0 if solver == "eigh" else 16.0
-    w_tol = w_scale * torch.finfo(compute_dtype).eps + 4.0 * torch.finfo(out_dtype).eps
+    w_tol = w_scale * torch.finfo(compute_dtype).eps + 3.0 * torch.finfo(out_dtype).eps
     at_infinity = points3d_h[..., 3:].abs() <= w_tol * points3d_h.norm(dim=-1, keepdim=True)
-    points3d_h = torch.where(at_infinity, torch.full_like(points3d_h, float("nan")), points3d_h)
+    invalid = at_infinity | degenerate
 
-    points3d: torch.Tensor = convert_points_from_homogeneous(points3d_h).to(out_dtype)
-    return points3d
+    safe_w = torch.where(invalid, torch.ones_like(points3d_h[..., 3:]), points3d_h[..., 3:])
+    points3d_loc = points3d_h[..., :3] / safe_w
+    c_pt = c.to(h_dtype).squeeze(-1).unsqueeze(-2)
+    s_pt = s.to(h_dtype)
+    points3d = points3d_loc * s_pt + c_pt
+    points3d = torch.where(invalid, torch.full_like(points3d, float("nan")), points3d)
+    return points3d.to(out_dtype)
