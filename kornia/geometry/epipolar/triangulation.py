@@ -142,9 +142,9 @@ def _local_triangulation_frame(
     ).clamp_min(tiny)
 
     # Guard against roundoff-level or zero baselines using the input dtype's precision, scaled by camera extent
-    # so small-unit scenes (e.g. 1/1000 scale near the origin) still receive full baseline normalization while
-    # half/bfloat16 offset scenes (e.g. unit baseline at C=-13 in bfloat16 or -80 in float16) keep has_baseline=True.
-    has_baseline = both_inv & (diff_sq > (4.0 * in_eps) ** 2 * scale_ref_sq)
+    # so small-unit scenes (e.g. 1/1000 scale near the origin) and resolvable half/bfloat16 offset baselines
+    # (e.g. unit baseline at C=+/-200 in float16 or -13 in bfloat16) keep has_baseline=True.
+    has_baseline = both_inv & (diff_sq > (2.0 * in_eps) ** 2 * scale_ref_sq)
     zero_baseline = both_inv & ~has_baseline
 
     safe_diff_sq = torch.where(has_baseline, diff_sq, torch.ones_like(diff_sq))
@@ -157,9 +157,17 @@ def _local_triangulation_frame(
     far_origin = c_mid.square().sum(dim=(-2, -1), keepdim=True) > 100.0
     c_zb = torch.where(far_origin, c_mid - offset_unit, torch.zeros_like(c1))
 
-    # Shifting a far zero-baseline pair to an O(1) offset shrinks column 3 from ||c_mid|| to ~1 without removing
-    # the O(in_eps * ||c_mid||) input center roundoff, so cofactor's rank test scales with that residual bound.
-    zb_tol = torch.where(zero_baseline & far_origin, 4.0 * in_eps * scale_ref_sq.sqrt(), torch.zeros_like(diff_sq))
+    # Shifting a far float32/float64 zero-baseline pair to an O(1) offset shrinks column 3 from ||c_mid|| to ~1
+    # without removing O(in_eps * ||c_mid||) center roundoff, so cofactor's rank test scales with that bound
+    # (clamped well below 1.0 and skipped for half precision, where row roundoff already breaks rank-2 detection).
+    if in_eps < 0.0005:
+        zb_tol = torch.where(
+            zero_baseline & far_origin,
+            (4.0 * in_eps * scale_ref_sq.sqrt()).clamp_max(0.05),
+            torch.zeros_like(diff_sq),
+        )
+    else:
+        zb_tol = torch.zeros_like(diff_sq)
 
     c = torch.where(inv1_col, c1, torch.where(inv2_col, c2, torch.zeros_like(c1)))
     c = torch.where(both_inv, c_mid, c)

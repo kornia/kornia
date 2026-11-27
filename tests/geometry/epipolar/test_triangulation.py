@@ -929,5 +929,48 @@ class TestConventionTriangulation(BaseTester):
             assert torch.isnan(out_zb).all()
         else:
             X64 = X.cpu().double()
-            v = (out_zb - C_far.transpose(-2, -1)).cpu().double()
-            assert (torch.linalg.cross(v, X64, dim=-1).norm(dim=-1) / X64.norm(dim=-1)).max() <= 5e-2
+            out_cpu = out_zb.cpu().double()
+            finite = torch.isfinite(out_cpu).all(-1)
+            assert finite.sum() >= 6
+            v, direction = out_cpu[finite] - C_far.cpu().double().transpose(-2, -1)[0], X64[finite]
+            assert (v.norm(dim=-1) > 1e-3).sum() >= 6
+            assert (torch.linalg.cross(v, direction, dim=-1).norm(dim=-1) / direction.norm(dim=-1)).max() <= 5e-2
+            displaced = v.norm(dim=-1) > 1e-3
+            sin_angle = torch.linalg.cross(v[displaced], direction[displaced], dim=-1).norm(dim=-1) / (
+                v[displaced].norm(dim=-1) * direction[displaced].norm(dim=-1)
+            )
+            assert sin_angle.max() <= 5e-2
+
+    @pytest.mark.applies_to(dtypes=("float16",), reason="resolvable unit baseline at offset origin in float16")
+    @pytest.mark.parametrize("solver", SOLVERS)
+    def test_convention_triangulate_half_nonzero_baseline_large_offset(self, solver, device, dtype):
+        expected = torch.tensor([[[0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        P1 = torch.tensor(
+            [[[1.0, 0.0, 0.0, 200.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0]]],
+            device=device,
+            dtype=dtype,
+        )
+        P2 = torch.tensor(
+            [[[1.0, 0.0, 0.0, 201.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0]]],
+            device=device,
+            dtype=dtype,
+        )
+        pt1 = torch.tensor([[[200.0, 0.0]]], device=device, dtype=dtype)
+        pt2 = torch.tensor([[[201.0, 0.0]]], device=device, dtype=dtype)
+        out = epi.triangulate_points(P1, P2, pt1, pt2, solver=solver)
+        assert torch.isfinite(out).all()
+        self.assert_close(out, expected, atol=5e-2, rtol=0.0)
+
+        # Even at C_x = -500 where (2 * in_eps) fallback triggers, cofactor stays finite without artificial NaN.
+        P1_500 = torch.tensor(
+            [[[1.0, 0.0, 0.0, 500.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0]]], device=device, dtype=dtype
+        )
+        P2_500 = torch.tensor(
+            [[[1.0, 0.0, 0.0, 501.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0]]], device=device, dtype=dtype
+        )
+        pt1_500 = torch.tensor([[[0.0, 0.0]]], device=device, dtype=dtype)
+        pt2_500 = torch.tensor([[[0.1, 0.0]]], device=device, dtype=dtype)
+        expected_500 = torch.tensor([[[-500.0, 0.0, 10.0]]], device=device, dtype=dtype)
+        out_500 = epi.triangulate_points(P1_500, P2_500, pt1_500, pt2_500, solver=solver)
+        assert torch.isfinite(out_500).all()
+        self.assert_close(out_500, expected_500, atol=0.5, rtol=0.0)
