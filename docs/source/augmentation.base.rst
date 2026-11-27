@@ -58,6 +58,47 @@ Kornia augmentations generally follow a `sample-apply` routine.
   unchanged; subclass `GeometricAugmentationBase2D` to move them
   (`#4420 <https://github.com/kornia/kornia/issues/4420>`_).
 
+.. _augmentation-empty-batches:
+
+Empty image batches
+-------------------
+
+An empty batch has ``B = 0``: ``(0, C, H, W)`` for images or ``(0, C, D, H, W)`` for volumes.
+Its output keeps the zero batch dimension and has the configured output geometry. Crops and resizes return
+their configured spatial size even at ``p=0``: there are no samples to skip. For a nonempty batch, a gate
+that skips the whole batch keeps the input canvas instead.
+
+This does not bypass crop-size checks. For example, ``RandomCrop((9, 10), p=0)`` raises ``ValueError``
+for an empty ``(0, 3, 8, 10)`` input because the crop exceeds the input canvas. Setting
+``pad_if_needed=True`` pads the canvas so that this crop fits.
+
+.. code-block:: python
+
+   import torch
+   import kornia.augmentation as K
+
+   images = torch.empty(0, 3, 8, 10)
+   crop = K.RandomCrop((4, 6), p=0.0)
+   cropped = crop(images)                     # shape (0, 3, 4, 6)
+   replay = crop(images, params=crop._params)  # the same empty output shape
+
+The additional contracts are:
+
+- **Masks:** supported image/mask pipelines keep the empty mask on the image's output canvas, including after
+  a shape-changing crop or resize.
+- **Mix labels:** ``RandomMixUpV2`` returns class data of shape ``(0, 3)``; ``RandomCutMixV2`` keeps its mix axis,
+  giving ``(num_mix, 0, 3)``. Transplantation takes its driving label mask along with the empty image, and its
+  recorded ``forward_input_shape`` describes that mask.
+- **Dissolving:** ``RandomDissolving`` skips diffusion inference for an empty image batch. Construction still has
+  its normal model and optional-dependency requirements.
+- **Containers:** image, augmentation, video and patch sequences preserve the zero batch dimension.
+- **Inverse:** an empty 2D geometric inverse restores the recorded spatial size when
+  ``forward_input_shape`` is available. This is not a guarantee for every container:
+  ``PatchSequential.inverse`` returns its input unchanged for intensity-only pipelines, so pixels removed
+  by ``padding="valid"`` are not restored. For example, a 5-by-5 input on a 2-by-2 patch grid remains
+  4-by-4 after the forward and inverse calls. Geometric patch pipelines raise ``NotImplementedError``
+  on inverse.
+
 Custom Augmentation Classes
 ---------------------------
 
