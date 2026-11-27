@@ -1043,7 +1043,8 @@ def remap(
         - align_corners: ``None`` by default, resolved to ``False`` internally
         - pixel maps are normalized with the ``align_corners=True`` convention whatever flag
           reaches ``grid_sample``, so at ``False``/``None`` even an identity map resamples the image;
-          pass ``align_corners=True`` (`#4504 <https://github.com/kornia/kornia/issues/4504>`_)
+          pass ``align_corners=True`` (`Pixel-coordinate maps are normalized according to the ``align_corners``
+argument before being passed to ``grid_sample``.)
         - the output spatial size comes from the maps; a zero map axis returns an
           autograd-connected empty output, including when the matching source axis is empty
 
@@ -1110,17 +1111,9 @@ def remap(
     if _runs_in_float32(image, map_xy):
         image, map_xy = image.float(), map_xy.float()
 
-    if height <= 0 or width <= 0:
-        raise ValueError("Image height and width must be positive.")
-
     # Normalize pixel coordinates according to align_corners.
     if not normalized_coordinates:
-        if align_corners:
-            map_xy = normalize_pixel_coordinates(map_xy, height, width)
-        else:
-            map_x = (2.0 * map_xy[..., 0] + 1.0) / width - 1.0
-            map_y = (2.0 * map_xy[..., 1] + 1.0) / height - 1.0
-            map_xy = torch.stack((map_x, map_y), dim=-1)
+        map_xy = normalize_pixel_coordinates(map_xy, height, width, align_corners=align_corners)
 
     # simulate broadcasting since grid_sample does not support it
     map_xy = map_xy.expand(batch_size, -1, -1, -1)

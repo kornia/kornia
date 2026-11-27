@@ -1088,7 +1088,24 @@ class TestDepthWarperConventions(BaseTester):
         assert grid.shape == (1, 4, 5, 2)
         self.assert_close(grid[0, 0, 0], torch.tensor([-1.0, -1.0], device=device, dtype=dtype))
         self.assert_close(grid[0, -1, -1], torch.tensor([1.0, 1.0], device=device, dtype=dtype))
+    def test_warp_grid_identity_align_corners_false(self, device, dtype):
+        height, width = 4, 5
+        identity = _eye4(device, dtype)
+        depth_src = torch.ones(1, 1, height, width, device=device, dtype=dtype)
 
+        warper = self._warper(device, dtype, identity, identity)
+        warper.align_corners = False
+
+        grid = warper.warp_grid(depth_src)
+
+        x = torch.linspace(-1.0 + 1.0 / width, 1.0 - 1.0 / width, width, device=device, dtype=dtype)
+        y = torch.linspace(-1.0 + 1.0 / height, 1.0 - 1.0 / height, height, device=device, dtype=dtype)
+        yy, xx = torch.meshgrid(y, x, indexing="ij")
+        expected = torch.stack((xx, yy), dim=-1).unsqueeze(0)
+
+        self.assert_close(grid, expected)
+
+        self.assert_close(grid, expected)
     def test_convention_depth_warp_is_byte_identical_to_depth_warper(self, device, dtype):
         # depth_warp builds a DepthWarper, calls compute_projection_matrix and forwards, so the results are equal
         # bit for bit, on the integer ramp and on the seeded random camera pair; the warp does move the image.

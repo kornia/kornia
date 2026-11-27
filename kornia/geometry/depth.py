@@ -696,7 +696,9 @@ class DepthWarper(nn.Module):
         )  # (B*N)xHxWx2
 
         # normalize between -1 and 1 the coordinates
-        pixel_coords_src_norm: torch.Tensor = normalize_pixel_coordinates(pixel_coords_src, self.height, self.width)
+        pixel_coords_src_norm: torch.Tensor = normalize_pixel_coordinates(
+            pixel_coords_src, self.height, self.width, align_corners=self.align_corners
+        )
         return pixel_coords_src_norm
 
     def forward(self, depth_src: torch.Tensor, patch_dst: torch.Tensor) -> torch.Tensor:

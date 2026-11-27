@@ -1422,7 +1422,11 @@ def quaternion_from_euler(
 
 
 def normalize_pixel_coordinates(
-    pixel_coordinates: torch.Tensor, height: int, width: int, eps: float = 1e-8
+    pixel_coordinates: torch.Tensor,
+    height: int,
+    width: int,
+    eps: float = 1e-8,
+    align_corners: bool = True,
 ) -> torch.Tensor:
     r"""Map pixel coordinates so that the first and last pixel of each axis become -1 and 1.
 
@@ -1434,15 +1438,16 @@ def normalize_pixel_coordinates(
           indexes columns and is scaled by ``width``, ``y`` indexes rows and is
           scaled by ``height``. The positional argument order is the other way
           round — ``(pixel_coordinates, height, width)``
-        - the mapping is **corner-aligned**,
-          ``x_norm = 2 * x / (width - 1) - 1``: for ``width = 4`` the columns
-          ``0``, ``1``, ``3`` map to ``-1``, ``-1/3``, ``+1``. This is the
-          ``align_corners=True`` convention;
-          :func:`torch.nn.functional.grid_sample` at its default
-          ``align_corners=False`` would instead place the first and last of
-          those values at pixels ``-0.5`` and ``3.5`` — half a pixel outside
-          the image on each side — so ``align_corners=True`` must be passed
-          explicitly when feeding this output to it. Note that kornia's own
+        - ``align_corners=True`` maps the first and last pixel centres to
+          ``-1`` and ``1``.
+        - ``align_corners=False`` uses the half-pixel convention:
+
+          ``x_norm = (2 * x + 1) / width - 1``
+
+          ``y_norm = (2 * y + 1) / height - 1``.
+          When using this output with
+          :func:`torch.nn.functional.grid_sample`, pass the same
+          ``align_corners`` value to both functions. Note that kornia's own
           :func:`~kornia.geometry.transform.remap` resolves
           ``align_corners=None`` to ``False``
         - a singleton axis uses scale ``1`` and offset ``0``: its only valid
@@ -1467,6 +1472,7 @@ def normalize_pixel_coordinates(
         height: the maximum height in the y-axis.
         width: the maximum width in the x-axis.
         eps: deprecated compatibility parameter. It is ignored.
+	align_corners: whether to use corner-aligned or half-pixel normalization.
 
     Return:
         the normalized pixel coordinates with shape :math:`(*, 2)`.
@@ -1485,10 +1491,16 @@ def normalize_pixel_coordinates(
         warnings.warn("`eps` is deprecated and ignored by `normalize_pixel_coordinates`.", FutureWarning, stacklevel=2)
 
     if torch.jit.is_scripting() or (not torch.jit.is_tracing() and not is_compiling()):
-        sx = 1.0 if width == 1 else 2.0 / (width - 1.0)
-        sy = 1.0 if height == 1 else 2.0 / (height - 1.0)
-        tx = 0.0 if width == 1 else -1.0
-        ty = 0.0 if height == 1 else -1.0
+        if align_corners:
+            sx = 1.0 if width == 1 else 2.0 / (width - 1.0)
+            sy = 1.0 if height == 1 else 2.0 / (height - 1.0)
+            tx = 0.0 if width == 1 else -1.0
+            ty = 0.0 if height == 1 else -1.0
+        else:
+            sx = 2.0 / width
+            sy = 2.0 / height
+            tx = -1.0 + 1.0 / width
+            ty = -1.0 + 1.0 / height
         if torch.jit.is_scripting():
             anchor = torch.ones((), device=pixel_coordinates.device, dtype=pixel_coordinates.dtype)
             factor = torch.stack([anchor * sx, anchor * sy])
@@ -1507,13 +1519,19 @@ def normalize_pixel_coordinates(
         height_t = torch.scalar_tensor(height, device=pixel_coordinates.device, dtype=work_dtype)
         one = torch.ones((), device=pixel_coordinates.device, dtype=work_dtype)
         zero = torch.zeros((), device=pixel_coordinates.device, dtype=work_dtype)
-        factor = torch.stack(
-            [
-                torch.where(width_t == 1, one, 2.0 / (width_t - 1.0)),
-                torch.where(height_t == 1, one, 2.0 / (height_t - 1.0)),
-            ]
-        )
-        offset = torch.stack([torch.where(width_t == 1, zero, -one), torch.where(height_t == 1, zero, -one)])
+        if align_corners:
+            factor = torch.stack(
+                [
+                    torch.where(width_t == 1, one, 2.0 / (width_t - 1.0)),
+                    torch.where(height_t == 1, one, 2.0 / (height_t - 1.0)),
+                ]
+            )
+            offset = torch.stack(
+                [torch.where(width_t == 1, zero, -one), torch.where(height_t == 1, zero, -one)]
+            )
+        else:
+            factor = torch.stack([2.0 / width_t, 2.0 / height_t])
+            offset = torch.stack([-one + 1.0 / width_t, -one + 1.0 / height_t])
         factor = factor.to(out_dtype)
         offset = offset.to(out_dtype)
 
