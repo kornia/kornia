@@ -68,6 +68,10 @@ Its output keeps the zero batch dimension and has the configured output geometry
 their configured spatial size even at ``p=0``: there are no samples to skip. For a nonempty batch, a gate
 that skips the whole batch keeps the input canvas instead.
 
+This does not bypass crop-size checks. For example, ``RandomCrop((9, 10), p=0)`` raises ``ValueError``
+for an empty ``(0, 3, 8, 10)`` input because the crop exceeds the input canvas. Setting
+``pad_if_needed=True`` pads the canvas so that this crop fits.
+
 .. code-block:: python
 
    import torch
@@ -87,8 +91,13 @@ The additional contracts are:
   recorded ``forward_input_shape`` describes that mask.
 - **Dissolving:** ``RandomDissolving`` skips diffusion inference for an empty image batch. Construction still has
   its normal model and optional-dependency requirements.
-- **Containers and inverse:** image, augmentation, video and patch sequences preserve the zero batch dimension.
-  For an empty batch, ``inverse`` returns the forward input's shape.
+- **Containers:** image, augmentation, video and patch sequences preserve the zero batch dimension.
+- **Inverse:** an empty 2D geometric inverse restores the recorded spatial size when
+  ``forward_input_shape`` is available. This is not a guarantee for every container:
+  ``PatchSequential.inverse`` returns its input unchanged for intensity-only pipelines, so pixels removed
+  by ``padding="valid"`` are not restored. For example, a 5-by-5 input on a 2-by-2 patch grid remains
+  4-by-4 after the forward and inverse calls. Geometric patch pipelines raise ``NotImplementedError``
+  on inverse.
 
 Custom Augmentation Classes
 ---------------------------
