@@ -62,6 +62,10 @@ def warm_up_cpu(seconds: float = 3.0) -> None:
         a @ a
 
 
+#: Fewest timed samples behind a reported median and IQR ("Never time a single call", benchmarks/README.md).
+MIN_TIMED_SAMPLES = 3
+
+
 def time_us_or_error(
     fn: Callable[[], object],
     min_run_time: float = 1.0,
@@ -80,9 +84,14 @@ def time_us_or_error(
     stmt = "fn(); sync()" if sync is not None else "fn()"
     try:
         threads = torch.get_num_threads() if num_threads is None else num_threads
-        m = bench.Timer(stmt=stmt, globals={"fn": fn, "sync": sync}, num_threads=threads).blocked_autorange(
-            min_run_time=min_run_time
-        )
+        timer = bench.Timer(stmt=stmt, globals={"fn": fn, "sync": sync}, num_threads=threads)
+        m = timer.blocked_autorange(min_run_time=min_run_time)
+        # blocked_autorange stops once min_run_time is spent, so a call slower than that is timed once and its IQR is
+        # 0 by construction. Time further blocks until there are MIN_TIMED_SAMPLES behind the median and IQR.
+        missing = MIN_TIMED_SAMPLES - len(m.times)
+        if missing > 0:
+            extra = [timer.timeit(number=m.number_per_run) for _ in range(missing)]
+            (m,) = bench.Measurement.merge([m, *extra])
         return m.median * 1e6, m.iqr * 1e6, None
     except Exception as exc:
         return float("nan"), float("nan"), type(exc).__name__

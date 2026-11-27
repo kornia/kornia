@@ -113,7 +113,9 @@ Every benchmark here must follow the same rules (utilities in [`common.py`](comm
 - **Warmup + repeats:** time with `common.time_us(fn)` — it wraps
   `torch.utils.benchmark.Timer.blocked_autorange`, which warms up, runs many repeats, and
   reports **median** wall clock; `time_us` additionally returns the **IQR** as the spread.
-  Never time a single call.
+  Never time a single call: `blocked_autorange` stops once `--min-run-time` is spent, so `time_us`
+  keeps timing until at least three samples back the median and IQR, even for a call slower than
+  the budget.
 - **Thread consistency:** `time_us` uses the current `torch.get_num_threads()` for timing,
   matching warmup and metadata. Older results collected before this fix timed PyTorch at
   `Timer`'s default of one thread even when metadata named a larger thread count; do not
