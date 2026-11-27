@@ -265,9 +265,9 @@ def _validate_box_values(
 
 
 def _exclusive_far_corner(
-    boxes: torch.Tensor, mode: str, width: torch.Tensor, height: torch.Tensor
+    boxes: torch.Tensor, mode: str, xmin: torch.Tensor, ymin: torch.Tensor, width: torch.Tensor, height: torch.Tensor
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """Return the exclusive far corner ``(xmax, ymax)`` of ``'xy*'`` boxes, in their dtype.
+    """Return the exclusive far corner ``(xmax, ymax)`` of ``'xy*'`` / ``'cxcy*'`` boxes, in their dtype.
 
     ``x + 1`` and ``x + w`` round there as torch rounds them; :func:`_validate_box_values` rejects an extent that
     rounds to zero.
@@ -277,7 +277,19 @@ def _exclusive_far_corner(
         return boxes[..., 2], boxes[..., 3]
     if mode == "xyxy_plus":
         return boxes[..., 2] + 1, boxes[..., 3] + 1
-    return boxes[..., 0] + width, boxes[..., 1] + height
+    return xmin + width, ymin + height
+
+
+def _set_extent_and_center(boxes: torch.Tensor, width: torch.Tensor, height: torch.Tensor, mode: str) -> None:
+    """Write ``(width, height)`` and, for center modes, convert ``(xmin, ymin)`` to ``(cx, cy)``."""
+    boxes[..., 2] = width
+    boxes[..., 3] = height
+    if mode == "cxcywh":
+        boxes[..., 0] = boxes[..., 0] + 0.5 * width
+        boxes[..., 1] = boxes[..., 1] + 0.5 * height
+    elif mode == "cxcywh_plus":
+        boxes[..., 0] = boxes[..., 0] + 0.5 * (width - 1)
+        boxes[..., 1] = boxes[..., 1] + 0.5 * (height - 1)
 
 
 def _boxes_to_quadrilaterals(
@@ -291,8 +303,8 @@ def _boxes_to_quadrilaterals(
 
     ``inclusive=True`` builds the legacy inclusive storage that the bare ``"bbox"`` and ``"bbox_xyxy"`` tensor keys of
     :class:`~kornia.augmentation.container.AugmentationSequential` still use, with the arithmetic it always had.
-    ``allow_empty=True`` accepts zero extents in the ``'xy*'`` modes, as the container does for the boxes that
-    clipping emptied; see :func:`_validate_box_values`.
+    ``allow_empty=True`` accepts zero extents in coordinate modes (``'xy*'``, ``'cxcy*'``), as the container does
+    for the boxes that clipping emptied; see :func:`_validate_box_values`.
     """
     mode = mode.lower()
 
@@ -300,7 +312,7 @@ def _boxes_to_quadrilaterals(
         batched = boxes.ndim == 4
         if not (3 <= boxes.ndim <= 4 and boxes.shape[-2:] == torch.Size([4, 2])):
             raise ValueError(f"Boxes shape must be (N, 4, 2) or (B, N, 4, 2) when {mode} mode. Got {boxes.shape}.")
-    elif mode.startswith("xy"):
+    elif mode.startswith(("xy", "cxcy")):
         batched = boxes.ndim == 3
         if not (2 <= boxes.ndim <= 3 and boxes.shape[-1] == 4):
             raise ValueError(f"Boxes shape must be (N, 4) or (B, N, 4) when {mode} mode. Got {boxes.shape}.")
@@ -325,19 +337,29 @@ def _boxes_to_quadrilaterals(
         else:
             raise ValueError(f"Unknown mode {mode}")
 
-    elif mode.startswith("xy"):
+    elif mode.startswith(("xy", "cxcy")):
         if mode == "xyxy":
             height, width = boxes[..., 3] - boxes[..., 1], boxes[..., 2] - boxes[..., 0]
+            xmin, ymin = boxes[..., 0], boxes[..., 1]
         elif mode == "xyxy_plus":
             height, width = boxes[..., 3] - boxes[..., 1] + 1, boxes[..., 2] - boxes[..., 0] + 1
+            xmin, ymin = boxes[..., 0], boxes[..., 1]
         elif mode == "xywh":
             height, width = boxes[..., 3], boxes[..., 2]
+            xmin, ymin = boxes[..., 0], boxes[..., 1]
+        elif mode == "cxcywh":
+            width, height = boxes[..., 2], boxes[..., 3]
+            xmin = boxes[..., 0] - 0.5 * width
+            ymin = boxes[..., 1] - 0.5 * height
+        elif mode == "cxcywh_plus":
+            width, height = boxes[..., 2], boxes[..., 3]
+            xmin = boxes[..., 0] - 0.5 * (width - 1)
+            ymin = boxes[..., 1] - 0.5 * (height - 1)
         else:
             raise ValueError(f"Unknown mode {mode}")
 
-        xmin, ymin = boxes[..., 0], boxes[..., 1]
         # The legacy inclusive storage builds its corners from the extents instead.
-        far = None if inclusive else _exclusive_far_corner(boxes, mode, width, height)
+        far = None if inclusive else _exclusive_far_corner(boxes, mode, xmin, ymin, width, height)
 
         # Value validation reads the data, which graph capture cannot do; skip it under any capture (torch.compile,
         # torch.export).
@@ -365,14 +387,13 @@ def _quadrilaterals_to_boxes(quadrilaterals: torch.Tensor, mode: str, inclusive:
         quadrilaterals.shape[0], quadrilaterals.shape[1], 4
     )
     mode = mode.lower()
-    if mode not in ("xyxy", "xyxy_plus", "xywh", "vertices", "vertices_plus"):
+    if mode not in ("xyxy", "xyxy_plus", "xywh", "cxcywh", "cxcywh_plus", "vertices", "vertices_plus"):
         raise ValueError(f"Unknown mode {mode}")
 
     if inclusive:
-        if mode in ("xywh", "vertices", "vertices_plus"):
+        if mode in ("xywh", "cxcywh", "cxcywh_plus", "vertices", "vertices_plus"):
             height, width = boxes[..., 3] - boxes[..., 1] + 1, boxes[..., 2] - boxes[..., 0] + 1
-            boxes[..., 2] = width
-            boxes[..., 3] = height
+            _set_extent_and_center(boxes, width, height, mode)
         if mode in ("xyxy", "vertices"):
             offset = torch.as_tensor([0, 0, 1, 1], device=boxes.device, dtype=boxes.dtype)
             boxes = boxes + offset
@@ -383,10 +404,9 @@ def _quadrilaterals_to_boxes(quadrilaterals: torch.Tensor, mode: str, inclusive:
     if mode in ("xyxy_plus", "vertices_plus"):
         offset = torch.as_tensor([0, 0, 1, 1], device=boxes.device, dtype=boxes.dtype)
         boxes = boxes - offset
-    elif mode == "xywh":
+    elif mode in ("xywh", "cxcywh", "cxcywh_plus"):
         height, width = boxes[..., 3] - boxes[..., 1], boxes[..., 2] - boxes[..., 0]
-        boxes[..., 2] = width
-        boxes[..., 3] = height
+        _set_extent_and_center(boxes, width, height, mode)
     if mode.startswith("vertices"):
         boxes = _corners_to_polygons(boxes[..., 0], boxes[..., 1], boxes[..., 2], boxes[..., 3])
     return boxes
@@ -485,23 +505,25 @@ class Boxes:
           :func:`~kornia.geometry.bbox.nms` takes exclusive ``xyxy``.
         - The modes of :meth:`from_tensor` and :meth:`to_tensor`, case-insensitive: ``'xyxy'`` is
           ``(xmin, ymin, xmax, ymax)`` with ``xmax`` and ``ymax`` one past the last pixel, ``'xyxy_plus'`` the same
-          on the last pixel, ``'xywh'`` is ``(xmin, ymin, width, height)``, ``'vertices'`` the stored corners, with
-          ``xmax`` and ``ymax`` one past the last pixel, and ``'vertices_plus'`` the corners on the last pixel.
+          on the last pixel, ``'xywh'`` is ``(xmin, ymin, width, height)``, ``'cxcywh'`` is
+          ``(center_x, center_y, width, height)``, ``'cxcywh_plus'`` the same with inclusive center, ``'vertices'``
+          the stored corners, with ``xmax`` and ``ymax`` one past the last pixel, and ``'vertices_plus'`` the corners
+          on the last pixel.
           ``from_tensor(torch.tensor([[[0., 0., 10., 20.]]]))`` stores ``[[0, 0], [10, 0], [10, 20], [0, 20]]``,
-          which ``to_tensor`` exports as ``[0, 0, 10, 20]`` in ``'xyxy'`` and ``'xywh'`` and ``[0, 0, 9, 19]`` in
-          ``'xyxy_plus'``. Fractional and normalized ``[0, 1]`` boxes round-trip in the exclusive modes. The
-          ``_plus`` modes add and subtract 1 in the box dtype, which can round a normalized edge: ``2**-10`` does not
-          survive them in bfloat16.
+          which ``to_tensor`` exports as ``[0, 0, 10, 20]`` in ``'xyxy'`` and ``'xywh'``, ``[5, 10, 10, 20]`` in
+          ``'cxcywh'``, and ``[0, 0, 9, 19]`` in ``'xyxy_plus'``. Fractional and normalized ``[0, 1]`` boxes round-trip
+          in the exclusive modes. The ``_plus`` modes add and subtract 1 in the box dtype, which can round a normalized
+          edge: ``2**-10`` does not survive them in bfloat16.
         - The ``'vertices_plus'`` import expands the far bounds by one along each axis. It preserves vertex order
           and scales intermediate coordinates proportionally. If an axis has coincident coordinates, the other
           axis determines the corner order. Four coincident centres use canonical order and describe one pixel.
           Use ``'vertices'`` for quadrilaterals already in the edge frame.
-        - With ``validate_boxes=True``, every mode rejects a non-finite coordinate. The ``'xy*'`` modes raise
-          ``ValueError`` and also reject non-positive extents. The vertex modes raise ``RuntimeError`` through
-          ``torch._assert_async`` for non-finite input (by the next synchronization on CUDA, and on MPS from
-          torch 2.13). Both vertex modes accept rotated, sheared and projective quadrilaterals.
-        - ``'xyxy_plus'`` and ``'xywh'`` build the exclusive far corner, ``x + 1`` or ``x + w``, in the box dtype, so
-          it rounds as torch rounds that sum. bfloat16 has no odd integers above 256 and float16 none above 2048:
+        - With ``validate_boxes=True``, every mode rejects a non-finite coordinate. The coordinate modes
+          (``'xy*'``, ``'cxcy*'``) raise ``ValueError`` and also reject non-positive extents. The vertex modes raise
+          ``RuntimeError`` through ``torch._assert_async`` for non-finite input (by the next synchronization on CUDA,
+          and on MPS from torch 2.13). Both vertex modes accept rotated, sheared and projective quadrilaterals.
+        - ``'xyxy_plus'``, ``'xywh'``, ``'cxcywh'`` and ``'cxcywh_plus'`` build the exclusive corners in the box dtype,
+          so they round as torch rounds those sums. bfloat16 has no odd integers above 256 and float16 none above 2048:
           bfloat16 ``xyxy_plus=[256, 0, 258, 2]`` stores the edge 260. float32 holds every integer edge below
           ``2**24``. With ``validate_boxes=True`` a positive extent that rounds to zero, such as bfloat16
           ``xywh=[256, 0, 1, 1]``, raises ``ValueError`` instead of storing an empty box; without validation the
@@ -1100,17 +1122,21 @@ class Boxes:
                   ``(B, N, 4)``.
                 * 'xywh': ``xmin, ymin, width, height`` with exclusive extent. With shape ``(N, 4)``,
                   ``(B, N, 4)``.
+                * 'cxcywh': ``center_x, center_y, width, height`` with exclusive extent. With shape ``(N, 4)``,
+                  ``(B, N, 4)``.
+                * 'cxcywh_plus': ``center_x, center_y, width, height`` with inclusive extent. With shape ``(N, 4)``,
+                  ``(B, N, 4)``.
                 * 'vertices': boxes are defined by their vertices points in the following ``clockwise`` order:
                   *top-left, top-right, bottom-right, bottom-left*. Vertices coordinates are in (x,y) order. This is
                   the exclusive stored form. With shape ``(N, 4, 2)``, ``(B, N, 4, 2)``.
                 * 'vertices_plus': the same corners with inclusive extent, on the last pixel. With shape
                   ``(N, 4, 2)``, ``(B, N, 4, 2)``.
 
-            validate_boxes: Reject a non-finite coordinate in every mode: ``ValueError`` for the ``'xy*'`` modes,
-                which also reject non-positive extents in each mode's convention and positive ones that round to
-                zero in the box dtype, and ``RuntimeError`` from ``torch._assert_async`` for the vertex modes.
-                ``'vertices_plus'`` also raises ``ValueError`` if an extent rounds to zero in float16 or bfloat16.
-                Graph capture (``torch.compile``, ``torch.export``) skips the checks that require a host read.
+            validate_boxes: Reject a non-finite coordinate in every mode: ``ValueError`` for the coordinate modes
+                (``'xy*'``, ``'cxcy*'``), which also reject non-positive extents in each mode's convention and positive
+                ones that round to zero in the box dtype, and ``RuntimeError`` from ``torch._assert_async`` for the
+                vertex modes. ``'vertices_plus'`` also raises ``ValueError`` if an extent rounds to zero in float16 or
+                bfloat16. Graph capture (``torch.compile``, ``torch.export``) skips the checks that require a host read.
 
         Returns:
             :class:`Boxes` containing the converted exclusive vertex representation.
@@ -1187,8 +1213,8 @@ class Boxes:
 
         See the Convention block on :class:`~kornia.geometry.boxes.Boxes`.
 
-        ``mode`` selects the output representation. ``'xyxy'``, ``'xywh'``, and ``'vertices'`` are exclusive
-        exports; the ``'_plus'`` variants are inclusive. Every mode exports the axis-aligned bounds of the
+        ``mode`` selects the output representation. ``'xyxy'``, ``'xywh'``, ``'cxcywh'``, and ``'vertices'`` are
+        exclusive exports; the ``'_plus'`` variants are inclusive. Every mode exports the axis-aligned bounds of the
         stored vertices, reduced with ``amin``/``amax``, so the export is lossy for rotated boxes:
         ``to_tensor('vertices')`` does not return :attr:`data` unchanged after a :meth:`transform_boxes`
         call that rotates, shears, or otherwise reorders the vertices. A quarter turn keeps the box
@@ -1211,6 +1237,8 @@ class Boxes:
                 * 'xyxy': ``xmin, ymin, xmax, ymax`` with exclusive extent.
                 * 'xyxy_plus': ``xmin, ymin, xmax, ymax`` with inclusive extent.
                 * 'xywh': ``xmin, ymin, width, height`` with exclusive extent.
+                * 'cxcywh': ``center_x, center_y, width, height`` with exclusive extent.
+                * 'cxcywh_plus': ``center_x, center_y, width, height`` with inclusive extent.
                 * 'vertices': boxes are defined by their vertices points in the following ``clockwise`` order:
                   *top-left, top-right, bottom-right, bottom-left*. Vertices coordinates are in (x,y) order. This is
                   the exclusive stored form.
@@ -1463,8 +1491,8 @@ class Boxes:
 
         Returns:
             Mode string used as the default by :meth:`to_tensor`, such as
-            ``"xyxy"``, ``"xyxy_plus"``, ``"xywh"``, ``"vertices"`` or
-            ``"vertices_plus"``.
+            ``"xyxy"``, ``"xyxy_plus"``, ``"xywh"``, ``"cxcywh"``, ``"cxcywh_plus"``,
+            ``"vertices"`` or ``"vertices_plus"``.
         """
         return self._mode
 

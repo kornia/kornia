@@ -402,7 +402,64 @@ class TestBoxes2D(BaseTester):
         expected = torch.tensor([[[[1.0, 2.0], [5.0, 2.0], [5.0, 4.0], [1.0, 4.0]]]], device=device, dtype=dtype)
         self.assert_close(boxes.data, expected, atol=0.0, rtol=0.0)
 
-    @pytest.mark.parametrize("mode", ["xyxy", "xyxy_plus", "xywh"])
+    def test_convention_from_tensor_cxcywh_stores_exclusive_vertices(self, device, dtype):
+        # Exclusive center-coordinate cxcywh conversion:
+        # Given center (3.0, 3.0), width 4.0, height 2.0:
+        # xmin = 3.0 - 0.5 * 4.0 = 1.0, ymin = 3.0 - 0.5 * 2.0 = 2.0
+        # Exclusive stored corners span [1.0, 2.0] to [5.0, 4.0].
+        boxes = Boxes.from_tensor(torch.tensor([[[3.0, 3.0, 4.0, 2.0]]], device=device, dtype=dtype), mode="cxcywh")
+        expected = torch.tensor([[[[1.0, 2.0], [5.0, 2.0], [5.0, 4.0], [1.0, 4.0]]]], device=device, dtype=dtype)
+        self.assert_close(boxes.data, expected, atol=0.0, rtol=0.0)
+
+    def test_convention_from_tensor_cxcywh_plus_stores_exclusive_vertices(self, device, dtype):
+        # Inclusive center-coordinate cxcywh_plus conversion:
+        # Given center (2.5, 2.5), width 4.0, height 2.0:
+        # xmin = 2.5 - 0.5 * (4.0 - 1) = 1.0, ymin = 2.5 - 0.5 * (2.0 - 1) = 2.0
+        # Exclusive stored corners span [1.0, 2.0] to [5.0, 4.0].
+        boxes = Boxes.from_tensor(
+            torch.tensor([[[2.5, 2.5, 4.0, 2.0]]], device=device, dtype=dtype), mode="cxcywh_plus"
+        )
+        expected = torch.tensor([[[[1.0, 2.0], [5.0, 2.0], [5.0, 4.0], [1.0, 4.0]]]], device=device, dtype=dtype)
+        self.assert_close(boxes.data, expected, atol=0.0, rtol=0.0)
+
+    @pytest.mark.parametrize("mode", ["cxcywh", "cxcywh_plus"])
+    @pytest.mark.parametrize(
+        "invalid_coords",
+        [
+            [10.0, 10.0, -4.0, 2.0],  # negative width
+            [10.0, 10.0, 4.0, -2.0],  # negative height
+            [10.0, 10.0, 0.0, 2.0],  # zero width
+            [10.0, 10.0, 4.0, 0.0],  # zero height
+        ],
+    )
+    def test_from_tensor_cxcywh_rejects_negative_or_zero_extents(self, mode, invalid_coords, device, dtype):
+        source = torch.tensor([invalid_coords], device=device, dtype=dtype)
+        with pytest.raises(ValueError, match=r"Some boxes have negative (widths|heights) or 0."):
+            Boxes.from_tensor(source, mode=mode, validate_boxes=True)
+
+    def test_cxcywh_cross_mode_conversions(self, device, dtype):
+        # Cross-conversion consistency between xyxy, xywh, and cxcywh
+        xyxy = torch.tensor([[10.0, 20.0, 50.0, 60.0]], device=device, dtype=dtype)
+        xywh = torch.tensor([[10.0, 20.0, 40.0, 40.0]], device=device, dtype=dtype)
+        cxcywh = torch.tensor([[30.0, 40.0, 40.0, 40.0]], device=device, dtype=dtype)
+
+        b_from_xyxy = Boxes.from_tensor(xyxy, mode="xyxy")
+        self.assert_close(b_from_xyxy.to_tensor("cxcywh"), cxcywh, atol=0.0, rtol=0.0)
+        self.assert_close(b_from_xyxy.to_tensor("xywh"), xywh, atol=0.0, rtol=0.0)
+
+        b_from_cxcywh = Boxes.from_tensor(cxcywh, mode="cxcywh")
+        self.assert_close(b_from_cxcywh.to_tensor("xyxy"), xyxy, atol=0.0, rtol=0.0)
+        self.assert_close(b_from_cxcywh.to_tensor("xywh"), xywh, atol=0.0, rtol=0.0)
+        self.assert_close(b_from_cxcywh.to_tensor("cxcywh"), cxcywh, atol=0.0, rtol=0.0)
+
+    def test_cxcywh_fractional_subpixel_round_trip(self, device, dtype):
+        # Sub-pixel fractional coordinates round-trip exactly with extents >= 1
+        source = torch.tensor([[[15.25, 25.75, 10.5, 8.5]]], device=device, dtype=dtype)
+        b = Boxes.from_tensor(source, mode="cxcywh")
+        out = b.to_tensor("cxcywh")
+        self.assert_close(out, source, atol=1e-5, rtol=1e-5)
+
+    @pytest.mark.parametrize("mode", ["xyxy", "xyxy_plus", "xywh", "cxcywh", "cxcywh_plus"])
     def test_convention_from_tensor_rejects_non_finite_coordinates_4238(self, mode, device, dtype):
         # Pin kornia#4238: eager validation rejects non-finite values in both
         # unbatched and batched inputs, even when valid rows are present too.
@@ -463,7 +520,7 @@ class TestBoxes2D(BaseTester):
         self.assert_close(actual, expected, atol=0.0, rtol=0.0)
 
     @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
-    @pytest.mark.parametrize("mode", ["xyxy", "xyxy_plus", "xywh"])
+    @pytest.mark.parametrize("mode", ["xyxy", "xyxy_plus", "xywh", "cxcywh", "cxcywh_plus"])
     def test_coordinate_import_checks_skipped_under_any_capture_5037(self, mode, device, dtype):
         # The coordinate modes check finiteness and extents on the host, which a fullgraph trace cannot do, so any
         # capture skips the check, not only export (#5037). Eager still raises on a non-finite coordinate; a traced
@@ -514,7 +571,9 @@ class TestBoxes2D(BaseTester):
             boxes = Boxes3D.from_tensor(source, mode="xyzxyz", validate_boxes=False)
         assert torch.isnan(boxes.data).any()
 
-    @pytest.mark.parametrize("mode", ["xyxy", "xyxy_plus", "xywh", "vertices", "vertices_plus"])
+    @pytest.mark.parametrize(
+        "mode", ["xyxy", "xyxy_plus", "xywh", "cxcywh", "cxcywh_plus", "vertices", "vertices_plus"]
+    )
     def test_convention_axis_aligned_box_round_trips_in_each_mode(self, mode, device, dtype):
         # Convention pin: an axis-aligned rectangle whose extent is at least one unit
         # per axis round-trips in each mode. The source values describe the same
@@ -524,6 +583,8 @@ class TestBoxes2D(BaseTester):
             "xyxy": [1.0, 2.0, 5.0, 4.0],
             "xyxy_plus": [1.0, 2.0, 4.0, 3.0],
             "xywh": [1.0, 2.0, 4.0, 2.0],
+            "cxcywh": [3.0, 3.0, 4.0, 2.0],
+            "cxcywh_plus": [2.5, 2.5, 4.0, 2.0],
             "vertices": [[1.0, 2.0], [5.0, 2.0], [5.0, 4.0], [1.0, 4.0]],
             "vertices_plus": [[1.0, 2.0], [4.0, 2.0], [4.0, 3.0], [1.0, 3.0]],
         }
@@ -539,7 +600,9 @@ class TestBoxes2D(BaseTester):
         output = Boxes.from_tensor(source, mode="xyxy").to_tensor("xyxy")
         self.assert_close(output, source, atol=0.0, rtol=0.0)
 
-    @pytest.mark.parametrize("mode", ["xyxy", "xyxy_plus", "xywh", "vertices", "vertices_plus"])
+    @pytest.mark.parametrize(
+        "mode", ["xyxy", "xyxy_plus", "xywh", "cxcywh", "cxcywh_plus", "vertices", "vertices_plus"]
+    )
     def test_convention_sub_unit_extent_round_trips_4061(self, mode, device, dtype):
         # kornia#4061: the inclusive storage placed the top-right vertex at ``xmin + width - 1``, left of the
         # top-left vertex for a sub-unit extent, so to_tensor recovered a larger box. The exclusive storage keeps
@@ -548,6 +611,8 @@ class TestBoxes2D(BaseTester):
             "xyxy": [0.1, 0.1, 0.6, 0.9],
             "xyxy_plus": [0.1, 0.1, 0.6, 0.9],
             "xywh": [0.1, 0.1, 0.5, 0.8],
+            "cxcywh": [0.35, 0.5, 0.5, 0.8],
+            "cxcywh_plus": [-0.15, 0.0, 0.5, 0.8],
             "vertices": [[0.1, 0.1], [0.6, 0.1], [0.6, 0.9], [0.1, 0.9]],
             "vertices_plus": [[0.1, 0.1], [0.6, 0.1], [0.6, 0.9], [0.1, 0.9]],
         }
@@ -1029,7 +1094,9 @@ class TestBoxes2D(BaseTester):
         self.assert_close(exported[0], torch.tensor([_A], device=device, dtype=dtype) + 1.0, atol=0.0, rtol=0.0)
         assert [len(out) for out in exported] == [1, 3]
 
-    @pytest.mark.parametrize("mode", ["xyxy", "xyxy_plus", "xywh", "vertices", "vertices_plus"])
+    @pytest.mark.parametrize(
+        "mode", ["xyxy", "xyxy_plus", "xywh", "cxcywh", "cxcywh_plus", "vertices", "vertices_plus"]
+    )
     @pytest.mark.parametrize("index_put", [False, True])
     def test_convention_padding_written_to_dense_boxes_is_invalid_6283(self, index_put, mode, device, dtype):
         # A dense container has no trimmed export, so a padding row written to it is not a box: it exports as an exact
@@ -1423,7 +1490,9 @@ class TestBoxes2D(BaseTester):
         assert boxes_vertices_plus.shape == expected_box.shape
         self.assert_close(boxes_vertices_plus, expected_box)
 
-    @pytest.mark.parametrize("mode", ["xyxy", "xyxy_plus", "xywh", "vertices", "vertices_plus"])
+    @pytest.mark.parametrize(
+        "mode", ["xyxy", "xyxy_plus", "xywh", "cxcywh", "cxcywh_plus", "vertices", "vertices_plus"]
+    )
     @pytest.mark.parametrize("batched", [False, True])
     def test_from_tensor_accepts_nested_numeric_list(self, mode, batched, device, dtype):
         """A nested Python list converts like the tensor it spells, in every mode."""
@@ -1443,7 +1512,7 @@ class TestBoxes2D(BaseTester):
             Boxes.from_tensor([[1.0, 2.0, -3.0, 4.0]], mode="xyxy")
         assert Boxes.from_tensor([[1.0, 2.0, -3.0, 4.0]], mode="xyxy", validate_boxes=False).data.shape == (1, 4, 2)
 
-    @pytest.mark.parametrize("mode", ["xyxy", "xywh", "vertices"])
+    @pytest.mark.parametrize("mode", ["xyxy", "xywh", "cxcywh", "cxcywh_plus", "vertices"])
     def test_from_tensor_accepts_empty_list(self, mode):
         """An empty Python list yields an empty boxes tensor, as an empty (0, 4) tensor does."""
         boxes = Boxes.from_tensor([], mode=mode)
@@ -1479,6 +1548,8 @@ class TestBoxes2D(BaseTester):
         expected_box_xyxy = torch.as_tensor([[1, 2, 3, 4]], device=device, dtype=dtype).view(*shape)
         expected_box_xyxy_plus = torch.as_tensor([[1, 2, 2, 3]], device=device, dtype=dtype).view(*shape)
         expected_box_xywh = torch.as_tensor([[1, 2, 2, 2]], device=device, dtype=dtype).view(*shape)
+        expected_box_cxcywh = torch.as_tensor([[2, 3, 2, 2]], device=device, dtype=dtype).view(*shape)
+        expected_box_cxcywh_plus = torch.as_tensor([[1.5, 2.5, 2, 2]], device=device, dtype=dtype).view(*shape)
         expected_vertices = torch.as_tensor([[[1, 2], [3, 2], [3, 4], [1, 4]]], device=device, dtype=dtype).view(
             *shape, 2
         )
@@ -1489,6 +1560,8 @@ class TestBoxes2D(BaseTester):
         boxes_xyxy = box.to_tensor(mode="xyxy")
         boxes_xyxy_plus = box.to_tensor(mode="xyxy_plus")
         boxes_xywh = box.to_tensor(mode="xywh")
+        boxes_cxcywh = box.to_tensor(mode="cxcywh")
+        boxes_cxcywh_plus = box.to_tensor(mode="cxcywh_plus")
         boxes_vertices = box.to_tensor(mode="vertices")
         boxes_vertices_plus = box.to_tensor(mode="vertices_plus")
 
@@ -1501,13 +1574,21 @@ class TestBoxes2D(BaseTester):
         assert boxes_xywh.shape == expected_box_xywh.shape
         self.assert_close(boxes_xywh, expected_box_xywh)
 
+        assert boxes_cxcywh.shape == expected_box_cxcywh.shape
+        self.assert_close(boxes_cxcywh, expected_box_cxcywh)
+
+        assert boxes_cxcywh_plus.shape == expected_box_cxcywh_plus.shape
+        self.assert_close(boxes_cxcywh_plus, expected_box_cxcywh_plus)
+
         assert boxes_vertices.shape == expected_vertices.shape
         self.assert_close(boxes_vertices, expected_vertices)
 
         assert boxes_vertices_plus.shape == expected_vertices_plus.shape
         self.assert_close(boxes_vertices_plus, expected_vertices_plus)
 
-    @pytest.mark.parametrize("mode", ["xyxy", "xyxy_plus", "xywh", "vertices", "vertices_plus"])
+    @pytest.mark.parametrize(
+        "mode", ["xyxy", "xyxy_plus", "xywh", "cxcywh", "cxcywh_plus", "vertices", "vertices_plus"]
+    )
     def test_boxes_list_to_tensor_list(self, mode, device, dtype):
         if mode == "vertices":
             item = torch.as_tensor([[[1, 2], [3, 2], [3, 4], [1, 4]]], device=device, dtype=dtype)
@@ -2432,6 +2513,26 @@ class TestExclusiveStorage6710(BaseTester):
         with pytest.raises(ValueError, match="inclusive corners"):
             combine()
 
+    @pytest.mark.parametrize(
+        ("mode", "values"),
+        [
+            ("cxcywh", [3.0, 3.0, 4.0, 2.0]),
+            ("cxcywh_plus", [2.5, 2.5, 4.0, 2.0]),
+        ],
+    )
+    def test_convention_legacy_inclusive_storage_round_trips_cxcywh(self, mode, values, device, dtype):
+        # Legacy inclusive Boxes containers support importing and exporting both exclusive "cxcywh" and
+        # inclusive "cxcywh_plus" representations while storing inclusive vertices.
+        expected_corners = torch.tensor([[[1.0, 2.0], [4.0, 2.0], [4.0, 3.0], [1.0, 3.0]]], device=device, dtype=dtype)
+        legacy = Boxes._from_tensor(torch.tensor([values], device=device, dtype=dtype), mode=mode, inclusive=True)
+        assert legacy._inclusive
+        self.assert_close(legacy.data, expected_corners, atol=0.0, rtol=0.0)
+        self.assert_close(legacy.to_tensor("cxcywh"), torch.tensor([[3.0, 3.0, 4.0, 2.0]], device=device, dtype=dtype))
+        self.assert_close(
+            legacy.to_tensor("cxcywh_plus"), torch.tensor([[2.5, 2.5, 4.0, 2.0]], device=device, dtype=dtype)
+        )
+        self.assert_close(legacy.to_tensor("xyxy"), torch.tensor([[1.0, 2.0, 5.0, 4.0]], device=device, dtype=dtype))
+
     def test_convention_boxes3d_applies_matrices_to_the_stored_vertices(self, device, dtype):
         # 3D takes the exclusive storage only (kornia#6710 revision 4): the matrix moves the stored vertices as
         # given, so a 2x scale of the cube [0, 2) gives [0, 4), where reading it on pixel centres gave [-0.5, 3.5).
@@ -2445,6 +2546,8 @@ class TestExclusiveStorage6710(BaseTester):
         [
             ("xyxy_plus", [256.0, 0.0, 256.0, 0.0], [254.0, 0.0, 255.0, 0.0]),
             ("xywh", [256.0, 0.0, 1.0, 1.0], [256.0, 0.0, 2.0, 1.0]),
+            ("cxcywh", [256.0, 0.5, 1.0, 1.0], [258.0, 0.5, 4.0, 1.0]),
+            ("cxcywh_plus", [256.0, 0.0, 1.0, 1.0], [258.0, 0.0, 4.0, 1.0]),
         ],
     )
     def test_convention_low_precision_extent_that_rounds_to_zero_raises(self, mode, source, representable, device):
@@ -2518,7 +2621,9 @@ class TestExclusiveStorage6710(BaseTester):
         assert not kept(square, max_area=2400.0)
         assert kept(square, max_area=2401.0)
 
-    @pytest.mark.parametrize("mode", ["xyxy", "xyxy_plus", "xywh", "xyzxyz", "xyzxyz_plus", "xyzwhd"])
+    @pytest.mark.parametrize(
+        "mode", ["xyxy", "xyxy_plus", "xywh", "cxcywh", "cxcywh_plus", "xyzxyz", "xyzxyz_plus", "xyzwhd"]
+    )
     def test_import_keeps_float16_boxes_in_a_bfloat16_autocast_region(self, mode, device):
         # The corners are written into one float16 allocation: torch.stack is on autocast's promote list, which
         # raises for float16 input in a bfloat16 region (``Unexpected floating ScalarType``).
@@ -2527,6 +2632,8 @@ class TestExclusiveStorage6710(BaseTester):
             "xyxy": [0.0, 0.0, 1.0, 1.0],
             "xyxy_plus": [0.0, 0.0, 0.0, 0.0],
             "xywh": [0.0, 0.0, 1.0, 1.0],
+            "cxcywh": [0.5, 0.5, 1.0, 1.0],
+            "cxcywh_plus": [0.0, 0.0, 1.0, 1.0],
             "xyzxyz": [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
             "xyzxyz_plus": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
             "xyzwhd": [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
@@ -3575,7 +3682,7 @@ class TestVideoBoxes(BaseTester):
             (merged, dense),
             (merged.transform_boxes(transform.expand(4, -1, -1)), dense.transform_boxes(transform.expand(4, -1, -1))),
         ):
-            for mode in ("xyxy", "xyxy_plus", "xywh", "vertices", "vertices_plus"):
+            for mode in ("xyxy", "xyxy_plus", "xywh", "cxcywh", "cxcywh_plus", "vertices", "vertices_plus"):
                 exported = boxes.to_tensor(mode)
                 expected = reference.to_tensor(mode).reshape(exported.shape)
                 assert exported.shape[:3] == (2, 2, 3)

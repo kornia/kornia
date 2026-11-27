@@ -106,20 +106,18 @@ class DETRPostProcessor(nn.Module):
             number of detections above the threshold in that image.
 
         """
-        # NOTE: consider using kornia BoundingBox
+        # Box format is normalized cxcywh; convert to exclusive xywh:
+        # (x, y, w, h) = (cx - 0.5 * w, cy - 0.5 * h, w, h).
+        # Note: Materializing Boxes corners in float16 quantizes odd extents above 2048
+        # (where [2048, 4096] represents only even integers), and Boxes vertex construction
+        # freezes batch dimensions under TorchScript ONNX export (dynamo=False). Keep
+        # continuous arithmetic here to preserve exact extents and dynamic batching.
         # NOTE: consider having a separate function to convert the detections to a list of bounding boxes
-
-        # https://github.com/PaddlePaddle/PaddleDetection/blob/5d1f888362241790000950e2b63115dc8d1c6019/ppdet/modeling/post_process.py#L446
-        # box format is cxcywh
-        # convert to xywh
-        # bboxes[..., :2] -= bboxes[..., 2:] * 0.5  # in-place operation is not torch.compile()-friendly
-        # TODO: replace using kornia BoundingBox
         cxcy, wh = boxes[..., :2], boxes[..., 2:]
-        boxes_xy = torch.cat([cxcy - wh * 0.5, wh], -1)
+        boxes_xy = torch.cat([cxcy - wh * 0.5, wh], dim=-1)
 
         # (B, 2) (H, W) -> (B, 1, 4) (W, H, W, H): each image is scaled by its own size
         sizes_wh = original_sizes.flip(-1).repeat(1, 2).unsqueeze(1).to(boxes_xy.dtype)
-
         boxes_xy = boxes_xy * sizes_wh
         scores = logits.sigmoid()  # RT-DETR was trained with focal loss. thus sigmoid is used instead of softmax
 
