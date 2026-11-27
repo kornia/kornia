@@ -177,7 +177,7 @@ def undistort_points_kannala_brandt(distorted_points_in_camera: torch.Tensor, pa
           caller-visible step count, so the round trip through :func:`distort_points_kannala_brandt` closes only
           to the accuracy that iteration reaches.
         - a zero distorted radius maps to the origin.
-        - the iteration runs in the dtype of ``params`` and the result takes the dtype of the points.
+        - the iteration runs in at least float32 working precision and the result takes the dtype of the points.
 
     Args:
         distorted_points_in_camera: torch.Tensor representing the points to undistort with shape ``(..., 2)``.
@@ -210,8 +210,12 @@ def undistort_points_kannala_brandt(distorted_points_in_camera: torch.Tensor, pa
     device = distorted_points_in_camera.device
     out_dtype = distorted_points_in_camera.dtype
 
-    pts = distorted_points_in_camera.to(device=device, dtype=params.dtype)
-    p = params.to(device=device, dtype=params.dtype)
+    compute_dtype = torch.promote_types(distorted_points_in_camera.dtype, params.dtype)
+    if compute_dtype in (torch.float16, torch.bfloat16):
+        compute_dtype = torch.float32
+
+    pts = distorted_points_in_camera.to(device=device, dtype=compute_dtype)
+    p = params.to(device=device, dtype=compute_dtype)
 
     x = pts[..., 0]
     y = pts[..., 1]
