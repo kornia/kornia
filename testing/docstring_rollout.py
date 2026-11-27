@@ -49,6 +49,7 @@ EXCLUDED_PACKAGES: dict[str, str] = {
     "utils": "deprecated shims that keep their 'Deprecated: use X' first lines",
     "models": "not converted to the docstring style; its docstrings keep their earlier form",
     "transpiler": "a removal stub",
+    "profiler": "new package; docstrings not yet converted to the repo's docstring style",
 }
 """Top-level packages the docstring checks leave out, with the reason."""
 
