@@ -54,6 +54,8 @@ def _cuda_uv_env(tmp_path: Path, uv: str) -> dict[str, str]:
     env.update(PIXI.get("activation", {}).get("env", {}))
     for feature in PIXI["environments"]["cuda"]["features"]:
         env.update(PIXI["feature"][feature].get("activation", {}).get("env", {}))
+    # The synthetic Pixi environment below uses the test runner's interpreter.
+    env["UV_PYTHON"] = f"{sys.version_info.major}.{sys.version_info.minor}"
     env.update(UV_CACHE_DIR=str(tmp_path / "cache"), UV_OFFLINE="1", UV_PYTHON_DOWNLOADS="never")
     env["PATH"] = str(Path(uv).parent) + os.pathsep + env["PATH"]
     return env
@@ -212,3 +214,10 @@ def test_non_cuda_environment_selection(environment: str) -> None:
     assert "UV_NO_SYNC" not in env
     expected = ".venv" if environment in ("default", "py311") else f".venv-{environment}"
     assert env.get("UV_PROJECT_ENVIRONMENT", ".venv") == expected
+
+
+@pytest.mark.parametrize("feature", ["py311", "py312", "py313", "py314"])
+def test_python_feature_selects_the_project_interpreter(feature: str) -> None:
+    python = PIXI["feature"][feature]
+    expected = python["dependencies"]["python"].removesuffix(".*")
+    assert python.get("activation", {}).get("env", {}).get("UV_PYTHON") == expected

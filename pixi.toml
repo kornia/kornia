@@ -108,20 +108,27 @@ install-docs = { cmd = "uv sync --extra dev --extra docs && uv run --no-sync uv 
 [feature.py311.dependencies]
 python = "3.11.*"
 
+# uv creates a separate project environment and can prefer a newer managed interpreter.
+[feature.py311.activation.env]
+UV_PYTHON = "3.11"
+
 [feature.py312.dependencies]
 python = "3.12.*"
 
 [feature.py312.activation.env]
+UV_PYTHON = "3.12"
 UV_PROJECT_ENVIRONMENT = ".venv-py312"
 
 [feature.py313.dependencies]
 python = "3.13.*"
 
 [feature.py313.activation.env]
+UV_PYTHON = "3.13"
 UV_PROJECT_ENVIRONMENT = ".venv-py313"
 
 [feature.py314.dependencies]
 python = "3.14.*"
 
 [feature.py314.activation.env]
+UV_PYTHON = "3.14"
 UV_PROJECT_ENVIRONMENT = ".venv-py314"
