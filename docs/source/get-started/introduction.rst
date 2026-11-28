@@ -25,7 +25,8 @@ With *Kornia* we fill the gap between classical and deep computer vision by impl
 standard and advanced vision algorithms for AI:
 
 1. **Computer vision:** Kornia bridges classical and deep computer vision.
-2. **Differentiable:** every operator supports autograd, so it can be used inside a training loop.
+2. **Differentiable:** vision operators can be used inside a training loop; see the
+   :doc:`gradient-path guidance <differentiability>` for the limits of discrete outputs.
 3. **Open source:** our libraries and initiatives are driven by the needs of the community.
 4. **PyTorch:** at our core we use PyTorch and its autograd engine for efficiency and GPU support.
 

@@ -124,8 +124,8 @@ Kornia: Differentiable Computer Vision for PyTorch
                  </div>
                </div>
 
-            **Registration by pure gradient descent.** Gradients flow through every operator, so vision ops
-            can sit inside your model or your loss — no labels, no training data.
+            **Registration by pure gradient descent.** Differentiable warps can sit inside your model
+            or your loss — no labels, no training data.
 
             :doc:`See details <get-started/differentiability>` :octicon:`arrow-right`
 
