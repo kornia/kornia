@@ -2,11 +2,12 @@ Differentiability
 =================
 
 .. meta::
-   :description: Every Kornia operator is differentiable: gradients flow through color conversions, filters, warps and augmentations, enabling image optimization, spatial transformer style networks and self-supervised losses.
+   :description: Use Kornia's differentiable color conversions, filters, warps and losses in training loops, and distinguish their gradients from discrete outputs such as thresholded edge maps.
 
-Kornia's defining feature is that every operator is written with differentiable PyTorch ops, so autograd flows
-through the whole library: color conversions, filters, geometric warps, augmentations and losses. Classical
-vision operations can therefore sit *inside* a model or a loss function, not only in the data loader.
+Kornia provides differentiable PyTorch operations for color conversions, filtering, geometric warps,
+augmentations and losses. These operations can sit *inside* a model or a loss function, not only in the data
+loader. Differentiability depends on the selected operation, its inputs and which output you use; returning a
+floating-point tensor does not by itself establish a gradient path.
 
 That enables three families of use cases:
 
@@ -43,8 +44,8 @@ images by direct gradient descent (see the :doc:`registration guide </applicatio
    homo = ImageRegistrator("similarity").register(img_src, img_dst)
 
 **Train through vision ops.** Structural losses such as :func:`~kornia.losses.ssim_loss` backpropagate to the
-network that produced the image; differentiable augmentations make techniques like AutoAugment-style policy
-search possible; and edge detectors or descriptors can be fine-tuned end to end.
+network that produced the image. Differentiable filters and descriptors can also form part of a training
+objective; use outputs that retain an autograd path to the quantity you want to optimize.
 
 .. code-block:: python
 
@@ -57,4 +58,31 @@ search possible; and edge detectors or descriptors can be fine-tuned end to end.
    loss.backward()
    assert prediction.grad is not None
 
-Gradient correctness is enforced in CI with ``torch.autograd.gradcheck`` across the test suite.
+Discrete outputs and gradient paths
+-----------------------------------
+
+Thresholding, comparisons and index selection make discrete decisions. For example,
+:func:`~kornia.filters.canny` returns a suppressed gradient magnitude and an edge map. The magnitude retains
+an autograd path through the selected responses, but the suppression decisions are not differentiated.
+The thresholded edge map has no autograd path to the image, even with ``hysteresis=False``.
+For an edge-based training objective, :func:`~kornia.filters.sobel` provides a gradient magnitude without
+Canny's suppression and thresholding:
+
+.. code-block:: python
+
+   import torch
+   import kornia
+
+   image = torch.linspace(0, 1, 64 * 64).reshape(1, 1, 64, 64).requires_grad_()
+   magnitude, edges = kornia.filters.canny(image, hysteresis=False)
+   assert magnitude.requires_grad
+   assert not edges.requires_grad
+
+   kornia.filters.sobel(image).mean().backward()
+   assert image.grad is not None
+   assert torch.isfinite(image.grad).all()
+
+Setting ``requires_grad_()`` on a detached edge map does not reconnect it to the image. Also keep the
+computation out of ``torch.no_grad()`` and ``torch.inference_mode()`` when gradients are needed.
+Gradient checks with ``torch.autograd.gradcheck`` exercise differentiable paths in the test suite; they do
+not imply that every output of a multi-output function is differentiable.
