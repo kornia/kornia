@@ -59,6 +59,16 @@ class TestCombineTensorPatches(BaseTester):
         with pytest.raises(RuntimeError):
             kornia.contrib.combine_tensor_patches(patches, original_size=(4, 4), window_size=(2, 2), stride=(2, 2))
 
+    def test_transposed_rectangular_patches_are_rejected(self, device, dtype):
+        image = torch.arange(6, device=device, dtype=dtype).reshape(1, 1, 2, 3) / 5
+        window = (2, 3)
+        patches = kornia.contrib.extract_tensor_patches(image, window, stride=window)
+        combine = kornia.contrib.CombineTensorPatches(window, window, stride=window)
+
+        self.assert_close(combine(patches), image)
+        with pytest.raises(RuntimeError, match="window size"):
+            combine(patches.transpose(-2, -1))
+
     def test_rect_odd_dim(self, device, dtype):
         img = torch.arange(12, device=device, dtype=dtype).view(1, 1, 4, 3)
         patches = kornia.contrib.extract_tensor_patches(img, window_size=(2, 2), stride=(2, 2), padding=(0, 2))
