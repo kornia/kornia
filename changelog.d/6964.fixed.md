@@ -1,0 +1,1 @@
+`combine_tensor_patches` and `CombineTensorPatches` now reject patches whose height and width do not match the window size, preventing transposed rectangular patches from silently scrambling the reconstructed image.

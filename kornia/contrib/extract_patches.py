@@ -379,6 +379,10 @@ def combine_tensor_patches(
             f"Stride={stride} should be less than or equal to Window size={window_size}, information is missing"
         )
 
+    # Fold checks the flattened patch area, so swapped height and width would otherwise pass.
+    if patches.shape[-2:] != window_size:
+        raise RuntimeError("Patch height and width must match the window size.")
+
     # if padding is specified, we leave it up to the user to ensure it fits
     # otherwise we check here if it will fit and offer to calculate padding
     unpadding_tuple = create_padding_tuple(unpadding, unpadding=True)
@@ -461,7 +465,7 @@ def _patch_target_index(
     Hr, Wr = original_size[0] + pad_t + pad_b, original_size[1] + pad_l + pad_r
     index = torch.arange(Hr * Wr, device=patches.device).view(1, 1, Hr, Wr)
     index_patches = _extract_tensor_patchesnd(index, window_size, stride)
-    if (N, *patches.shape[3:]) != (index_patches.shape[1], *index_patches.shape[3:]):
+    if N != index_patches.shape[1]:
         raise RuntimeError(
             f"Given patches of shape {tuple(patches.shape)}, expected {index_patches.shape[1]} patches of window size "
             f"{window_size} for output_size={(Hr, Wr)} and stride={stride}."
